@@ -2,26 +2,21 @@
 // ABOUTME: The popover holds the publish section: make the link, then copy, open or unshare it while it keeps itself up to date.
 
 import React, { useEffect, useRef, useState } from "react";
+import { useMenuEscape } from "./useMenuEscape";
 import { PublishSection, type PublishSectionProps } from "./PublishSection";
 
 export function ShareButton(props: PublishSectionProps) {
   const [open, setOpen] = useState(false);
   const holderRef = useRef<HTMLDivElement>(null);
 
+  useMenuEscape(open, () => setOpen(false));
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       if (!holderRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
     window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
+    return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
   return (

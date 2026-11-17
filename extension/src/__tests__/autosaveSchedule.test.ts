@@ -3,8 +3,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  RETRY_DELAYS_MS,
   createAutosaveState,
   hasUnwrittenWork,
+  retryDelayMs,
   stepAutosave,
   type AutosaveEvent,
   type AutosaveState,
@@ -203,6 +205,101 @@ describe("when the write itself fails", () => {
 
   it("counts as work that leaving would lose", () => {
     expect(hasUnwrittenWork(broken)).toBe(true);
+  });
+
+  it("tries again after a short wait", () => {
+    const { actions } = run(createAutosaveState(true), [
+      changed,
+      { kind: "arrangementSettled" },
+      { kind: "writeFailed", reason: "the collage drawer would not open" },
+    ]);
+    expect(actions[2].retryAfterMs).toBe(2000);
+    // The retry arrives on the settle timer and writes the same revision.
+    expect(stepAutosave(broken, { kind: "arrangementSettled" }).action.write).toEqual(
+      { revision: 1, needsPreview: false },
+    );
+  });
+
+  it("waits longer after each failure, then keeps trying every 30 seconds", () => {
+    let state = createAutosaveState(true);
+    const delays: number[] = [];
+    for (const event of [changed, { kind: "arrangementSettled" } as const]) {
+      state = stepAutosave(state, event).state;
+    }
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const failed = stepAutosave(state, {
+        kind: "writeFailed",
+        reason: "the drawer is stuck",
+      });
+      delays.push(failed.action.retryAfterMs ?? -1);
+      state = stepAutosave(failed.state, { kind: "arrangementSettled" }).state;
+      expect(state.writing).toBe(true);
+    }
+    expect(delays).toEqual([2000, 5000, 15000, 30000, 30000, 30000]);
+    expect(RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]).toBe(30000);
+    expect(retryDelayMs(40)).toBe(30000);
+  });
+
+  it("writes again on the next edit's settle, without the built-up wait", () => {
+    const { state, actions } = run(broken, [
+      { kind: "writeFailed", reason: "irrelevant, nothing is writing" },
+      changed,
+      { kind: "arrangementSettled" },
+    ]);
+    expect(actions[1].scheduleSettle).toBe(true);
+    expect(actions[2].write).toEqual({ revision: 2, needsPreview: false });
+    expect(state.failedWrites).toBe(0);
+  });
+
+  it("is saved once a retry lands", () => {
+    const { state } = run(broken, [
+      { kind: "arrangementSettled" },
+      { kind: "writeSucceeded", revision: 1 },
+      { kind: "bakeSucceeded", token: 1 },
+    ]);
+    expect(state.standing).toEqual({ kind: "saved" });
+    expect(state.failedWrites).toBe(0);
+    expect(hasUnwrittenWork(state)).toBe(false);
+  });
+});
+
+describe("the first write of a new collage", () => {
+  it("does not bake again when the picture it baked first drew", () => {
+    const { state, actions } = run(createAutosaveState(false), [
+      changed,
+      { kind: "arrangementSettled" },
+      { kind: "writeSucceeded", revision: 1, preview: { drawn: true } },
+    ]);
+    expect(actions[2].bake).toBeUndefined();
+    expect(state.standing).toEqual({ kind: "saved" });
+    expect(hasUnwrittenWork(state)).toBe(false);
+  });
+
+  it("says the picture is behind when the first bake failed, without baking again", () => {
+    const { state, actions } = run(createAutosaveState(false), [
+      changed,
+      { kind: "arrangementSettled" },
+      {
+        kind: "writeSucceeded",
+        revision: 1,
+        preview: { drawn: false, reason: "a photo would not load" },
+      },
+    ]);
+    expect(actions[2].bake).toBeUndefined();
+    expect(state.standing).toEqual({
+      kind: "previewBehind",
+      reason: "a photo would not load",
+    });
+  });
+
+  it("settles again when more changes arrived while it baked and wrote", () => {
+    const { actions } = run(createAutosaveState(false), [
+      changed,
+      { kind: "arrangementSettled" },
+      changed,
+      { kind: "writeSucceeded", revision: 1, preview: { drawn: true } },
+    ]);
+    expect(actions[3].scheduleSettle).toBe(true);
   });
 });
 

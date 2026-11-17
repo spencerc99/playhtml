@@ -287,3 +287,139 @@ describe("the picture the back shows through", () => {
     expect(autosave.current().standing.kind).toBe("saved");
   });
 });
+
+describe("leaving the studio", () => {
+  it("writes an edit that had not settled yet when the studio goes", async () => {
+    const timers = manualTimers();
+    const stored: CollageRecord[] = [];
+    const loaded = new Blob(["the original picture"], { type: "image/png" });
+    let title = "a collage";
+    const autosave = await mountAutosave({
+      draft: () => ({
+        record: { ...baseRecord({ drawn: true, image: loaded }), title },
+        hasContent: true,
+      }),
+      bake: () => deferredBlob().promise,
+      store: async (record) => {
+        stored.push(record);
+      },
+      onStored: () => {},
+      startsStored: true,
+      reopening: baseRecord({ drawn: true, image: loaded }),
+      timers,
+    });
+
+    title = "renamed just before leaving";
+    await act(async () => {
+      autosave.current().noteChange();
+    });
+    expect(stored).toHaveLength(0);
+
+    const root = mounted!;
+    mounted = null;
+    await act(async () => root.unmount());
+    await act(async () => {});
+
+    expect(stored).toHaveLength(1);
+    expect(stored[0].title).toBe("renamed just before leaving");
+  });
+
+  it("writes nothing on leaving when nothing changed", async () => {
+    const stored: CollageRecord[] = [];
+    await mountAutosave({
+      draft: () => ({ record: baseRecord({ drawn: false, reason: "x" }), hasContent: true }),
+      bake: () => deferredBlob().promise,
+      store: async (record) => {
+        stored.push(record);
+      },
+      onStored: () => {},
+      startsStored: true,
+      reopening: baseRecord({ drawn: false, reason: "x" }),
+      timers: manualTimers(),
+    });
+    const root = mounted!;
+    mounted = null;
+    await act(async () => root.unmount());
+    await act(async () => {});
+    expect(stored).toHaveLength(0);
+  });
+});
+
+describe("a write that fails", () => {
+  it("is tried again on its own until it lands", async () => {
+    const timers = manualTimers();
+    const stored: CollageRecord[] = [];
+    let failures = 2;
+    const loaded = new Blob(["the original picture"], { type: "image/png" });
+    const autosave = await mountAutosave({
+      draft: () => ({
+        record: baseRecord({ drawn: true, image: loaded }),
+        hasContent: true,
+      }),
+      bake: () => deferredBlob().promise,
+      store: async (record) => {
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error("the collage drawer would not open");
+        }
+        stored.push(record);
+      },
+      onStored: () => {},
+      startsStored: true,
+      reopening: baseRecord({ drawn: true, image: loaded }),
+      timers,
+    });
+
+    await act(async () => {
+      autosave.current().noteChange();
+      timers.runAll();
+    });
+    await act(async () => {});
+    expect(autosave.current().standing.kind).toBe("failed");
+    expect(autosave.current().unwritten).toBe(true);
+
+    // The first retry fails too; the second lands.
+    await act(async () => timers.runAll());
+    await act(async () => {});
+    expect(autosave.current().standing.kind).toBe("failed");
+    await act(async () => timers.runAll());
+    await act(async () => {});
+
+    expect(stored).toHaveLength(1);
+    expect(autosave.current().unwritten).toBe(false);
+  });
+});
+
+describe("the first save of a new collage", () => {
+  it("draws the picture once", async () => {
+    const timers = manualTimers();
+    const stored: CollageRecord[] = [];
+    const picture = new Blob(["the first picture"], { type: "image/png" });
+    const bake = vi.fn(async () => picture);
+    const autosave = await mountAutosave({
+      draft: () => ({
+        record: baseRecord({ drawn: false, reason: "not drawn yet" }),
+        hasContent: true,
+      }),
+      bake,
+      store: async (record) => {
+        stored.push(record);
+      },
+      onStored: () => {},
+      startsStored: false,
+      timers,
+    });
+
+    await act(async () => {
+      autosave.current().noteChange();
+      timers.runAll();
+    });
+    await act(async () => {});
+    await act(async () => {});
+
+    expect(bake).toHaveBeenCalledTimes(1);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].preview).toEqual({ drawn: true, image: picture });
+    expect(autosave.current().standing.kind).toBe("saved");
+  });
+});

@@ -52,6 +52,13 @@ export interface CollageAutosaveOptions {
    */
   reopening?: CollageRecord | null;
   timers?: AutosaveTimers;
+  /**
+   * Told when the studio goes, with a promise that settles once everything it
+   * still had to store has landed or failed. Opening the collage again waits
+   * for it, so a reopened studio never starts from, or is overwritten by, an
+   * older copy.
+   */
+  onClosed?: (stored: Promise<void>) => void;
 }
 
 export interface CollageAutosave {
@@ -119,6 +126,29 @@ export function useCollageAutosave(
   optionsRef.current = options;
 
   const dispatchRef = useRef<(event: AutosaveEvent) => void>(() => {});
+  /**
+   * Set once the studio has gone. A write already started still lands, but
+   * nothing new waits on a timer: what is pending is written straight away,
+   * and a failed write is no longer retried.
+   */
+  const closedRef = useRef(false);
+  /** Waiting on everything a closed studio still had to store. */
+  const closedWaitersRef = useRef<Array<() => void>>([]);
+  /** Lets the closed-studio waiters go once nothing is left to land. */
+  const releaseIfClosedAndDone = () => {
+    if (!closedRef.current) return;
+    const state = stateRef.current;
+    const settled =
+      !state.writing &&
+      state.bakingToken === null &&
+      (!state.arrangementPending || state.standing.kind === "failed");
+    if (!settled) return;
+    const waiters = closedWaitersRef.current;
+    closedWaitersRef.current = [];
+    for (const release of waiters) release();
+  };
+  const releaseRef = useRef(releaseIfClosedAndDone);
+  releaseRef.current = releaseIfClosedAndDone;
 
   const cancelSettle = useCallback(() => {
     if (settleRef.current !== null) {
@@ -130,12 +160,19 @@ export function useCollageAutosave(
   const perform = useCallback(
     (action: AutosaveAction) => {
       if (action.cancelSettle) cancelSettle();
-      if (action.scheduleSettle) {
+      const settleAfter = (delayMs: number) => {
         cancelSettle();
         settleRef.current = timers.setTimer(() => {
           settleRef.current = null;
           dispatchRef.current({ kind: "arrangementSettled" });
-        }, SETTLE_DELAY_MS);
+        }, delayMs);
+      };
+      if (action.scheduleSettle) {
+        if (closedRef.current) dispatchRef.current({ kind: "flush" });
+        else settleAfter(SETTLE_DELAY_MS);
+      }
+      if (action.retryAfterMs !== undefined && !closedRef.current) {
+        settleAfter(action.retryAfterMs);
       }
 
       if (action.write) {
@@ -144,13 +181,16 @@ export function useCollageAutosave(
           try {
             // The first write has nothing to fall back on, so it bakes first
             // and stores the picture alongside the arrangement.
+            let baked: { drawn: true } | { drawn: false; reason: string } | undefined;
             if (needsPreview) {
               try {
                 previewRef.current = await optionsRef.current.bake();
                 previewProblemRef.current = null;
                 setPreview(previewRef.current);
+                baked = { drawn: true };
               } catch (error) {
                 previewProblemRef.current = describe(error);
+                baked = { drawn: false, reason: previewProblemRef.current };
               }
             }
             const { record } = optionsRef.current.draft();
@@ -161,15 +201,11 @@ export function useCollageAutosave(
             await optionsRef.current.store(stored);
             storedRef.current = stored;
             optionsRef.current.onStored(stored);
-            dispatchRef.current({ kind: "writeSucceeded", revision });
-            if (needsPreview && previewProblemRef.current) {
-              // The arrangement landed; only the picture is behind.
-              dispatchRef.current({
-                kind: "bakeFailed",
-                token: revision,
-                reason: previewProblemRef.current,
-              });
-            }
+            dispatchRef.current({
+              kind: "writeSucceeded",
+              revision,
+              ...(baked ? { preview: baked } : {}),
+            });
           } catch (error) {
             dispatchRef.current({
               kind: "writeFailed",
@@ -233,6 +269,7 @@ export function useCollageAutosave(
       setStanding(state.standing);
       setUnwritten(hasUnwrittenWork(state));
       perform(action);
+      releaseRef.current();
     },
     [perform],
   );
@@ -249,7 +286,25 @@ export function useCollageAutosave(
     dispatchRef.current({ kind: "flush" });
   }, []);
 
-  useEffect(() => () => cancelSettle(), [cancelSettle]);
+  // Leaving the studio by any route writes what is pending, rather than
+  // dropping an edit made just before the settle would have fired. The write
+  // reads the draft and the store through refs, so it does not need the
+  // studio to still be on screen.
+  const cancelSettleRef = useRef(cancelSettle);
+  cancelSettleRef.current = cancelSettle;
+  useEffect(() => {
+    closedRef.current = false;
+    return () => {
+      closedRef.current = true;
+      cancelSettleRef.current();
+      const stored = new Promise<void>((release) => {
+        closedWaitersRef.current.push(release);
+      });
+      optionsRef.current.onClosed?.(stored);
+      dispatchRef.current({ kind: "flush" });
+      releaseRef.current();
+    };
+  }, []);
 
   return { standing, unwritten, noteChange, flush, preview };
 }

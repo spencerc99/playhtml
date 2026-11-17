@@ -3,6 +3,7 @@
 
 import type { BackShows } from "./collageRecord";
 import React from "react";
+import { ACCEL_KEY_NAME } from "./studioKeymap";
 
 const STROKE = {
   fill: "none",
@@ -108,7 +109,7 @@ export function StudioTools({
         <button
           type="button"
           className="collage-glyph"
-          title="Undo (cmd + Z)"
+          title={`Undo (${ACCEL_KEY_NAME} + Z)`}
           aria-label="Undo"
           disabled={!canUndo}
           onClick={onUndo}
@@ -118,7 +119,7 @@ export function StudioTools({
         <button
           type="button"
           className="collage-glyph"
-          title="Redo (cmd + shift + Z)"
+          title={`Redo (${ACCEL_KEY_NAME} + shift + Z)`}
           aria-label="Redo"
           disabled={!canRedo}
           onClick={onRedo}

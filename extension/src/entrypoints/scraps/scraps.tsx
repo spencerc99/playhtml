@@ -24,6 +24,7 @@ import { useSettledFeatureState } from "../../features/useFeatureAccess";
 import { useMeaningSearch } from "./meaning/useMeaningSearch";
 import { MeaningSearchControl } from "./meaning/MeaningSearchControl";
 import { parsePlaceHash, placeHash, type ScrapsPlace } from "./scrapsPlace";
+import { resumeStudio } from "./studioResume";
 import type { CollageRecord } from "./collageRecord";
 import {
   inBackground,
@@ -156,22 +157,101 @@ export function ScrapsPage() {
     if (collagesFeature && !canCreate && mode === "create") setMode("browse");
   }, [collagesFeature, canCreate, mode]);
 
+  /** The studio session on screen, read by a save that lands after it left. */
+  const studioSessionRef = useRef(studioSession);
+  studioSessionRef.current = studioSession;
+
+  /**
+   * Bumped by every place applied and every studio opened or closed, so a
+   * collage that finishes loading after a newer move is not opened over it.
+   */
+  const placeGenerationRef = useRef(0);
+
+  /** The open collage's id, read by a reopen that waited on a closing save. */
+  const openCollageIdRef = useRef<string | null>(null);
+  /**
+   * Settles once the studio that last closed has stored everything it had.
+   * Reopening waits on it, so it reads the newest copy and the closing
+   * studio's late writes never land over the reopened one's.
+   */
+  const closingRef = useRef<Promise<void>>(Promise.resolve());
+  const closingPendingRef = useRef(false);
+  /** True while a collage is being read back to reopen the studio on it. */
+  const [resuming, setResuming] = useState(false);
+  const [reopenProblem, setReopenProblem] = useState<string | null>(null);
+
   const openStudio = (record: CollageRecord | null) => {
+    placeGenerationRef.current += 1;
     if (record) inBackground(keepCollageImages(record));
     setEditing(record);
+    openCollageIdRef.current = record?.id ?? null;
     setOpenCollageId(record?.id ?? null);
     setStudioSession((value) => value + 1);
     setStudioOpen(true);
+    setResuming(false);
+    setReopenProblem(null);
   };
 
   const closeStudio = () => {
+    placeGenerationRef.current += 1;
     setEditing(null);
+    openCollageIdRef.current = null;
     setOpenCollageId(null);
     setStudioOpen(false);
+    setResuming(false);
+  };
+
+  /**
+   * Opens the studio on the newest stored copy of a collage, once the studio
+   * that closed last has finished storing. A collage that cannot be read back
+   * is not opened from an older copy; the list says why instead.
+   */
+  const reopenStudio = async (collageId: () => string | null) => {
+    const generation = ++placeGenerationRef.current;
+    setResuming(true);
+    setReopenProblem(null);
+    const { loadCollage } = await import("./collageStore");
+    const resumed = await resumeStudio({
+      closing: closingRef.current,
+      collageId,
+      load: loadCollage,
+    });
+    if (generation !== placeGenerationRef.current) return;
+    if (resumed.kind === "new") {
+      openStudio(null);
+    } else if (resumed.kind === "stored") {
+      openStudio(resumed.record);
+    } else {
+      closeStudio();
+      setReopenProblem(`could not open that collage — ${resumed.reason}`);
+    }
+  };
+
+  const noteStudioClosing = (stored: Promise<void>) => {
+    closingRef.current = stored;
+    closingPendingRef.current = true;
+    void stored.then(() => {
+      if (closingRef.current === stored) closingPendingRef.current = false;
+    });
+  };
+
+  /** Back to create: an open studio comes back on its newest stored copy. */
+  const enterCreate = () => {
+    if (mode === "create") return;
+    setMode("create");
+    if (studioOpen) void reopenStudio(() => openCollageIdRef.current);
+  };
+
+  const enterBrowse = () => {
+    // A reopen still reading is abandoned rather than landing after this.
+    placeGenerationRef.current += 1;
+    setResuming(false);
+    setMode("browse");
   };
 
   /** Puts the page where a URL says, loading a named collage first. */
   const applyPlace = useCallback(async (place: ScrapsPlace, creatable: boolean) => {
+    const generation = ++placeGenerationRef.current;
     if (place.mode === "browse" || !creatable) {
       setMode("browse");
       closeStudio();
@@ -186,14 +266,21 @@ export function ScrapsPage() {
       openStudio(null);
       return;
     }
+    const id = place.collage.id;
+    setResuming(true);
     const { loadCollage } = await import("./collageStore");
-    const record = await loadCollage(place.collage.id);
-    if (!record) {
-      console.warn(`No collage ${place.collage.id} to reopen; showing the list`);
+    const resumed = await resumeStudio({
+      closing: closingRef.current,
+      collageId: () => id,
+      load: loadCollage,
+    });
+    if (generation !== placeGenerationRef.current) return;
+    if (resumed.kind !== "stored") {
+      console.warn(`Collage ${id} could not be reopened; showing the list`);
       closeStudio();
       return;
     }
-    openStudio(record);
+    openStudio(resumed.record);
   }, []);
 
   // Once it is known whether collages can be made, go back to where the URL
@@ -493,14 +580,14 @@ export function ScrapsPage() {
             <button
               type="button"
               className={`collage-chip${mode === "browse" ? " collage-chip--active" : ""}`}
-              onClick={() => setMode("browse")}
+              onClick={enterBrowse}
             >
               browse
             </button>
             <button
               type="button"
               className={`collage-chip${mode === "create" ? " collage-chip--active" : ""}`}
-              onClick={() => setMode("create")}
+              onClick={enterCreate}
             >
               create
             </button>
@@ -547,24 +634,37 @@ export function ScrapsPage() {
       {/* An open studio stays mounted while the scraps reload (as they do
           whenever another tab collects some), or it would reopen as it was
           when first opened and lose everything since, its link included. */}
-      {mode === "create" && ready && createMode && (
+      {mode === "create" && ready && createMode && !resuming && (
         <createMode.CreateMode
           items={items}
           editing={editing}
           studioOpen={studioOpen}
           studioSession={studioSession}
           savedRevision={savedRevision}
-          onEdit={(record) => openStudio(record)}
+          onEdit={(record) =>
+            // While a closing studio is still storing, the list's copy may be
+            // older than what is about to land, so it is read again after.
+            closingPendingRef.current
+              ? void reopenStudio(() => record.id)
+              : openStudio(record)
+          }
           onStartNew={() => openStudio(null)}
           onSaved={(record) => {
             inBackground(keepCollageImages(record));
-            setOpenCollageId(record.id);
+            // A studio that has been left still writes what was pending; that
+            // late save must not rename the place of a studio opened since.
+            if (studioSessionRef.current === studioSession) {
+              openCollageIdRef.current = record.id;
+              setOpenCollageId(record.id);
+            }
             setSavedRevision((value) => value + 1);
           }}
           onLeave={closeStudio}
+          onClosed={noteStudioClosing}
+          notice={reopenProblem}
         />
       )}
-      {mode === "create" && ready && !createMode && (
+      {mode === "create" && ready && (!createMode || resuming) && (
         <div style={centeredMessageStyle}>
           {createError ? "collage tools could not be opened" : "opening collage tools..."}
         </div>

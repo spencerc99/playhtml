@@ -692,33 +692,6 @@ export function movePieceBackward(
   return swapWithNeighbor(pieces, pieceId, -1);
 }
 
-export function movePieceToFront(
-  pieces: readonly CollagePiece[],
-  pieceId: string,
-): CollagePiece[] {
-  return liftToEnd(pieces, pieceId, "front");
-}
-
-export function movePieceToBack(
-  pieces: readonly CollagePiece[],
-  pieceId: string,
-): CollagePiece[] {
-  return liftToEnd(pieces, pieceId, "back");
-}
-
-function liftToEnd(
-  pieces: readonly CollagePiece[],
-  pieceId: string,
-  end: "front" | "back",
-): CollagePiece[] {
-  const ordered = normalizeStack(pieces);
-  const moving = ordered.find((piece) => piece.id === pieceId);
-  if (!moving) throw new Error(`Collage has no piece ${pieceId}`);
-  const rest = ordered.filter((piece) => piece.id !== pieceId);
-  const stacked = end === "front" ? [...rest, moving] : [moving, ...rest];
-  return stacked.map((piece, index) => ({ ...piece, z: index }));
-}
-
 function swapWithNeighbor(
   pieces: readonly CollagePiece[],
   pieceId: string,

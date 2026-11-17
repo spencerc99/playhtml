@@ -63,9 +63,25 @@ function rememberChoice(on: boolean) {
   }
 }
 
-/** A picture's bytes: the page's own copy if it kept one, else a fresh fetch. */
-async function pictureBlobs(srcs: string[]): Promise<Map<string, Blob>> {
+/**
+ * Whether a failed fetch might succeed later: the network was down, the
+ * server was having trouble, or it asked to be tried again. A picture that is
+ * simply gone or refused is not worth asking for again.
+ */
+function transientStatus(status: number): boolean {
+  return status >= 500 || status === 408 || status === 429;
+}
+
+/**
+ * A picture's bytes: the page's own copy if it kept one, else a fresh fetch.
+ * Pictures whose fetch failed in a way that may pass are listed apart, so
+ * they are tried again later rather than remembered as unreadable.
+ */
+async function pictureBlobs(
+  srcs: string[],
+): Promise<{ blobs: Map<string, Blob>; retryLater: Set<string> }> {
   const blobs = new Map<string, Blob>();
+  const retryLater = new Set<string>();
   const local = await readImagePreviewInputs(srcs).catch(() => new Map());
   await Promise.all(
     srcs.map(async (src) => {
@@ -77,12 +93,14 @@ async function pictureBlobs(srcs: string[]): Promise<Map<string, Blob>> {
       try {
         const response = await fetch(src, { credentials: "omit" });
         if (response.ok) blobs.set(src, await response.blob());
+        else if (transientStatus(response.status)) retryLater.add(src);
       } catch {
-        // Gone from where it was found, and never copied: left unread.
+        // Offline, or the request never got an answer: tried again next time.
+        retryLater.add(src);
       }
     }),
   );
-  return blobs;
+  return { blobs, retryLater };
 }
 
 /** True where the browser cannot hold the model comfortably: iPhone and iPad. */
@@ -180,10 +198,24 @@ export function useMeaningSearch(
   );
 
   // Read every picture not read yet, newest first, saving as it goes so a
-  // closed tab loses at most one batch.
+  // closed tab loses at most one batch. A change to the scraps restarts the
+  // run, keeping whatever the batch in progress had already read.
   useEffect(() => {
     if (!modelReady) return;
     let cancelled = false;
+    const worker = workerRef.current;
+    /** Saves what was read, unless the worker has since been turned off. */
+    const keep = async (
+      results: Array<{ src: string; vector: Float32Array | null }>,
+    ) => {
+      if (results.length === 0 || workerRef.current !== worker) return;
+      for (const { src, vector } of results) vectors.current.set(src, vector);
+      await storeMeaningVectors(MEANING_INDEX_VERSION, results).catch(
+        (error: unknown) =>
+          console.warn("[meaning search] could not save:", error),
+      );
+      setVectorsVersion((value) => value + 1);
+    };
     const run = async () => {
       const unread = unreadPictures(items, vectors.current);
       const alreadyRead = () =>
@@ -198,24 +230,20 @@ export function useMeaningSearch(
       ) {
         setStatus({ phase: "reading", read: alreadyRead(), total });
         const batch = unread.slice(start, start + READ_BATCH);
-        const blobs = await pictureBlobs(batch);
+        const { blobs, retryLater } = await pictureBlobs(batch);
         const results: Array<{ src: string; vector: Float32Array | null }> = [];
         for (const src of batch) {
-          if (cancelled) return;
+          if (cancelled) break;
+          if (retryLater.has(src)) continue;
           const blob = blobs.get(src);
           const vector = blob ? await ask({ type: "image", blob }) : null;
-          // The worker went away (turned off or the page is closing), so the
-          // batch is dropped rather than saved as pictures that cannot be read.
-          if (vector === undefined) return;
+          // The worker went away (turned off or the page is closing), so this
+          // picture is dropped rather than saved as one that cannot be read.
+          if (vector === undefined) break;
           results.push({ src, vector });
         }
-        if (cancelled) return;
-        for (const { src, vector } of results) vectors.current.set(src, vector);
-        await storeMeaningVectors(MEANING_INDEX_VERSION, results).catch(
-          (error: unknown) =>
-            console.warn("[meaning search] could not save:", error),
-        );
-        setVectorsVersion((value) => value + 1);
+        await keep(results);
+        if (results.length < batch.length - retryLater.size) return;
       }
       if (!cancelled) setStatus({ phase: "ready", read: alreadyRead() });
     };

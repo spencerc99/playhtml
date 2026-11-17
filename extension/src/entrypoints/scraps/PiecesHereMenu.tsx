@@ -5,6 +5,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CollagePiece } from "./collageRecord";
 import { GLYPHS } from "./PieceActions";
 import { PieceLook } from "./PieceMaterial";
+import { useMenuEscape } from "./useMenuEscape";
 
 interface PiecesHereMenuProps {
   /** The pieces under the pointer, frontmost first. */
@@ -65,24 +66,15 @@ export function PiecesHereMenu({
     ? Math.max(0, Math.min(at.y, frame.height - size.height / scale))
     : at.y;
 
+  // Escape closes the menu rather than dropping the selection behind it.
+  useMenuEscape(true, onClose);
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // Capturing beats the studio's own Escape, so a press closes the menu
-      // rather than dropping the selection behind it.
-      event.stopPropagation();
-      onClose();
-    };
     const onPointerDown = (event: PointerEvent) => {
       const menu = menuRef.current;
       if (menu && !menu.contains(event.target as Node)) onClose();
     };
-    window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("pointerdown", onPointerDown, true);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("pointerdown", onPointerDown, true);
-    };
+    return () => window.removeEventListener("pointerdown", onPointerDown, true);
   }, [onClose]);
 
   return (

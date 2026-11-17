@@ -6,6 +6,7 @@ import { File as NodeFile } from "node:buffer";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  IDBDatabase as fakeIDBDatabase,
   IDBKeyRange as fakeIDBKeyRange,
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
@@ -276,6 +277,119 @@ describe("a collage card", () => {
     const saved = readCollageFile(savedText);
     expect(saved.id).toBe("collage_1");
     expect(saved.title).toBe("a walk");
+  });
+
+  it("keeps the saved file's address alive after the click, for Safari", async () => {
+    await saveCollage(record());
+    const { view } = await mount();
+    const revoked: string[] = [];
+    Object.defineProperty(URL, "createObjectURL", {
+      value: () => "blob:test/saved",
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: (url: string) => revoked.push(url),
+      configurable: true,
+    });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    try {
+      await act(async () => buttonNamed(view, "Save a walk as a file").click());
+      await settle();
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(revoked).toEqual([]);
+    } finally {
+      click.mockRestore();
+      delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+    }
+  });
+});
+
+describe("a collage store that fails", () => {
+  /** Makes every later collage store call fail, as a broken IndexedDB would. */
+  function breakStore() {
+    (globalThis as unknown as { indexedDB: unknown }).indexedDB = {
+      open: () => {
+        throw new Error("the drawer is stuck");
+      },
+    };
+  }
+
+  it("says so when a collage cannot be opened", async () => {
+    await saveCollage(record());
+    const { onEdit, view } = await mount();
+    breakStore();
+    await act(async () => buttonNamed(view, "Open a walk").click());
+    await settle();
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(view.querySelector(".collage-notice")?.textContent).toBe(
+      "could not open that collage — the drawer is stuck",
+    );
+  });
+
+  it("says so when a collage cannot be copied", async () => {
+    await saveCollage(record());
+    const { view } = await mount();
+    breakStore();
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await settle();
+    expect(view.querySelector(".collage-notice")?.textContent).toBe(
+      "could not copy that collage — the drawer is stuck",
+    );
+    expect(view.querySelectorAll(".collage-card")).toHaveLength(1);
+  });
+
+  it("keeps a collage it cannot load, so its shared link is not stranded", async () => {
+    await saveCollage(
+      record({
+        publication: {
+          id: "pub_1",
+          url: "https://wewere.online/c/pub_1",
+          deleteToken: "token",
+          sharedAt: 1,
+        },
+      }),
+    );
+    const { view } = await mount();
+    // Reading fails while deleting would still work, as when the drawer is
+    // busy with something else for a moment.
+    const transaction = fakeIDBDatabase.prototype.transaction;
+    const reads = vi
+      .spyOn(fakeIDBDatabase.prototype, "transaction")
+      .mockImplementation(function (
+        this: IDBDatabase,
+        ...args: Parameters<IDBDatabase["transaction"]>
+      ) {
+        if (args[1] !== "readwrite") throw new Error("the drawer is stuck");
+        return transaction.apply(this, args);
+      });
+    try {
+      await act(async () => buttonNamed(view, "Delete a walk").click());
+      await act(async () => buttonNamed(view, "delete for good").click());
+      await settle();
+    } finally {
+      reads.mockRestore();
+    }
+    expect(view.querySelector(".collage-notice")?.textContent).toBe(
+      "could not delete that collage — the drawer is stuck",
+    );
+    expect(view.querySelectorAll(".collage-card")).toHaveLength(1);
+    expect(await listCollages()).toHaveLength(1);
+  });
+
+  it("keeps the card and says so when a collage cannot be deleted", async () => {
+    await saveCollage(record());
+    const { view } = await mount();
+    breakStore();
+    await act(async () => buttonNamed(view, "Delete a walk").click());
+    await act(async () => buttonNamed(view, "delete for good").click());
+    await settle();
+    expect(view.querySelector(".collage-notice")?.textContent).toBe(
+      "could not delete that collage — the drawer is stuck",
+    );
+    expect(view.querySelectorAll(".collage-card")).toHaveLength(1);
   });
 });
 
