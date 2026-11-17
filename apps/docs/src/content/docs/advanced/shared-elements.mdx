@@ -2,7 +2,7 @@
 title: "Shared elements"
 description: "Sync interactive elements across pages and domains."
 sidebar:
-  order: 2
+  order: 3
   hidden: true
 ---
 
@@ -109,8 +109,8 @@ import {
 } from "@playhtml/react";
 
 // Source
-<CanMoveElement id="couch" shared>
-  <div style={{ display: "inline-block", fontSize: 80 }}>🛋</div>
+<CanMoveElement shared>
+  <div id="couch" style={{ display: "inline-block", fontSize: 80 }}>🛋</div>
 </CanMoveElement>
 
 // Consumer (matching capability + dataSource)

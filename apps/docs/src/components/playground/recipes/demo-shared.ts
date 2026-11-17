@@ -32,7 +32,7 @@ const prizePages = `const PAGES = [
   { label: "See cursors", href: "https://playhtml.fun/docs/advanced/cursors/" },
   { label: "Summon rain", href: "https://playhtml.fun/docs/data/events/" },
   { label: "Shape data", href: "https://playhtml.fun/docs/advanced/data-best-practices/" },
-  { label: "Write React", href: "https://playhtml.fun/docs/using-react/" },
+  { label: "Write React", href: "https://playhtml.fun/docs/" },
 ];
 const SLICE = 360 / PAGES.length;
 const SPIN_MS = 3600;

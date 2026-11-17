@@ -266,13 +266,11 @@ When set, every clone is appended to this container element instead of being ins
 
 ### Deleting clones
 
-To delete a clone and remove it from shared state, call `playhtml.deleteElementData("can-duplicate", cloneId)` and remove the element from the DOM:
+The list of clone ids is stored on the trigger element, keyed by the trigger's id. To delete all of its clones for everyone, remove them from the DOM and call `playhtml.deleteElementData("can-duplicate", triggerId)`:
 
 ```js
-document.querySelectorAll("[id^='bunny-template-']").forEach((el) => {
-  playhtml.deleteElementData("can-duplicate", el.id);
-  el.remove();
-});
+document.querySelectorAll("[id^='bunny-template-']").forEach((el) => el.remove());
+playhtml.deleteElementData("can-duplicate", "clone-btn");
 ```
 
 ### Reset

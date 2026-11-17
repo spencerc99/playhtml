@@ -54,8 +54,8 @@ export const prizeWheelRecipe: ExampleRecipe = {
   id: "prize-wheel",
   title: "Shared prize wheel",
   description:
-    "Run one seeded animation so every reader lands on the same result.",
-  tags: ["animation", "requestUpdate", "shared seed"],
+    "Share when a spin started and where it lands, so every reader sees the same result.",
+  tags: ["animation", "requestUpdate", "shared start time"],
   capabilities: ["can-play"],
   difficulty: "advanced",
   docsHref: "/docs/examples/prize-wheel/",

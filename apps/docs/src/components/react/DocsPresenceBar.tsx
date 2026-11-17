@@ -25,10 +25,9 @@ import type { CursorPresenceView } from 'playhtml';
 // prematurely.
 //
 // Self filtering: `getCursorPresences()` returns ALL awareness states
-// including this client's own. We filter by `playerIdentity.publicKey`
-// (matched against `getMyPlayerIdentity()`) so the self-dot — already
-// rendered as the picker button — isn't double-rendered as one of the
-// "other readers" in the dot row.
+// including this client's own. We drop the entry whose `user.isMe` is set
+// so the self-dot — already rendered as the picker button — isn't
+// double-rendered as one of the "other readers" in the dot row.
 
 function readCursorColor(): string | null {
   try {
@@ -51,10 +50,6 @@ export function DocsPresenceBar() {
     () => new Map(),
   );
   const [myColor, setMyColor] = useState<string | null>(null);
-  // Stable identity key for filtering self out of the presences list.
-  // Pulled once from `getMyPlayerIdentity()` after wiring up the cursor
-  // client; doesn't change for the lifetime of this tab.
-  const [myPublicKey, setMyPublicKey] = useState<string | null>(null);
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const colorInputRef = useRef<HTMLInputElement | null>(null);
@@ -67,10 +62,10 @@ export function DocsPresenceBar() {
     const wire = () => {
       const client = playhtml.cursorClient;
       if (!client) return false;
-      const identity = client.getMyPlayerIdentity();
-      setMyColor(identity?.playerStyle?.colorPalette?.[0] ?? null);
-      setMyPublicKey(identity?.publicKey ?? null);
-      setPresences(client.getCursorPresences());
+      const initial = client.getCursorPresences();
+      const me = [...initial.values()].find((p) => p.user?.isMe)?.user;
+      setMyColor(me?.color || null);
+      setPresences(initial);
       unsub = client.onCursorPresencesChange((next) => {
         if (cancelled) return;
         setPresences(new Map(next));
@@ -137,12 +132,12 @@ export function DocsPresenceBar() {
   // the user picks a new hue.
   const others: CursorPresenceView[] = [];
   presences.forEach((p) => {
-    if (myPublicKey && p.playerIdentity?.publicKey === myPublicKey) return;
+    if (p.user?.isMe) return;
     others.push(p);
   });
 
   const otherColors = others
-    .map((p) => p.playerIdentity?.playerStyle?.colorPalette?.[0])
+    .map((p) => p.user?.color)
     .filter((c): c is string => Boolean(c));
 
   const selfColor = myColor ?? undefined;
@@ -162,7 +157,6 @@ export function DocsPresenceBar() {
 
   return (
     <div
-      id="ph-docs-presence-hud"
       className="ph-presence"
       data-count={total}
       aria-label={`${total} ${total === 1 ? 'reader' : 'readers'} online`}

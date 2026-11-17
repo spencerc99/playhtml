@@ -37,11 +37,11 @@ playhtml.init();
 
 ## `room`
 
-**Type:** `string | (() => string)` &nbsp; **Default:** `window.location.pathname + window.location.search`
+**Type:** `string | (() => string)` &nbsp; **Default:** `window.location.pathname`
 
 The room to connect users to. Users sharing a room share state. Every room is automatically prefixed with `window.location.hostname` so your rooms can never collide with another site's rooms.
 
-If you leave this blank, playhtml derives the room from the URL. Two readers on `/docs/capabilities` share state; a reader on `/docs/concepts` is in a different room.
+If you leave this blank, playhtml derives the room from the URL path, with any file extension removed (`/about.html` becomes `/about`). The query string is ignored unless you set [`defaultRoomOptions.includeSearch`](#defaultroomoptions). Two readers on `/docs/capabilities` share state; a reader on `/docs/concepts` is in a different room.
 
 Override it when you want to decouple state from the URL, for example a site-wide guestbook that should behave the same no matter which page it's embedded on:
 
@@ -59,17 +59,9 @@ When navigation changes the room, the document resets to the new room (page and 
 
 ## `host`
 
-**Type:** `string` &nbsp; **Default:** the public playhtml PartyKit host
+**Type:** `string` &nbsp; **Default:** `"api.playhtml.fun"`
 
-Pass your own PartyKit host if you want to self-host the syncing server for extra control, custom server-side logic, or data-residency requirements.
-
-```js
-playhtml.init({
-  host: "mypartykit.user.partykit.dev",
-});
-```
-
-You're responsible for deploying a compatible PartyKit worker. See the [playhtml repo](https://github.com/spencerc99/playhtml) for the current worker implementation.
+The sync server to connect to. Leave it unset unless you run your own copy of the server from the `partykit/` folder of the [playhtml repo](https://github.com/spencerc99/playhtml).
 
 ## `events`
 
@@ -116,7 +108,19 @@ playhtml.init({
 
 **Type:** `DefaultRoomOptions` &nbsp; **Default:** `undefined`
 
-Configuration for the auto-derived URL-based room. Most apps don't need to touch this.
+Configuration for the auto-derived URL-based room. Only applies when you don't set `room`. Most apps don't need to touch this.
+
+```ts
+interface DefaultRoomOptions {
+  includeSearch?: boolean; // default false
+}
+```
+
+Set `includeSearch: true` to add the query string to the room, so `/post?id=1` and `/post?id=2` get separate state:
+
+```js
+playhtml.init({ defaultRoomOptions: { includeSearch: true } });
+```
 
 ## `onError`
 
@@ -144,7 +148,7 @@ playhtml.init({ developmentMode: true });
 ```
 
 :::note
-Turn this on in development builds, not production. A dedicated guide covering the devtools is planned.
+Turn this on in development builds, not production. See [Development](/docs/advanced/development/) for a guide to the devtools.
 :::
 
 ## `cursors`
@@ -164,7 +168,6 @@ interface CursorOptions {
     | React.RefObject<HTMLElement>;
   shouldRenderCursor?: (presence) => boolean;
   getCursorStyle?: (presence) => Partial<CSSStyleDeclaration>;
-  playerIdentity?: PlayerIdentity; // advanced: seed your identity
   proximityThreshold?: number;
   // `identity` is deprecated; use the fourth `user` argument
   onProximityEntered?: (identity, positions, angle, user) => void;
@@ -218,4 +221,4 @@ import { PlayProvider } from "@playhtml/react";
 </PlayProvider>;
 ```
 
-No React-specific options on the provider itself; all config flows through the shared `InitOptions` shape.
+All playhtml config flows through the shared `InitOptions` shape. The provider's only other prop is `pathname`: pass your router's current path and the provider calls `handleNavigation()` when it changes. See [Navigation](/docs/advanced/navigation/).

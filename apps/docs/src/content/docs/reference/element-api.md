@@ -98,7 +98,7 @@ Everything you can put in an initializer for `register`, `define`, or `extraCapa
     // Drive ctx.setData from @click handlers, not during render.
   },
 
-  // --- event handlers (ignored when using view) ---
+  // --- event handlers (not allowed with view; register/define throw) ---
 
   onClick(e, ctx) {},       // e: MouseEvent; ctx — Callback context
   onDragStart(e, ctx) {},   // e: MouseEvent | TouchEvent, once at drag start
@@ -114,8 +114,6 @@ Everything you can put in an initializer for `register`, `define`, or `extraCapa
   // Modifier + click resets to defaultData for everyone. Built-ins use "shiftKey".
   resetShortcut: "shiftKey", // "ctrlKey" | "altKey" | "shiftKey" | "metaKey"
 
-  debounceMs: undefined,    // optional debounce on sync writes; rarely needed
-
   // For define / extraCapabilities: return false to skip this element.
   isValidElementForTag(element) { return true; },
 }
@@ -125,7 +123,7 @@ Everything you can put in an initializer for `register`, `define`, or `extraCapa
 
 ## `defaultData`
 
-**Required.** Starting shared state for new elements. Must be an **object** (or a function that returns one), not a bare primitive like `0` or `""`.
+Starting shared state for new elements. Required unless the element only uses `defaultPresence`. Must be an **object** (or a function that returns one), not a bare primitive like `0` or `""`; `register` and `define` throw on a primitive.
 
 ```js
 const initializer = {
@@ -286,12 +284,6 @@ const initializer = {
 
 ---
 
-## `debounceMs`
-
-Optional debounce window for the handler's internal sync callback. Most custom elements call `setData` from event handlers, which syncs immediately. You rarely need this.
-
----
-
 ## `isValidElementForTag`
 
 Gate which DOM elements a reusable capability (`define` / `extraCapabilities`) applies to. Return `false` to skip an element that carries the attribute but should not bind (for example, when a referenced template is missing).
@@ -332,7 +324,7 @@ When the same element also has a built-in capability such as `can-move`, each ca
 
 Direct assignments such as `element.defaultData = …` and `element.updateElement = …` remain supported so existing sites and React integrations keep working. Do not use them in new vanilla code. Move every initializer field into the object passed to `register`.
 
-The compatibility path reads these keys from the element: `defaultData`, `defaultLocalData`, `defaultPresence`, `live`, `myDefaultAwareness`, `update`, `updateElement`, `view`, `updateElementAwareness`, `onClick`, `onDrag`, `onDragStart`, `onMount`, `resetShortcut`, `debounceMs`, and `isValidElementForTag`.
+The compatibility path reads these keys from the element: `defaultData`, `defaultLocalData`, `defaultPresence`, `live`, `myDefaultAwareness`, `update`, `updateElement`, `view`, `updateElementAwareness`, `onClick`, `onDrag`, `onDragStart`, `onMount`, `resetShortcut`, and `isValidElementForTag`.
 
 If existing code assigns those properties and calls `setupPlayElement(element)`, replace both steps with `register(element, initializer)`. `setupPlayElement` remains supported for dynamically added built-in and defined capabilities.
 
@@ -342,9 +334,10 @@ If existing code assigns those properties and calls `setupPlayElement(element)`,
 
 At registration time, playhtml checks:
 
-- `defaultData` and `update` / `view` are provided together
-- `defaultPresence`, when present, is paired with `update` / `view`, and only one of `defaultPresence`, `live`, and `myDefaultAwareness` is set
-- At least one renderer exists: `update` or `view`
-- `register` / `define` throw if both `view` and `update` are set, if both `update` and `updateElement` are set, or if `view` is combined with `onClick` / `onDrag` / `onDragStart`
+- A renderer exists: `update` or `view`, and not both (nor both `update` and `updateElement`)
+- The renderer has a starting value: `defaultData`, `defaultPresence`, or both
+- `defaultData`, when set, is an object or a function, and `defaultPresence` is paired with `update` / `view`
+- Only one of `defaultPresence`, `live`, and `myDefaultAwareness` is set
+- `view` is not combined with `onClick` / `onDrag` / `onDragStart`
 
-If validation fails, the element is skipped and a console error lists the missing or invalid pair.
+`register`, `define`, and `init({ extraCapabilities })` throw an error that names the problem. The [deprecated direct-property path](#direct-element-properties-deprecated) doesn't throw: an element with missing or invalid properties is skipped with a console error, and event handlers set alongside `view` are dropped with a console error.

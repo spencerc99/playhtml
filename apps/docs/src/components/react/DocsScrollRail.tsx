@@ -1,10 +1,15 @@
 // ABOUTME: Renders collaborative reader positions on a document scroll rail.
 // ABOUTME: Marks article section headings without indexing interactive component content.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { withSharedState } from '@playhtml/react';
 
 type RailPresence = { scroll: number };
+
+// Presence writes are for others' dots; the local dot follows every frame.
+// About 10 writes a second keeps other readers' dots smooth without
+// flooding presence while scrolling.
+const PRESENCE_WRITE_INTERVAL_MS = 100;
 
 type SectionTick = {
   key: string;
@@ -51,10 +56,34 @@ export const DocsScrollRail = withSharedState<{}, RailPresence>(
   },
   ({ everyone, me, setMyPresence }) => {
     const [sections, setSections] = useState<SectionTick[]>([]);
+    const [localScroll, setLocalScroll] = useState<number | null>(null);
+    const setMyPresenceRef = useRef(setMyPresence);
+    setMyPresenceRef.current = setMyPresence;
 
     useEffect(() => {
       if (typeof window === 'undefined') return;
       let ticking = false;
+      let lastWriteAt = 0;
+      let trailingWrite: number | null = null;
+      let pendingScroll = 0;
+
+      const writePresence = () => {
+        trailingWrite = null;
+        lastWriteAt = performance.now();
+        setMyPresenceRef.current({ scroll: pendingScroll });
+      };
+      const schedulePresenceWrite = (scroll: number) => {
+        pendingScroll = scroll;
+        const wait =
+          PRESENCE_WRITE_INTERVAL_MS - (performance.now() - lastWriteAt);
+        if (wait <= 0) {
+          if (trailingWrite !== null) window.clearTimeout(trailingWrite);
+          writePresence();
+        } else if (trailingWrite === null) {
+          trailingWrite = window.setTimeout(writePresence, wait);
+        }
+      };
+
       const onScroll = () => {
         if (ticking) return;
         ticking = true;
@@ -63,13 +92,17 @@ export const DocsScrollRail = withSharedState<{}, RailPresence>(
             document.documentElement.scrollHeight - window.innerHeight;
           const raw = max > 0 ? window.scrollY / max : 0;
           const scroll = Math.min(1, Math.max(0, raw));
-          setMyPresence({ scroll });
+          setLocalScroll(scroll);
+          schedulePresenceWrite(scroll);
           ticking = false;
         });
       };
       window.addEventListener('scroll', onScroll, { passive: true });
-      return () => window.removeEventListener('scroll', onScroll);
-    }, [setMyPresence]);
+      return () => {
+        window.removeEventListener('scroll', onScroll);
+        if (trailingWrite !== null) window.clearTimeout(trailingWrite);
+      };
+    }, []);
 
     // Section-tick computation. Run on mount, on window resize, and on
     // body size changes (catches font/image reflow + dynamic islands).
@@ -116,7 +149,7 @@ export const DocsScrollRail = withSharedState<{}, RailPresence>(
     }, []);
 
     const others = everyone.filter((person) => !person.isMe);
-    const myScroll = me.presence?.scroll ?? 0;
+    const myScroll = localScroll ?? me.presence?.scroll ?? 0;
     const myColor = me.color || FALLBACK_COLOR;
 
     return (

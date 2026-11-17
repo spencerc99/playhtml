@@ -30,11 +30,6 @@ export type EditorProps = {
   seedNonce: number;
   /** Called with the new source on every change, debounced 300ms. */
   onChange: (source: string) => void;
-  /** Called with the new source on every change, NOT debounced (use for
-      live preview reload triggers if needed). Optional. */
-  onChangeImmediate?: (source: string) => void;
-  /** When true, editor is uneditable. Default false. */
-  readOnly?: boolean;
 };
 
 const DEBOUNCE_MS = 300;
@@ -44,23 +39,17 @@ export function Editor(props: EditorProps) {
     initialValue,
     seedNonce,
     onChange,
-    onChangeImmediate,
-    readOnly = false,
   } = props;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const debounceRef = useRef<number | null>(null);
 
-  // Always read the latest callbacks via a ref so the EditorState's
-  // updateListener doesn't capture stale closures.
+  // Always read the latest callback via a ref so the EditorState's
+  // updateListener doesn't capture a stale closure.
   const onChangeRef = useRef(onChange);
-  const onChangeImmediateRef = useRef(onChangeImmediate);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
-  useEffect(() => {
-    onChangeImmediateRef.current = onChangeImmediate;
-  }, [onChangeImmediate]);
 
   // Mount / re-seed the EditorView when seedNonce changes.
   useEffect(() => {
@@ -92,11 +81,9 @@ export function Editor(props: EditorProps) {
         html({ matchClosingTags: true, autoCloseTags: true }),
         playgroundTheme,
         playgroundSyntaxHighlighting,
-        EditorState.readOnly.of(readOnly),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           const source = update.state.doc.toString();
-          onChangeImmediateRef.current?.(source);
           if (debounceRef.current !== null) {
             window.clearTimeout(debounceRef.current);
           }
@@ -119,7 +106,7 @@ export function Editor(props: EditorProps) {
       viewRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seedNonce, readOnly]);
+  }, [seedNonce]);
 
   return <div ref={hostRef} style={{ height: "100%", overflow: "hidden" }} />;
 }

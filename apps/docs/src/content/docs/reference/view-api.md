@@ -45,7 +45,7 @@ Direct assignments such as `element.defaultData = …` and `element.updateElemen
 
 ## `playhtml.define(capabilityName, init)`
 
-Registers a reusable capability under an attribute name. Matching elements already on the page bind immediately, as do matching descendants rendered by a [view](#composition). For other elements added after initialization, call `setupPlayElement(element)`. `define` is the imperative counterpart of `init({ extraCapabilities })`.
+Registers a reusable capability under an attribute name. Matching elements already on the page bind immediately, as do matching descendants rendered by a [view](/docs/custom-elements/#composition-views-that-render-other-elements). For other elements added after initialization, call `setupPlayElement(element)`. `define` is the imperative counterpart of `init({ extraCapabilities })`.
 
 ```js
 playhtml.define("can-note", init);

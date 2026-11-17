@@ -133,7 +133,7 @@ export function DocsSidebarPresence(): null {
     let cancelled = false;
     let unsub: (() => void) | null = null;
     const wire = () => {
-      const client = (playhtml as any).cursorClient;
+      const client = playhtml.cursorClient;
       if (!client) return false;
       setPresences(client.getCursorPresences());
       unsub = client.onCursorPresencesChange(
@@ -176,7 +176,7 @@ export function DocsSidebarPresence(): null {
       const normalized = normalizePath(p.page);
       if (!normalized) return;
       if (normalized === ownPath) return;
-      const color = p.playerIdentity?.playerStyle?.colorPalette?.[0];
+      const color = p.user?.color;
       if (!color) return;
       const arr = byPage.get(normalized) ?? [];
       arr.push(color);

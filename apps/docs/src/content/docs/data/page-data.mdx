@@ -31,9 +31,10 @@ The background color below is one page data channel named `"page-color"`. The sw
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
-`playhtml.createPageData(name, default)` returns a channel handle:
+`playhtml.createPageData(name, default)` returns a channel handle. Call it after `playhtml.ready` resolves; before that it throws:
 
 ```js
+await playhtml.ready;
 const counter = playhtml.createPageData("my-counter", { count: 0 });
 counter.setData((draft) => { draft.count += 1; });
 counter.onUpdate((data) => { /* re-render */ });
@@ -61,6 +62,7 @@ Channels can also hold a primitive value. Pass the next value directly or return
 the next value from a functional update:
 
 ```js
+await playhtml.ready;
 const viewCount = playhtml.createPageData("viewCount", 0);
 viewCount.setData((value) => value + 1);
 ```
@@ -71,6 +73,7 @@ stored value. Nullable channels can be cleared with `setData(null)` or an update
 that returns `null`:
 
 ```ts
+await playhtml.ready;
 const selection = playhtml.createPageData<{ name: string } | null>("selection", null);
 selection.setData({ name: "Alice" });
 selection.setData(null);

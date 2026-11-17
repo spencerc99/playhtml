@@ -2,7 +2,7 @@
 title: "Loading state"
 description: "What elements look like before their shared data arrives, how to change it, and how to show your own loading UI."
 sidebar:
-  order: 4
+  order: 5
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -110,7 +110,7 @@ To render something different while the page loads, such as a "connecting…" li
 <p id="status">connecting…</p>
 
 <script type="module">
-  import { playhtml } from "playhtml";
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
 
   const status = document.getElementById("status");
   const render = () => {

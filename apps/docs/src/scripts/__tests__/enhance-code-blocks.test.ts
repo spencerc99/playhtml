@@ -54,7 +54,7 @@ describe("docs code-block copy enhancement", () => {
       expect.any(HTMLElement),
       expect.objectContaining({
         defaultData: { wear: 0 },
-        updateElement: expect.any(Function),
+        update: expect.any(Function),
       }),
     );
 
