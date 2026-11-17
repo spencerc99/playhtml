@@ -128,3 +128,29 @@ test("a render count that used to be zero is flagged at one", () => {
     "regression",
   );
 });
+
+test("capability metrics get their own collapsed section unless something moved", () => {
+  const mirror = METRICS.filter((metric) => metric.capability === "can-mirror");
+  assert.ok(mirror.length > 0);
+  const same = formatMarkdownReport(compareResults(base, { ...base }));
+  assert.match(same, /## Per capability/);
+  assert.match(
+    same,
+    /<details><summary><b>can-mirror<\/b>: no change<\/summary>/,
+  );
+
+  const moved = formatMarkdownReport(
+    compareResults(base, {
+      ...base,
+      mirror_remote_append_dom_writes: 50, // was 100
+      mirror_board_remote_dom_writes: 300,
+    }),
+  );
+  assert.match(
+    moved,
+    /<details open><summary><b>can-mirror<\/b>: 1 flagged, 1 improved<\/summary>/,
+  );
+  // Capability rows stay out of the core table.
+  const coreTable = moved.split("## Per capability")[0];
+  assert.doesNotMatch(coreTable, /50-field form/);
+});

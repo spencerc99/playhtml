@@ -1,7 +1,14 @@
-// ABOUTME: Runs the client performance benchmark: bundle size, the jsdom perf suite, React renders.
+// ABOUTME: Runs the client performance benchmark: bundle size, the jsdom perf suites (core and per capability), React renders.
 // ABOUTME: Usage: node bench/run.mjs <label>; appends one row to bench/out/history.tsv.
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  appendFileSync,
+  mkdirSync,
+  rmSync,
+} from "node:fs";
 import { gzipSync } from "node:zlib";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +17,11 @@ const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(pkgDir, "bench/out");
 const label = process.argv[2] ?? "unlabeled";
 mkdirSync(outDir, { recursive: true });
+// Each bench file writes its own metrics*.json; clear old ones so a removed or
+// crashed file can't leave stale numbers behind.
+for (const file of readdirSync(outDir)) {
+  if (/^metrics.*\.json$/.test(file)) rmSync(path.join(outDir, file));
+}
 
 execSync("npx vite build", { cwd: pkgDir, stdio: "ignore" });
 
@@ -62,7 +74,14 @@ if (existsSync(path.join(reactDir, "bench/vitest.config.ts"))) {
 const metrics = {
   bundle_gz_kb: +(gz / 1024).toFixed(1),
   bundle_raw_kb: +(raw / 1024).toFixed(1),
-  ...JSON.parse(readFileSync(path.join(outDir, "metrics.json"), "utf8")),
+  // metrics.json from client.perf.ts, metrics.<capability>.json from bench/capabilities/.
+  ...Object.assign(
+    {},
+    ...readdirSync(outDir)
+      .filter((file) => /^metrics.*\.json$/.test(file))
+      .sort()
+      .map((file) => JSON.parse(readFileSync(path.join(outDir, file), "utf8"))),
+  ),
   ...reactMetrics,
 };
 
