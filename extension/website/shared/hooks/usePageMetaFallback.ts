@@ -2,7 +2,7 @@
 // ABOUTME: Module-scoped cache dedupes concurrent lookups across all callers.
 
 import { useEffect, useState } from "react";
-import { PAGE_META_URL } from "../config";
+import { PAGE_META_FALLBACK_URL, PAGE_META_URL } from "../config";
 
 export interface PageMeta {
   title?: string;
@@ -20,7 +20,14 @@ async function fetchOne(url: string): Promise<PageMeta | null> {
   if (existing) return existing;
   const promise = (async () => {
     try {
-      const resp = await fetch(`${PAGE_META_URL}?url=${encodeURIComponent(url)}`);
+      const query = `?url=${encodeURIComponent(url)}`;
+      // A network failure on the cached host falls back to the Worker's own
+      // address; an HTTP error is an answer and is not retried.
+      const resp = await fetch(`${PAGE_META_URL}${query}`).catch(() =>
+        PAGE_META_FALLBACK_URL === PAGE_META_URL
+          ? Promise.reject(new Error("page metadata host unreachable"))
+          : fetch(`${PAGE_META_FALLBACK_URL}${query}`),
+      );
       if (!resp.ok) return null;
       const data = (await resp.json()) as {
         title?: string;

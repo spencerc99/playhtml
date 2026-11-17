@@ -35,7 +35,18 @@ export const COMMUTE_REVIEW_URL =
   `${WORKER_URL}/commute/review`;
 export const COMMUTE_TRAIN_BOARD_URL = `${WORKER_URL}/commute/trains/board`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
-export const PAGE_META_URL = `${WORKER_URL}/page-meta`;
+/**
+ * Page title and favicon lookups go to the Worker's wewere.online subdomain,
+ * where Cloudflare's edge cache holds the answers (the cache does nothing on
+ * workers.dev). PAGE_META_FALLBACK_URL is the same route on WORKER_URL, used
+ * when the subdomain cannot be reached.
+ */
+export const API_URL: string =
+  (import.meta.env.VITE_API_URL as string | undefined) ??
+  (import.meta.env.VITE_WORKER_URL as string | undefined) ??
+  "https://api.wewere.online";
+export const PAGE_META_URL = `${API_URL}/page-meta`;
+export const PAGE_META_FALLBACK_URL = `${WORKER_URL}/page-meta`;
 export const PAGE_INSPECTION_URL =
   (import.meta.env.VITE_PAGE_INSPECTION_URL as string | undefined) ??
   PAGE_META_URL;
