@@ -119,7 +119,6 @@ import { handleQuarantineControlRequest } from "./quarantineControl";
 export { PresenceServer } from "./presenceServer";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
-const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
 const CONNECTION_OPENED_AT_STATE_KEY = "__playhtmlConnectionOpenedAt";
 const CONNECTION_ADMISSION_STATE_KEY = "__playhtmlAdmission";
 
@@ -132,9 +131,15 @@ type ConnectionAdmission = "pending" | "held";
 type PartyServerConnectionState = Record<string, unknown> & {
   [ACCEPTED_RESET_EPOCH_STATE_KEY]?: number | null;
   [CONNECTION_ADMISSION_STATE_KEY]?: ConnectionAdmission;
-  [MESSAGE_LIMIT_STATE_KEY]?: MessageLimitState;
   [CONNECTION_OPENED_AT_STATE_KEY]?: number;
 };
+
+// Message rate windows live in memory rather than in the hibernation
+// attachment, because writing the attachment serializes it on every Yjs and
+// awareness frame. Connections are the same socket object for the life of an
+// instance, so they key the map directly. When the Durable Object hibernates
+// the map is dropped, which only restarts each connection's rate window.
+const messageRateWindows = new WeakMap<Party.Connection, MessageLimitState>();
 
 type CompactedDocument = {
   base64: string;
@@ -559,22 +564,12 @@ export class PartyServer extends YServer {
   }
 
   private checkConnectionMessageRate(connection: Party.Connection) {
-    const limitConnection =
-      connection as Party.Connection<PartyServerConnectionState>;
     const decision = checkMessageRate({
       limits: this.getServerLimits(),
       now: Date.now(),
-      state: limitConnection.state?.[MESSAGE_LIMIT_STATE_KEY],
+      state: messageRateWindows.get(connection),
     });
-
-    limitConnection.setState((previousState) => {
-      const state =
-        previousState && typeof previousState === "object" ? previousState : {};
-      return {
-        ...(state as Record<string, unknown>),
-        [MESSAGE_LIMIT_STATE_KEY]: decision.state,
-      };
-    });
+    messageRateWindows.set(connection, decision.state);
 
     return { violation: decision.violation };
   }
@@ -2006,6 +2001,7 @@ export class PartyServer extends YServer {
     reason: string,
     wasClean: boolean
   ): Promise<void> {
+    messageRateWindows.delete(connection);
     const closeDiagnostic = getConnectionCloseDiagnostic({
       roomName: this.name,
       connectionId: connection.id,
