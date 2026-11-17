@@ -8,6 +8,7 @@ export * from "./presence-protocol";
 export * from "./protocol";
 export * from "./protocol/engine";
 export * from "./protocol/record";
+export * from "./protocol/randomId";
 
 // TODO: should be able to have set of allowable elements
 // TODO: should be able to accept arbitrary input? (like max/min)

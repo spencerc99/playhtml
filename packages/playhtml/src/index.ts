@@ -17,6 +17,7 @@ import {
   PlayEvent,
   EventMessage,
   RegisteredPlayEvent,
+  randomId,
   toPublicPlayerIdentity,
   deepReplaceIntoProxy,
   clonePlain,
@@ -1269,7 +1270,7 @@ function buildV2Connection(args: {
   const sharedElements = findSharedElementsOnPage();
   const sharedReferences = findSharedReferencesOnPage();
   const transport = new V2Transport();
-  const clientId = crypto.randomUUID();
+  const clientId = randomId();
   v2Transport = transport;
 
   return new Promise<void>((resolve, reject) => {

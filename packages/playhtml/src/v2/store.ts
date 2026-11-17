@@ -18,7 +18,11 @@ import {
   applyOperationInPlace,
   replaceSnapshotElementInPlace,
 } from "@playhtml/common";
-import { recordMutation, type MutationCallback } from "@playhtml/common";
+import {
+  randomId,
+  recordMutation,
+  type MutationCallback,
+} from "@playhtml/common";
 
 export type V2StoreTransport = {
   send(message: ClientOperationMessage): void;
@@ -117,7 +121,7 @@ export class V2Store {
 
   constructor(options: V2StoreOptions) {
     this.now = options.now ?? Date.now;
-    this.clientId = options.clientId ?? crypto.randomUUID();
+    this.clientId = options.clientId ?? randomId();
     this.authoritative = structuredClone(options.snapshot);
     this.view = structuredClone(options.snapshot);
     this.generation = options.generation;
