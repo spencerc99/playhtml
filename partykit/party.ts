@@ -541,8 +541,12 @@ export class PartyServer extends YServer {
     );
   }
 
+  // Worker env bindings are fixed for the isolate's lifetime, so the limits
+  // are read once per room instance instead of on every message.
+  private serverLimits: ServerLimits | undefined;
+
   private getServerLimits(): ServerLimits {
-    return {
+    this.serverLimits ??= {
       maxMessagesPerWindow: readPositiveNumberEnv(
         "MESSAGE_RATE_LIMIT",
         DEFAULT_MESSAGE_RATE_LIMIT
@@ -560,6 +564,7 @@ export class PartyServer extends YServer {
         DEFAULT_DOCUMENT_WARNING_BYTES
       ),
     };
+    return this.serverLimits;
   }
 
   private checkConnectionMessageRate(connection: Party.Connection) {
