@@ -14,7 +14,11 @@ import {
 } from "../packages/react/src";
 import React, { useContext, useEffect, useState, useRef } from "react";
 import { PlayProvider } from "../packages/react/src";
-import { canDeleteFridgeWord, DeleteWordLimit } from "./fridgeDeletion";
+import {
+  canDeleteFridgeWord,
+  DeleteWordLimit,
+  removeFridgeWord,
+} from "./fridgeDeletion";
 import { getDefaultFridgeWordId } from "./fridgeWordIdentity";
 import { useLocation } from "./useLocation";
 import { mountExperimentBadge } from "./components/experimentBadge";
@@ -611,14 +615,6 @@ const WordControls = withSharedState<FridgeWordType[]>(
         return;
       }
 
-      const idxToDelete = data.findIndex((w) => {
-        if (id) {
-          return id === w.id;
-        }
-
-        return word === w.word && color === w.color;
-      });
-
       // Track successful word deletion
       window.plausible?.("DeleteWord", {
         props: {
@@ -640,7 +636,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
       }
 
       setData((d) => {
-        d.splice(idxToDelete, 1);
+        removeFridgeWord(d, { id, word, color });
       });
       if (!canDeleteFridgeWord(DeleteWordLimit, pid)) {
         setDeleteCount(deleteCount + 1);
