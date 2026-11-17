@@ -13,6 +13,7 @@ import { withSharedState, usePlayContext } from "@playhtml/react";
 import { containsProfanity } from "@movement/profanity";
 import {
   appendGuestbookEntry,
+  filterHiddenGuestbookEntries,
   getGuestbookDotColors,
   getLoopedEntryIndex,
   getRenderedPileCardIndexes,
@@ -435,7 +436,7 @@ export const AuraGuestbook = withSharedState(
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const guestbookRef = useRef<HTMLDivElement>(null);
 
-    const entries = data;
+    const entries = useMemo(() => filterHiddenGuestbookEntries(data), [data]);
     // Oldest at bottom (lowest z-index), newest on top
     const sortedEntries = useMemo(
       () => [...entries].sort((a, b) => a.timestamp - b.timestamp),

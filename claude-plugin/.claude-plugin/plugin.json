@@ -1,6 +1,5 @@
 {
   "name": "playhtml",
-  "version": "1.0.0",
   "description": "Skill for building collaborative, real-time HTML elements with playhtml",
   "author": {
     "name": "Spencer Chang",

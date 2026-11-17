@@ -80,3 +80,5 @@ __pycache__/
 
 # directedit: copy edits it could not place, waiting for an agent
 .directedits.md
+
+.agents
