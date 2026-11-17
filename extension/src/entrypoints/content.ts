@@ -386,7 +386,7 @@ export default defineContentScript({
           // Clean up
           isActive = false;
           document.removeEventListener("mousemove", handleMouseMove);
-          document.removeEventListener("click", handleClick);
+          document.removeEventListener("click", handleClick, true);
           document.removeEventListener("keydown", handleEscape);
           overlay.remove();
           highlight.remove();
@@ -396,7 +396,7 @@ export default defineContentScript({
           if (e.key === "Escape") {
             isActive = false;
             document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("click", handleClick);
+            document.removeEventListener("click", handleClick, true);
             document.removeEventListener("keydown", handleEscape);
             overlay.remove();
             highlight.remove();
