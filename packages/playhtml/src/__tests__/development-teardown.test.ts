@@ -1,6 +1,6 @@
 // ABOUTME: Verifies the dev tools panel cleans up page state on teardown.
-// ABOUTME: Covers injected styles, body margins, and per-element reset.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// ABOUTME: Covers the injected stylesheet and the page body margins.
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupDevUI, teardownDevUI } from "../development";
 import type { ElementHandler } from "../elements";
 
@@ -28,19 +28,17 @@ describe("dev tools teardown", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     document.body.removeAttribute("style");
-    vi.spyOn(window, "confirm").mockReturnValue(true);
   });
 
   afterEach(() => {
     teardownDevUI();
-    vi.restoreAllMocks();
   });
 
   it("keeps one dev stylesheet across repeated setup and removes it on teardown", () => {
     const element = document.createElement("div");
     element.id = "toggle";
     document.body.appendChild(element);
-    const handler = { element, data: {}, defaultData: {}, reset: vi.fn() };
+    const handler = { element, data: {}, defaultData: {} };
 
     setupWithHandler("can-toggle", "toggle", handler);
     setupWithHandler("can-toggle", "toggle", handler);
@@ -59,7 +57,6 @@ describe("dev tools teardown", () => {
       element,
       data: {},
       defaultData: {},
-      reset: vi.fn(),
     });
 
     document.querySelector<HTMLElement>(".ph-trigger")!.click();
