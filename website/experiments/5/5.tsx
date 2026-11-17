@@ -673,7 +673,7 @@ mountExperimentBadge({ experiment: "EX-05" });
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider>
+  <PlayProvider initOptions={{ cursors: { enabled: true } }}>
     <Main></Main>
   </PlayProvider>
 );

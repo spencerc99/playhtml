@@ -19,7 +19,7 @@ function Main() {
   const [from, setFrom] = useStickyState<string | null>("from", null);
 
   return (
-    <PlayProvider>
+    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <Cursors />
       <div id="workshopContent">
         <PlayhtmlToolBox />

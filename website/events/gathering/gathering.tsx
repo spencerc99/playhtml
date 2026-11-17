@@ -361,7 +361,7 @@ export const GroupActivityDisplay = withSharedState(
 
 function Main() {
   return (
-    <PlayProvider>
+    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <div className="walking-together">
         <UserSetup />
         <URLChat />
