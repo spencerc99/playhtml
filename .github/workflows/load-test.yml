@@ -12,7 +12,7 @@ on:
           - fridge
           - mirror
           - live-chat
-          - walking-together
+          - lobby-presence
       users:
         description: "Total users (split across workers)"
         required: true
