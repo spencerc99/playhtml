@@ -317,50 +317,6 @@ export const RESERVED_ACCELERATORS: string[] = [
 ];
 
 /**
- * Every accelerator an event names, in the form the reserved list uses, or an
- * empty list when the event is a bare key the browser does not claim. "accel"
- * is cmd on a Mac and ctrl elsewhere, so a press with ctrl held names both its
- * "accel" form and its "ctrl" form, the latter for shortcuts such as ctrl+tab
- * that use ctrl on every platform.
- */
-export function acceleratorNames(event: KeyEventShape): string[] {
-  if (!event.metaKey && !event.ctrlKey) return [];
-  const rest: string[] = [];
-  if (event.shiftKey) rest.push("shift");
-  if (event.altKey) rest.push("alt");
-  rest.push(acceleratorKey(event));
-  const names = [["accel", ...rest].join("+")];
-  if (event.ctrlKey) names.push(["ctrl", ...rest].join("+"));
-  return names;
-}
-
-/**
- * The physical keys the reserved list names by their unshifted character.
- * Shift turns `[` into `{` and `1` into `!`, so these are read from the key's
- * position; letters are read from the printed character, so they follow the
- * keyboard layout the way the browser's own shortcuts do.
- */
-const CODE_KEYS: Record<string, string> = {
-  BracketLeft: "[",
-  BracketRight: "]",
-  ...Object.fromEntries(
-    Array.from({ length: 10 }, (_, digit) => [`Digit${digit}`, String(digit)]),
-  ),
-};
-
-function acceleratorKey(event: KeyEventShape): string {
-  const fromCode = event.code ? CODE_KEYS[event.code] : undefined;
-  return fromCode ?? event.key.toLowerCase();
-}
-
-/** Whether an event is one of the accelerators the browser keeps for itself. */
-export function isReservedAccelerator(event: KeyEventShape): boolean {
-  return acceleratorNames(event).some((name) =>
-    RESERVED_ACCELERATORS.includes(name),
-  );
-}
-
-/**
  * What the accelerator key is called on this keyboard: cmd on a Mac, iPhone or
  * iPad, ctrl everywhere else. Every shortcut hint names it this way.
  */

@@ -4,8 +4,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   RESERVED_ACCELERATORS,
-  acceleratorNames,
-  isReservedAccelerator,
   isTypingTarget,
   releaseTypingFocus,
   studioCommandFor,
@@ -308,6 +306,50 @@ function physicalPress(
   return press(key, { code, ...overrides });
 }
 
+/**
+ * Every accelerator an event names, in the form the reserved list uses, or an
+ * empty list when the event is a bare key the browser does not claim. "accel"
+ * is cmd on a Mac and ctrl elsewhere, so a press with ctrl held names both its
+ * "accel" form and its "ctrl" form, the latter for shortcuts such as ctrl+tab
+ * that use ctrl on every platform.
+ */
+function acceleratorNames(event: KeyEventShape): string[] {
+  if (!event.metaKey && !event.ctrlKey) return [];
+  const rest: string[] = [];
+  if (event.shiftKey) rest.push("shift");
+  if (event.altKey) rest.push("alt");
+  rest.push(acceleratorKey(event));
+  const names = [["accel", ...rest].join("+")];
+  if (event.ctrlKey) names.push(["ctrl", ...rest].join("+"));
+  return names;
+}
+
+/**
+ * The physical keys the reserved list names by their unshifted character.
+ * Shift turns `[` into `{` and `1` into `!`, so these are read from the key's
+ * position; letters are read from the printed character, so they follow the
+ * keyboard layout the way the browser's own shortcuts do.
+ */
+const CODE_KEYS: Record<string, string> = {
+  BracketLeft: "[",
+  BracketRight: "]",
+  ...Object.fromEntries(
+    Array.from({ length: 10 }, (_, digit) => [`Digit${digit}`, String(digit)]),
+  ),
+};
+
+function acceleratorKey(event: KeyEventShape): string {
+  const fromCode = event.code ? CODE_KEYS[event.code] : undefined;
+  return fromCode ?? event.key.toLowerCase();
+}
+
+/** Whether an event is one of the accelerators the browser keeps for itself. */
+function isReservedAccelerator(event: KeyEventShape): boolean {
+  return acceleratorNames(event).some((name) =>
+    RESERVED_ACCELERATORS.includes(name),
+  );
+}
+
 describe("reserved accelerators", () => {
   /** Every accelerator the studio could plausibly be asked about. */
   const letters = "abcdefghijklmnopqrstuvwxyz".split("");
@@ -340,61 +382,6 @@ describe("reserved accelerators", () => {
     for (const reserved of RESERVED_ACCELERATORS) {
       expect(checked, `${reserved} was never exercised`).toContain(reserved);
     }
-  });
-
-  it("names an accelerator the way the reserved list spells it", () => {
-    expect(acceleratorNames(press("w", { metaKey: true }))).toEqual([
-      "accel+w",
-    ]);
-    expect(
-      acceleratorNames(press("t", { ctrlKey: true, shiftKey: true })),
-    ).toEqual(["accel+shift+t", "ctrl+shift+t"]);
-    expect(acceleratorNames(press("r"))).toEqual([]);
-  });
-
-  it("recognizes shifted brackets by the physical key, not the character", () => {
-    expect(
-      acceleratorNames(
-        press("{", { metaKey: true, shiftKey: true, code: "BracketLeft" }),
-      ),
-    ).toEqual(["accel+shift+["]);
-    expect(
-      isReservedAccelerator(
-        press("}", { ctrlKey: true, shiftKey: true, code: "BracketRight" }),
-      ),
-    ).toBe(true);
-  });
-
-  it("reads letters from the layout, so a moved key keeps its meaning", () => {
-    // On AZERTY the key printed "w" sits where QWERTY has "z".
-    expect(
-      isReservedAccelerator(press("w", { metaKey: true, code: "KeyZ" })),
-    ).toBe(true);
-    expect(
-      isReservedAccelerator(press("z", { metaKey: true, code: "KeyW" })),
-    ).toBe(false);
-  });
-
-  it("recognizes the ctrl shortcuts that switch tabs on every platform", () => {
-    for (const held of [{}, { metaKey: true }]) {
-      expect(isReservedAccelerator(press("Tab", { ...held, ctrlKey: true }))).toBe(
-        true,
-      );
-      expect(
-        isReservedAccelerator(
-          press("Tab", { ...held, ctrlKey: true, shiftKey: true }),
-        ),
-      ).toBe(true);
-      expect(
-        isReservedAccelerator(press("PageUp", { ...held, ctrlKey: true })),
-      ).toBe(true);
-      expect(
-        isReservedAccelerator(press("PageDown", { ...held, ctrlKey: true })),
-      ).toBe(true);
-    }
-    // Cmd+tab belongs to the operating system's app switcher, not the page's
-    // reserved list.
-    expect(isReservedAccelerator(press("Tab", { metaKey: true }))).toBe(false);
   });
 
   it("lists the combinations that cannot be intercepted at all", () => {
