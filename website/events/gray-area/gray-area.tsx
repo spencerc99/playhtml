@@ -13,6 +13,8 @@ function Main() {
     "username",
     null,
     (newName) => {
+      // Nothing saved or typed yet: keep the name playhtml already has.
+      if (newName == null) return;
       // Your name only saves once playhtml has connected.
       playhtml.ready.then(() => {
         playhtml.people.me.name = newName ?? "";
