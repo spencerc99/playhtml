@@ -12,8 +12,8 @@ Keep each capability to about 4 scenarios and 12 report rows, and its file under
 
 Prefer counts that don't change between runs:
 
-- sync traffic this client sends (`measureTraffic`: messages, bytes, document growth),
-- DOM writes to show someone else's change (`remotePeer` + `countDomWrites`),
+- sync traffic this client sends (`measureTraffic`: messages, bytes, document growth);
+- DOM writes to show someone else's change (`remotePeer` + `countDomWrites`).
 
 Timings (`*_ms`, via `now()`) are fine as context but are never flagged.
 
