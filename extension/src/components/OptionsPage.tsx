@@ -19,6 +19,7 @@ import { Inventory } from "./Inventory";
 import { QuickActions } from "./QuickActions";
 import { SiteStatus } from "./SiteStatus";
 import { savePlayerColor } from "../storage/playerColor";
+import { submitAccessRequest } from "../storage/accessRequest";
 import {
   getPublicPlayerIdentity,
   PLAYER_IDENTITY_STORAGE_KEY,
@@ -305,17 +306,10 @@ export function OptionsPage() {
     if (!identity) return;
     setAccessRequestStatus("sending");
     try {
-      const response = await fetch(`${WORKER_URL}/access-requests`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          publicId: identity.publicKey,
-          email: emailDraft.trim() || undefined,
-          requestedFeatures: ["COMMUTE", "SCRAPS"],
-        }),
+      await submitAccessRequest({
+        email: emailDraft.trim() || null,
+        requestedFeatures: ["COMMUTE", "SCRAPS"],
       });
-      if (!response.ok)
-        throw new Error(`Access request failed with ${response.status}`);
       setAccessRequestStatus("sent");
     } catch {
       setAccessRequestStatus("error");
