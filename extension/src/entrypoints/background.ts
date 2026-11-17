@@ -282,8 +282,12 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
 }
 
 const store = new LocalEventStore()
-const imageFingerprints = new ImageFingerprints(store)
 const imageCopier = new ImageCopier(store)
+// The fingerprint pass hands its downloads to the copier, so a new image
+// scrap is downloaded once for both.
+const imageFingerprints = new ImageFingerprints(store, (src, image) =>
+  imageCopier.handDownload(src, image),
+)
 
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
@@ -874,7 +878,8 @@ export default defineBackground(() => {
       store
         .addEvents(events)
         .then((inserted) => {
-          imageCopier.noteCollected(inserted)
+          // Copies are queued once fingerprinting has handed over its
+          // downloads, whether or not it succeeded.
           void imageFingerprints
             .process(inserted)
             .then(({ checked }) => {
@@ -889,6 +894,7 @@ export default defineBackground(() => {
                 error,
               ),
             )
+            .finally(() => imageCopier.noteCollected(inserted))
           // A navigation focus is the canonical "user is now looking at this
           // domain" signal — the moment a domain-visit milestone could fire
           // with the right tab in front. Trigger an immediate check (cooldown
