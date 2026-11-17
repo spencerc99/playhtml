@@ -384,6 +384,16 @@ describe("reserved accelerators", () => {
     }
   });
 
+  it("names an accelerator the way the reserved list spells it", () => {
+    expect(acceleratorNames(press("w", { metaKey: true }))).toEqual([
+      "accel+w",
+    ]);
+    expect(
+      acceleratorNames(press("t", { ctrlKey: true, shiftKey: true })),
+    ).toEqual(["accel+shift+t", "ctrl+shift+t"]);
+    expect(acceleratorNames(press("r"))).toEqual([]);
+  });
+
   it("lists the combinations that cannot be intercepted at all", () => {
     for (const reserved of [
       "accel+w",
