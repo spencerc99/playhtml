@@ -104,7 +104,9 @@
                 : undefined;
             }
             function randomColor() {
-              const hex = Math.floor(Math.random() * 16777215).toString(16);
+              const hex = Math.floor(Math.random() * 16777215)
+                .toString(16)
+                .padStart(6, "0");
               return "#" + hex;
             }
             function convertHexToRGB(hex) {
