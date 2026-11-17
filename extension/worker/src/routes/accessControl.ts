@@ -28,6 +28,13 @@ import {
   accessRequestSigningMessage,
   type AccessRequest,
 } from '../../../src/utils/accessRequest';
+import {
+  FEATURE_ACCESS_SIGNATURE_HEADER,
+  FEATURE_ACCESS_SIGNATURE_MAX_AGE_MS,
+  FEATURE_ACCESS_SIGNED_AT_HEADER,
+  featureAccessSigningMessage,
+  type FeatureAccessRequest,
+} from '../../../src/utils/featureAccessRequest';
 import { createResendClient } from '../lib/resend';
 import type { Env } from '../lib/supabase';
 
@@ -141,13 +148,73 @@ async function cohortExists(db: D1Database, cohortId: string): Promise<boolean> 
   return row !== null;
 }
 
+/** Feature access is per participant, so no cache may hand one participant's answer to another. */
+function featureAccessResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...JSON_HEADERS, 'Cache-Control': 'no-store' },
+  });
+}
+
+const SIGNED_AT_PATTERN = /^[0-9]{1,16}$/;
+
+export async function verifyFeatureAccessSignature(
+  request: FeatureAccessRequest,
+  now: number,
+): Promise<boolean> {
+  if (Math.abs(now - request.signedAt) > FEATURE_ACCESS_SIGNATURE_MAX_AGE_MS) {
+    return false;
+  }
+  return verifyParticipantSignature(
+    request.publicId,
+    request.signature,
+    featureAccessSigningMessage(request),
+  );
+}
+
+/**
+ * GET /feature-access/:id
+ * Whether the participant is internal and which features they can use. The
+ * proof that the caller holds the id's key travels in the X-WWO-Signed-At and
+ * X-WWO-Signature headers. A signed request is always verified; an unsigned
+ * one is rejected when REQUIRE_PARTICIPANT_SIGNATURES is "true" and accepted
+ * otherwise.
+ */
 export async function handleFeatureAccessCheck(
+  request: Request,
   env: Env,
   requestedPublicId: string,
 ): Promise<Response> {
   const publicId = normalizePublicId(requestedPublicId);
   if (!isValidPublicId(publicId)) {
-    return jsonResponse(400, { error: 'Invalid public ID' });
+    return featureAccessResponse(400, { error: 'Invalid public ID' });
+  }
+
+  const signedAtHeader = request.headers.get(FEATURE_ACCESS_SIGNED_AT_HEADER);
+  const signature = request.headers.get(FEATURE_ACCESS_SIGNATURE_HEADER);
+  if (signedAtHeader !== null || signature !== null) {
+    if (
+      signedAtHeader === null ||
+      !SIGNED_AT_PATTERN.test(signedAtHeader) ||
+      !isSignatureHex(signature)
+    ) {
+      return featureAccessResponse(401, { error: 'Malformed signature' });
+    }
+    let verified = false;
+    try {
+      verified = await verifyFeatureAccessSignature(
+        { publicId, signedAt: Number(signedAtHeader), signature },
+        Date.now(),
+      );
+    } catch (error) {
+      console.error('[AccessControl] feature access signature check failed:', error);
+    }
+    if (!verified) return featureAccessResponse(401, { error: 'Invalid signature' });
+  } else if (requiresParticipantSignatures(env)) {
+    return featureAccessResponse(401, { error: 'Missing signature' });
+  } else {
+    // Extension builds before signed feature-access reads send no signature.
+    console.log('[legacy-unsigned] GET /feature-access/:id');
   }
 
   const [featureRows, grantRows] = await Promise.all([
@@ -178,7 +245,7 @@ export async function handleFeatureAccessCheck(
     grantedFeatureIds,
   });
 
-  return jsonResponse(200, { features, internal: grantsAllUnreleased });
+  return featureAccessResponse(200, { features, internal: grantsAllUnreleased });
 }
 
 export async function handleAdminAccessOverview(

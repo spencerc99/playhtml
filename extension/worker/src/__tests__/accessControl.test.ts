@@ -29,6 +29,10 @@ import {
 
 import { bytesToHex } from '../../../src/utils/restoreRequest';
 import { signAccessRequest } from '../../../src/utils/accessRequest';
+import {
+  featureAccessHeaders,
+  signFeatureAccessRequest,
+} from '../../../src/utils/featureAccessRequest';
 
 async function makeIdentity() {
   const keypair = await crypto.subtle.generateKey(
@@ -45,13 +49,40 @@ async function makeIdentity() {
 
 let PUBLIC_ID: string;
 let PRIVATE_KEY: JsonWebKey;
-const SECOND_PUBLIC_ID = `pk_04${'b'.repeat(128)}`;
+let SECOND_PUBLIC_ID: string;
+const privateKeys = new Map<string, JsonWebKey>();
 
 beforeAll(async () => {
   const identity = await makeIdentity();
   PUBLIC_ID = identity.publicId;
   PRIVATE_KEY = identity.privateKey;
+  const second = await makeIdentity();
+  SECOND_PUBLIC_ID = second.publicId;
+  privateKeys.set(PUBLIC_ID, PRIVATE_KEY);
+  privateKeys.set(SECOND_PUBLIC_ID, second.privateKey);
 });
+
+/** GET /feature-access/:id signed by the id's own key, unless `signature` says otherwise. */
+async function featureAccessRequest(
+  publicId: string,
+  signature: { signedFor?: string; signedAt?: number; headers?: Record<string, string> } | 'unsigned' = {},
+): Promise<Request> {
+  const url = `https://worker.example/feature-access/${publicId}`;
+  if (signature === 'unsigned') return new Request(url);
+  if (signature.headers) return new Request(url, { headers: signature.headers });
+  const signedFor = signature.signedFor ?? publicId;
+  const privateKey = privateKeys.get(signedFor);
+  if (!privateKey) throw new Error(`No test key for ${signedFor}`);
+  const signed = await signFeatureAccessRequest(privateKey, {
+    publicId: signedFor,
+    signedAt: signature.signedAt ?? Date.now(),
+  });
+  return new Request(url, { headers: featureAccessHeaders(signed) });
+}
+
+async function checkFeatureAccess(publicId: string): Promise<Response> {
+  return handleFeatureAccessCheck(await featureAccessRequest(publicId), workerEnv, publicId);
+}
 
 async function signedAccessRequest(
   ip: string,
@@ -137,7 +168,7 @@ afterEach(async () => {
 
 describe('feature access control', () => {
   it('keeps every seeded experiment unavailable to the public', async () => {
-    const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
+    const response = await checkFeatureAccess(PUBLIC_ID);
     expect(response.status).toBe(200);
     const body = await response.json() as {
       features: Record<string, { stage: string; available: boolean }>;
@@ -155,7 +186,7 @@ describe('feature access control', () => {
   it('gives internal members every unreleased feature', async () => {
     expect((await addToCohort([PUBLIC_ID], 'internal')).status).toBe(201);
 
-    const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
+    const response = await checkFeatureAccess(PUBLIC_ID);
     const body = await response.json() as {
       features: Record<string, { available: boolean }>;
       internal: boolean;
@@ -173,7 +204,7 @@ describe('feature access control', () => {
     ).bind('QUARANTINE_TAPE').run();
     expect((await addToCohort([PUBLIC_ID], 'internal')).status).toBe(201);
 
-    const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
+    const response = await checkFeatureAccess(PUBLIC_ID);
     const body = await response.json() as {
       features: Record<string, { stage: string; available: boolean }>;
     };
@@ -226,7 +257,7 @@ describe('feature access control', () => {
     expect(cohortUpdate.status).toBe(200);
     expect((await addToCohort([PUBLIC_ID], 'closed-beta')).status).toBe(201);
 
-    const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
+    const response = await checkFeatureAccess(PUBLIC_ID);
     const body = await response.json() as {
       features: Record<string, { available: boolean }>;
     };
@@ -236,7 +267,7 @@ describe('feature access control', () => {
   it('gives closed beta members beta-stage features but not internal ones', async () => {
     expect((await addToCohort([PUBLIC_ID], 'closed-beta')).status).toBe(201);
 
-    const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
+    const response = await checkFeatureAccess(PUBLIC_ID);
     const body = await response.json() as {
       features: Record<string, { available: boolean }>;
       internal: boolean;
@@ -269,10 +300,10 @@ describe('feature access control', () => {
     );
     expect(stageUpdate.status).toBe(200);
 
-    const memberBody = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+    const memberBody = await (await checkFeatureAccess(PUBLIC_ID)).json() as {
       features: Record<string, { available: boolean }>;
     };
-    const publicBody = await (await handleFeatureAccessCheck(workerEnv, SECOND_PUBLIC_ID)).json() as {
+    const publicBody = await (await checkFeatureAccess(SECOND_PUBLIC_ID)).json() as {
       features: Record<string, { available: boolean }>;
     };
     expect(memberBody.features.BOTTLES.available).toBe(true);
@@ -294,7 +325,7 @@ describe('feature access control', () => {
     expect((await grant(['BOTTLES'])).status).toBe(200);
     expect((await grant([])).status).toBe(200);
 
-    const body = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+    const body = await (await checkFeatureAccess(PUBLIC_ID)).json() as {
       features: Record<string, { available: boolean }>;
     };
     expect(body.features.BOTTLES.available).toBe(false);
@@ -322,13 +353,13 @@ describe('feature access control', () => {
       'closed-beta',
     )).status).toBe(200);
 
-    const betaBody = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+    const betaBody = await (await checkFeatureAccess(PUBLIC_ID)).json() as {
       features: Record<string, { available: boolean }>;
     };
     expect(betaBody.features.EMOTES.available).toBe(true);
 
     expect((await setStage('EMOTES', 'internal')).status).toBe(200);
-    const internalBody = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+    const internalBody = await (await checkFeatureAccess(PUBLIC_ID)).json() as {
       features: Record<string, { available: boolean }>;
     };
     expect(internalBody.features.EMOTES.available).toBe(false);
@@ -415,7 +446,7 @@ describe('feature access control', () => {
     );
     expect(approval.status).toBe(200);
 
-    const access = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+    const access = await (await checkFeatureAccess(PUBLIC_ID)).json() as {
       features: Record<string, { available: boolean }>;
     };
     expect(access.features.COMMUTE.available).toBe(true);
@@ -610,8 +641,99 @@ describe('feature access control', () => {
   });
 
   it('rejects public ids that are not uncompressed P-256 keys', async () => {
-    const response = await handleFeatureAccessCheck(workerEnv, `pk_${'a'.repeat(130)}`);
+    const badId = `pk_${'a'.repeat(130)}`;
+    const response = await handleFeatureAccessCheck(
+      await featureAccessRequest(badId, 'unsigned'),
+      workerEnv,
+      badId,
+    );
     expect(response.status).toBe(400);
+  });
+
+  describe('feature access reads', () => {
+    async function internalAccess(response: Response) {
+      return ((await response.json()) as { internal: boolean }).internal;
+    }
+
+    it('answers a read signed by the id\'s key and is never cached', async () => {
+      await addToCohort([PUBLIC_ID], 'internal');
+      workerEnv.REQUIRE_PARTICIPANT_SIGNATURES = 'true';
+
+      const response = await checkFeatureAccess(PUBLIC_ID);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(await internalAccess(response)).toBe(true);
+    });
+
+    it('with enforcement on, rejects an unsigned read', async () => {
+      workerEnv.REQUIRE_PARTICIPANT_SIGNATURES = 'true';
+
+      const response = await handleFeatureAccessCheck(
+        await featureAccessRequest(PUBLIC_ID, 'unsigned'),
+        workerEnv,
+        PUBLIC_ID,
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(await response.json()).toEqual({ error: 'Missing signature' });
+    });
+
+    it('with enforcement off, answers an unsigned read as before and logs it as legacy', async () => {
+      await addToCohort([PUBLIC_ID], 'internal');
+      workerEnv.REQUIRE_PARTICIPANT_SIGNATURES = 'false';
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      const response = await handleFeatureAccessCheck(
+        await featureAccessRequest(PUBLIC_ID, 'unsigned'),
+        workerEnv,
+        PUBLIC_ID,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await internalAccess(response)).toBe(true);
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith('[legacy-unsigned] GET /feature-access/:id');
+      log.mockRestore();
+    });
+
+    it.each(['true', 'false'])(
+      'with enforcement %s, rejects a read of one id signed by another id\'s key',
+      async (flag) => {
+        await addToCohort([PUBLIC_ID], 'internal');
+        workerEnv.REQUIRE_PARTICIPANT_SIGNATURES = flag;
+
+        const response = await handleFeatureAccessCheck(
+          await featureAccessRequest(PUBLIC_ID, { signedFor: SECOND_PUBLIC_ID }),
+          workerEnv,
+          PUBLIC_ID,
+        );
+
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({ error: 'Invalid signature' });
+      },
+    );
+
+    it('with enforcement off, still rejects a stale signature and a lone header', async () => {
+      workerEnv.REQUIRE_PARTICIPANT_SIGNATURES = 'false';
+
+      const stale = await handleFeatureAccessCheck(
+        await featureAccessRequest(PUBLIC_ID, { signedAt: Date.now() - 10 * 60_000 }),
+        workerEnv,
+        PUBLIC_ID,
+      );
+      expect(stale.status).toBe(401);
+      expect(await stale.json()).toEqual({ error: 'Invalid signature' });
+
+      const lone = await handleFeatureAccessCheck(
+        await featureAccessRequest(PUBLIC_ID, { headers: { 'X-WWO-Signed-At': String(Date.now()) } }),
+        workerEnv,
+        PUBLIC_ID,
+      );
+      expect(lone.status).toBe(401);
+      expect(await lone.json()).toEqual({ error: 'Malformed signature' });
+    });
   });
 
   it('requires the admin key for policy reads and mutations', async () => {

@@ -107,6 +107,26 @@ describe('Worker route access', () => {
     expect(response.status).toBe(204);
     expect(handleAdminInstallationReload).toHaveBeenCalledWith(request, env);
   });
+  it('lets extension pages send the signed feature-access headers on a preflighted GET', async () => {
+    const response = await worker.fetch(
+      new Request('https://worker.example/feature-access/pk_04', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'chrome-extension://abc',
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'x-wwo-signed-at, x-wwo-signature',
+        },
+      }),
+      {} as Env,
+      {} as ExecutionContext,
+    );
+
+    const allowed = (response.headers.get('Access-Control-Allow-Headers') ?? '')
+      .toLowerCase()
+      .split(/,\s*/);
+    expect(allowed).toEqual(expect.arrayContaining(['x-wwo-signed-at', 'x-wwo-signature']));
+    expect(response.headers.get('Access-Control-Allow-Methods')).toContain('GET');
+  });
   const ORIGIN = { Origin: 'https://wewere.online' };
 
   it.each([
