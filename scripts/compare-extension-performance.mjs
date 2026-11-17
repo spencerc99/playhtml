@@ -83,11 +83,10 @@ function finiteOrNull(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-// Heap is the median of runs so one run that caught V8 mid-cleanup can't move
-// it. Durations keep the mean.
+// Every metric is the median of runs, so one run that hit a slow moment on
+// the runner or caught V8 mid-cleanup can't move it.
 function metricValue(summary, name) {
-  const source = isHeapMetric(name) ? summary.medianMetrics : summary.meanMetrics;
-  return finiteOrNull(source?.[name]);
+  return finiteOrNull(summary.medianMetrics?.[name]);
 }
 
 function metricSpread(summary, name) {
@@ -290,7 +289,7 @@ export function formatMarkdownReport(comparison) {
       comparison.thresholds.minDurationDelta,
     )} for duration metrics, or >${formatHeap(comparison.thresholds.minHeapDelta)} for heap.`,
     "",
-    `Durations are the mean change across the scenario. JSHeapUsedSize is the page's live JS heap (page plus content scripts) after a forced garbage collection at the end of the scenario, median of runs. A change no larger than ${formatDuration(
+    `Each value is the median of runs. Durations are the time spent across the scenario. JSHeapUsedSize is the page's live JS heap (page plus content scripts) after a forced garbage collection at the end of the scenario. A change no larger than ${formatDuration(
       comparison.thresholds.minDurationDelta,
     )} for durations, or the larger of ${formatHeap(
       comparison.thresholds.heapNoiseFloor,
