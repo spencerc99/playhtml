@@ -5,11 +5,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the Supabase client so the color lookup is deterministic and offline.
 const mockColorRows: { pid: string; cursor_color: string | null }[] = [];
+const mockColorLookup: { error: { message: string } | null } = { error: null };
 vi.mock('../lib/supabase', () => ({
   createSupabaseClient: vi.fn(() => ({
     from: () => ({
       select: () => ({
-        in: async () => ({ data: mockColorRows }),
+        in: async () =>
+          mockColorLookup.error
+            ? { data: null, error: mockColorLookup.error }
+            : { data: mockColorRows, error: null },
       }),
     }),
   })),
@@ -63,6 +67,7 @@ function uniquePid(): string {
 describe('broadcastLiveEvents', () => {
   beforeEach(() => {
     mockColorRows.length = 0;
+    mockColorLookup.error = null;
   });
 
   it('forwards cursor, viewport, keyboard, and navigation events to the DO', async () => {
@@ -335,6 +340,33 @@ describe('broadcastLiveEvents', () => {
     const sentReq = (stubFetch.mock.calls[0] as unknown[])[0] as Request;
     const body = (await sentReq.json()) as { events: CollectionEvent[] };
     expect(body.events[0].meta.cursor_color).toBeUndefined();
+  });
+
+  it('retries a failed color lookup instead of caching the participant as uncolored', async () => {
+    const pid = uniquePid();
+    mockColorRows.push({ pid, cursor_color: '#c4724e' });
+    mockColorLookup.error = { message: 'database unavailable' };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const stubFetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const ns = fakeNamespace(stubFetch);
+
+    await broadcastLiveEvents(ns, ENV, [ev('a', 'cursor', pid)], 1000);
+    expect(warn).toHaveBeenCalledWith(
+      '[broadcast] cursor color lookup failed:',
+      expect.objectContaining({ message: 'Cursor color lookup failed: database unavailable' }),
+    );
+    warn.mockRestore();
+    const failedBody = (await ((stubFetch.mock.calls[0] as unknown[])[0] as Request).json()) as {
+      events: CollectionEvent[];
+    };
+    expect(failedBody.events[0].meta.cursor_color).toBeUndefined();
+
+    mockColorLookup.error = null;
+    await broadcastLiveEvents(ns, ENV, [ev('b', 'cursor', pid)], 1001);
+    const retriedBody = (await ((stubFetch.mock.calls[1] as unknown[])[0] as Request).json()) as {
+      events: CollectionEvent[];
+    };
+    expect(retriedBody.events[0].meta.cursor_color).toBe('#c4724e');
   });
 
   it('does nothing when there are no renderable live events', async () => {

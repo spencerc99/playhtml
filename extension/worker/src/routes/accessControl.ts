@@ -16,10 +16,21 @@ import {
   resolveFeatureStage,
 } from '../lib/featurePolicy';
 import { createIpRateLimiter } from '../lib/ipRateLimit';
+import {
+  carriesSignature,
+  isParticipantKey,
+  isSignatureHex,
+  requiresParticipantSignatures,
+  verifyParticipantSignature,
+} from '../lib/participantKey';
+import {
+  ACCESS_REQUEST_SIGNATURE_MAX_AGE_MS,
+  accessRequestSigningMessage,
+  type AccessRequest,
+} from '../../../src/utils/accessRequest';
 import { createResendClient } from '../lib/resend';
 import type { Env } from '../lib/supabase';
 
-const PUBLIC_ID_PATTERN = /^pk_[0-9a-f]{130}$/i;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const requestRateLimiter = createIpRateLimiter(5, 60_000);
 
@@ -78,8 +89,9 @@ function normalizePublicId(publicId: string): string {
   return publicId.trim().toLowerCase();
 }
 
+/** Public ids are checked after normalizePublicId, so uppercase input from admins still matches. */
 function isValidPublicId(publicId: string): boolean {
-  return PUBLIC_ID_PATTERN.test(publicId);
+  return isParticipantKey(publicId);
 }
 
 function parseBody(value: unknown): Record<string, unknown> | null {
@@ -390,6 +402,34 @@ export async function handleAdminPersonCohortsUpdate(
   return jsonResponse(200, { publicId, cohortIds: uniqueCohortIds });
 }
 
+/**
+ * True when the public id's key signed this request within the freshness
+ * window. The signature covers the email and features exactly as sent. There
+ * is no stored nonce, so a captured request can be replayed until its
+ * signedAt leaves the window; a replay can only repeat what the participant
+ * themselves signed.
+ */
+export async function verifyAccessRequestSignature(
+  request: AccessRequest,
+  now: number,
+): Promise<boolean> {
+  if (Math.abs(now - request.signedAt) > ACCESS_REQUEST_SIGNATURE_MAX_AGE_MS) {
+    return false;
+  }
+  return verifyParticipantSignature(
+    request.publicId,
+    request.signature,
+    accessRequestSigningMessage(request),
+  );
+}
+
+/**
+ * POST /access-requests
+ * Files or updates the participant's pending request. Body is an AccessRequest
+ * signed with the identity key whose public half is publicId. A signed request
+ * is always verified; an unsigned one is rejected when
+ * REQUIRE_PARTICIPANT_SIGNATURES is "true" and accepted otherwise.
+ */
 export async function handleAccessRequest(
   request: Request,
   env: Env,
@@ -400,21 +440,53 @@ export async function handleAccessRequest(
   }
 
   const body = await readJsonBody(request);
-  const publicId = typeof body?.publicId === 'string'
-    ? normalizePublicId(body.publicId)
-    : '';
-  const email = typeof body?.email === 'string' && body.email.trim()
-    ? body.email.trim().toLowerCase()
-    : null;
-  const requestedFeatures = Array.isArray(body?.requestedFeatures)
-    ? [...new Set(body.requestedFeatures)]
-    : [];
+  if (!body) return jsonResponse(400, { error: 'Invalid access request' });
+  const rawPublicId = body.publicId;
+  const rawEmail = body.email ?? null;
+  const rawFeatures = body.requestedFeatures ?? [];
   if (
-    !isValidPublicId(publicId) ||
-    (email !== null && !EMAIL_PATTERN.test(email)) ||
-    requestedFeatures.some((feature) => typeof feature !== 'string' || !isFeatureId(feature))
+    typeof rawPublicId !== 'string' ||
+    (rawEmail !== null && typeof rawEmail !== 'string') ||
+    !Array.isArray(rawFeatures) ||
+    rawFeatures.some((feature) => typeof feature !== 'string' || !isFeatureId(feature))
   ) {
     return jsonResponse(400, { error: 'Invalid access request' });
+  }
+  const publicId = normalizePublicId(rawPublicId);
+  const email = rawEmail !== null && rawEmail.trim()
+    ? rawEmail.trim().toLowerCase()
+    : null;
+  const requestedFeatures = [...new Set(rawFeatures as string[])];
+  if (!isValidPublicId(publicId) || (email !== null && !EMAIL_PATTERN.test(email))) {
+    return jsonResponse(400, { error: 'Invalid access request' });
+  }
+
+  if (carriesSignature(body)) {
+    const { signedAt, signature } = body;
+    if (typeof signedAt !== 'number' || !Number.isFinite(signedAt) || !isSignatureHex(signature)) {
+      return jsonResponse(401, { error: 'Malformed signature' });
+    }
+    let verified = false;
+    try {
+      verified = await verifyAccessRequestSignature(
+        {
+          publicId,
+          email: rawEmail,
+          requestedFeatures: rawFeatures as string[],
+          signedAt,
+          signature,
+        },
+        Date.now(),
+      );
+    } catch (error) {
+      console.error('[AccessControl] access request signature check failed:', error);
+    }
+    if (!verified) return jsonResponse(401, { error: 'Invalid signature' });
+  } else if (requiresParticipantSignatures(env)) {
+    return jsonResponse(401, { error: 'Missing signature' });
+  } else {
+    // Extension builds before request signing send no signature.
+    console.log('[legacy-unsigned] POST /access-requests');
   }
 
   const existing = await env.WWO_ADMIN_DB.prepare(

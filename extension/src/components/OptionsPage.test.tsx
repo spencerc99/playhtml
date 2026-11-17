@@ -188,6 +188,37 @@ describe("OptionsPage", () => {
     }
   });
 
+  it("shows the new tab takeover as off when the preference was never set", async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({});
+    const { container, root } = await renderOptions();
+    try {
+      const checkbox = Array.from(container.querySelectorAll("label")).find(
+        (label) => label.textContent?.includes("make this my new tab"),
+      )?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+
+      expect(checkbox).toBeDefined();
+      expect(checkbox?.checked).toBe(false);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("shows the new tab takeover as on once it was opted into", async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      newtab_takeover_enabled: true,
+    });
+    const { container, root } = await renderOptions();
+    try {
+      const checkbox = Array.from(container.querySelectorAll("label")).find(
+        (label) => label.textContent?.includes("make this my new tab"),
+      )?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+
+      expect(checkbox?.checked).toBe(true);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
   it("merges project updates into Community and Developer mode into Experiments", async () => {
     const { container, root } = await renderOptions();
     try {

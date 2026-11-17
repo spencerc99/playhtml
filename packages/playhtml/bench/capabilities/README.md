@@ -6,7 +6,7 @@ Each `<capability>.perf.ts` here runs a few realistic scenarios for one capabili
 
 ## Budget
 
-Keep each capability to about 4 scenarios and 12 report rows, and its file under about 4 seconds. Bench files run in parallel, so a file shorter than `client.perf.ts` adds almost no time to the check. Pick the scenarios that would catch the regressions that capability has actually had.
+Keep each capability to about 4 scenarios and 12 report rows, and its file under about 5 seconds. Bench files run in parallel, so a file shorter than `client.perf.ts` adds almost no time to the check. Pick the scenarios that would catch the regressions that capability has actually had.
 
 ## What to measure
 
@@ -15,7 +15,7 @@ Prefer counts that don't change between runs:
 - sync traffic this client sends (`measureTraffic`: messages, bytes, document growth);
 - DOM writes to show someone else's change (`remotePeer` + `countDomWrites`).
 
-Timings (`*_ms`, via `now()`) are fine as context but are never flagged.
+Timings (`*_ms`) are fine as context but are never flagged. One run of anything is noisy on a shared CI runner, so repeat the action and report the `median()` of the runs, and say how many in the report label ("time (median of 10)"). `runFrames` returns each frame's wall-clock time for this.
 
 ## Adding a capability
 

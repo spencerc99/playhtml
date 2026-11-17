@@ -1416,6 +1416,11 @@ export default defineContentScript({
 
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
+        // The context may have been invalidated while this was starting.
+        if (ctx?.isInvalid) {
+          collectorManager.shutdown();
+          return;
+        }
 
         // Best-effort final flush; browsers may not wait for async unload work.
         window.addEventListener("beforeunload", () => {
@@ -1427,30 +1432,6 @@ export default defineContentScript({
           );
         }
 
-        // One-time migration of page-origin IndexedDB events to extension-origin
-        const migrationKey = `migration_v1_done_${window.location.hostname}`;
-        try {
-          const migrationResult = await browser.storage.local.get([
-            migrationKey,
-          ]);
-          if (!migrationResult[migrationKey]) {
-            const { LocalEventStore } = await import(
-              "../storage/LocalEventStore"
-            );
-            const pageStore = new LocalEventStore();
-            const events = await pageStore.getAllEvents();
-            if (events.length > 0) {
-              await browser.runtime.sendMessage({
-                type: "STORE_EVENTS",
-                events,
-              });
-            }
-            await browser.storage.local.set({ [migrationKey]: true });
-          }
-        } catch (e) {
-          // Migration is best-effort; don't break collection if it fails
-          console.warn("[Content] Migration failed:", e);
-        }
       } catch (error) {
         console.error(
           "[Collections] Failed to initialize collector manager:",
@@ -1503,6 +1484,9 @@ export default defineContentScript({
       }
     });
     ctx?.onInvalidated(teardownExtension);
+    // Once the extension context is gone the background is unreachable, so
+    // collectors stop listening and buffered events are dropped, not retried.
+    ctx?.onInvalidated(() => collectorManager?.shutdown());
 
     // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
     document.addEventListener("keydown", (e) => {
