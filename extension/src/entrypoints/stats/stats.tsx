@@ -1,6 +1,5 @@
 // ABOUTME: Stats page — shows time spent on your top domains
 // ABOUTME: Expand any domain row to see its top pages by time spent
-// ABOUTME: Opens as a full tab from the Collections settings panel
 
 import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -254,13 +253,11 @@ const StatsPage = () => {
   );
 
   const toggleDomain = (domain: string) => {
-    setExpandedDomain((prev) => {
-      const next = prev === domain ? null : domain;
-      if (next) {
-        void loadPageSessions(next);
-      }
-      return next;
-    });
+    const next = expandedDomain === domain ? null : domain;
+    setExpandedDomain(next);
+    if (next) {
+      void loadPageSessions(next);
+    }
   };
 
   return (

@@ -423,7 +423,12 @@ export class BottleManager {
   }
 
   private loadSeen(): SeenMap {
-    return parseTimestampMap(localStorage.getItem(STORAGE_LAST_SEEN));
+    try {
+      return parseTimestampMap(localStorage.getItem(STORAGE_LAST_SEEN));
+    } catch {
+      // Some pages block storage; treat every bottle as unseen there.
+      return {};
+    }
   }
 
   private saveSeen(map: SeenMap): void {

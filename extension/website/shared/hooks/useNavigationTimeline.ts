@@ -15,6 +15,7 @@ import {
   extractDomain,
   type FilterChip,
 } from "../utils/eventUtils";
+import { hashString, seededRandom } from "../utils/styleUtils";
 
 // Settings interface for navigation timeline
 export interface NavigationTimelineSettings {
@@ -36,30 +37,10 @@ export interface UseNavigationTimelineResult {
 function normalizeUrl(url: string): string {
   try {
     const urlObj = new URL(url.startsWith("http") ? url : `https://${url}`);
-    return urlObj.hostname.replace("www.", "") + urlObj.pathname;
+    return urlObj.hostname.replace(/^www\./, "") + urlObj.pathname;
   } catch {
     return url;
   }
-}
-
-/**
- * Seeded random for consistent layout
- */
-function seededRandom(seed: number, offset: number = 0): number {
-  const x = Math.sin(seed + offset * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-/**
- * Hash string to number
- */
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
 }
 
 /**
@@ -137,11 +118,8 @@ export function useNavigationTimeline(
       .slice(0, settings.maxSessions);
 
     if (validSessions.length === 0) {
-      console.log("[Timeline] No valid sessions after filtering");
       return null;
     }
-
-    console.log(`[Timeline] Processing ${validSessions.length} sessions`);
 
     // Build domain color map
     const domainSet = new Set<string>();
@@ -329,10 +307,6 @@ export function useNavigationTimeline(
         node.y = Math.max(margin, Math.min(settings.canvasHeight - margin, node.y));
       });
     }
-
-    console.log(
-      `[Timeline] Created ${nodes.size} nodes, ${edges.length} edges, ${sessions.length} sessions`
-    );
 
     return {
       nodes,
