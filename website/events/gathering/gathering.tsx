@@ -181,7 +181,9 @@ export const URLChat = withSharedState(
         timestamp: Date.now(),
       };
 
-      setData({ urls: [...data.urls, newUrl] });
+      setData((draft) => {
+        draft.urls.push(newUrl);
+      });
       setInputUrl("");
     };
 

@@ -290,6 +290,7 @@ export const URLChat = withSharedState(
     }, [data.urls]);
 
     const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
       const newUrl: SharedURL = {
         url: inputUrl,
         userName: window.cursors?.name || "Anonymous",
@@ -297,7 +298,9 @@ export const URLChat = withSharedState(
         timestamp: Date.now(),
       };
 
-      setData({ urls: [...data.urls, newUrl] });
+      setData((draft) => {
+        draft.urls.push(newUrl);
+      });
       setInputUrl("");
     };
 
