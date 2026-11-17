@@ -48,6 +48,18 @@ function extractYouTubeVideoId(url: string): string | null {
   return m ? m[1] : null;
 }
 
+// Event URLs come from public ingest, so only web pages are framed: a
+// `javascript:` URL in an `allow-scripts allow-same-origin` iframe would run
+// with this page's origin.
+function isWebUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export const PagePreview = memo(
   ({
     url,
@@ -58,6 +70,7 @@ export const PagePreview = memo(
     scrollY,
     scrollRange,
   }: PagePreviewProps) => {
+    if (!isWebUrl(url)) return null;
     const youtubeId = extractYouTubeVideoId(url);
 
     if (youtubeId) {
