@@ -391,134 +391,205 @@ describe("alarm scheduling on connect", () => {
     expect(forcedLog).toContain("deleteAlarm");
   });
 
-  test("every change that affects the alarm leaves the same alarm as the full run", async () => {
-    const twins = await createTwins();
-    const errors: unknown[][] = [];
-    const logs: unknown[][] = [];
-    const originalError = console.error;
-    const originalLog = console.log;
-    console.error = (...args: unknown[]) => errors.push(args);
-    console.log = (...args: unknown[]) => logs.push(args);
+  type Twins = Awaited<ReturnType<typeof createTwins>>;
 
-    try {
-      await twins.connect();
-      expect(twins.optimized.storage.alarm).toBeNull();
+  // Each scenario changes one alarm input. createTwins checks after every step
+  // that the optimized room holds the same alarm and keys as the full run.
+  const alarmScenarios: Array<
+    [
+      name: string,
+      expectedError: string | null,
+      run: (twins: Twins) => Promise<void>,
+    ]
+  > = [
+    [
+      "shared reference leases arm the prune alarm",
+      null,
+      async (twins) => {
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).toBeNull();
+        await twins.connect(sharedReferencesQuery("shared-a"));
+        expect(twins.optimized.storage.alarm).toBe(now + 4 * 60 * 60 * 1000);
+        setNow(now + 60_000);
+        await twins.connect();
+      },
+    ],
+    [
+      "a subscriber written through the admin path",
+      null,
+      async (twins) => {
+        await twins.connect();
+        await twins.both((server) => server.setSubscribers([subscriber()]));
+        await twins.connect();
+      },
+    ],
+    [
+      "the last close sets the compaction deadline and the next connect clears it",
+      null,
+      async (twins) => {
+        await twins.connect();
+        await twins.closeAll();
+        expect(
+          twins.optimized.storage.values.has("emptyRoomCompactAfter"),
+        ).toBe(true);
+        expect(twins.optimized.storage.alarm).toBe(now + 5 * 60 * 1000);
+        await twins.connect();
+        expect(
+          twins.optimized.storage.values.has("emptyRoomCompactAfter"),
+        ).toBe(false);
+        await twins.connect();
+      },
+    ],
+    [
+      "a save retry is set and later cleared",
+      null,
+      async (twins) => {
+        await twins.connect();
+        await twins.both((server) => server.scheduleDocumentSaveRetry());
+        await twins.connect();
+        await twins.both((server) => server.clearDocumentSaveRetry());
+        await twins.connect();
+      },
+    ],
+    [
+      "a load retry written by the circuit breaker",
+      null,
+      async (twins) => {
+        await twins.connect();
+        await twins.both((server) =>
+          server.circuitBreaker.storage.put("loadRetryAfter", now + 30_000),
+        );
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).toBe(now + 30_000);
+        await twins.both((server) =>
+          server.circuitBreaker.storage.delete("loadRetryAfter"),
+        );
+        await twins.connect();
+      },
+    ],
+    [
+      "a stored alarm that comes due before it fires is re-armed on connect",
+      null,
+      async (twins) => {
+        await twins.connect(sharedReferencesQuery("shared-a"));
+        setNow((twins.optimized.storage.alarm as number) + 1);
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).toBeGreaterThan(now);
+      },
+    ],
+    [
+      "the alarm fires and the handler reschedules",
+      null,
+      async (twins) => {
+        await twins.connect(sharedReferencesQuery("shared-a"));
+        await twins.both((server) => server.setSubscribers([subscriber()]));
+        // The platform consumes the alarm, then onAlarm runs.
+        setNow((twins.optimized.storage.alarm as number) + 1);
+        await twins.both(async (server, storage) => {
+          storage.alarm = null;
+          await server.onAlarm();
+        });
+        await twins.connect();
+      },
+    ],
+    [
+      "the alarm fires but the handler bails out before rescheduling",
+      null,
+      async (twins) => {
+        await twins.connect(sharedReferencesQuery("shared-a"));
+        setNow(now + 60_000);
+        await twins.both((server, storage) => {
+          storage.alarm = null;
+          server.circuitBreaker.storage.put("alarmRetryAfter", now + 60_000);
+        });
+        await twins.both((server) => server.onAlarm());
+        await twins.connect();
+        await twins.both((server) =>
+          server.circuitBreaker.storage.delete("alarmRetryAfter"),
+        );
+        await twins.connect();
+      },
+    ],
+    [
+      "quarantine cancels the alarm and clearing it reschedules",
+      "QUARANTINE",
+      async (twins) => {
+        await twins.connect(sharedReferencesQuery("shared-a"));
+        await twins.both((server) =>
+          server.circuitBreaker.enterQuarantine({
+            reason: "manual",
+            detail: "test",
+            failureKind: null,
+            failureCount: 0,
+            skipExternalWrite: true,
+          }),
+        );
+        expect(twins.optimized.storage.alarm).toBeNull();
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).toBeNull();
+        await twins.both((server) =>
+          server.circuitBreaker.clearQuarantine({ recoveryCompleted: true }),
+        );
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).not.toBeNull();
+      },
+    ],
+    [
+      "pruning every lease removes the prune alarm, whichever lease goes last",
+      null,
+      async (twins) => {
+        await twins.connect();
+        await twins.both((server) => server.setSubscribers([subscriber()]));
+        await twins.connect(sharedReferencesQuery("shared-a"));
+        await twins.both((server) => server.setSharedReferences([]));
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).not.toBeNull();
+        await twins.both((server) => server.setSubscribers([]));
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).toBeNull();
+        await twins.both((server) =>
+          server.mergeAndStoreSharedRefs([
+            { sourceRoomId: "source.example-%2F", elementIds: ["shared-b"] },
+          ]),
+        );
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).not.toBeNull();
+        await twins.both((server) => server.setSharedReferences([]));
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).toBeNull();
+        await twins.connect();
+        expect(twins.optimized.storage.alarm).toBeNull();
+      },
+    ],
+  ];
 
-      // Shared reference leases need a prune alarm.
-      await twins.connect(sharedReferencesQuery("shared-a"));
-      expect(twins.optimized.storage.alarm).toBe(now + 4 * 60 * 60 * 1000);
-      setNow(now + 60_000);
-      await twins.connect();
+  test.each(alarmScenarios)(
+    "matches the full run when %s",
+    async (_name, expectedError, run) => {
+      const twins = await createTwins();
+      const errors: unknown[][] = [];
+      const logs: unknown[][] = [];
+      const originalError = console.error;
+      const originalLog = console.log;
+      console.error = (...args: unknown[]) => errors.push(args);
+      console.log = (...args: unknown[]) => logs.push(args);
 
-      // A subscriber written through the admin path.
-      await twins.both((server) => server.setSubscribers([subscriber()]));
-      await twins.connect();
+      try {
+        await run(twins);
+      } finally {
+        console.error = originalError;
+        console.log = originalLog;
+      }
 
-      // The last close sets the empty-room compaction deadline; the next
-      // connect clears it.
-      await twins.closeAll();
-      expect(twins.optimized.storage.values.has("emptyRoomCompactAfter")).toBe(
-        true,
-      );
-      const compactAlarm = twins.optimized.storage.alarm;
-      expect(compactAlarm).toBe(now + 5 * 60 * 1000);
-      await twins.connect();
-      expect(twins.optimized.storage.values.has("emptyRoomCompactAfter")).toBe(
-        false,
-      );
-      await twins.connect();
-
-      // A save retry is set and later cleared.
-      await twins.both((server) => server.scheduleDocumentSaveRetry());
-      await twins.connect();
-      await twins.both((server) => server.clearDocumentSaveRetry());
-      await twins.connect();
-
-      // A load retry written by the circuit breaker.
-      await twins.both((server) =>
-        server.circuitBreaker.storage.put("loadRetryAfter", now + 30_000),
-      );
-      await twins.connect();
-      expect(twins.optimized.storage.alarm).toBe(now + 30_000);
-      await twins.both((server) =>
-        server.circuitBreaker.storage.delete("loadRetryAfter"),
-      );
-      await twins.connect();
-
-      // The stored alarm comes due before it fires: the next connect re-arms.
-      setNow((twins.optimized.storage.alarm as number) + 1);
-      await twins.connect();
-      expect(twins.optimized.storage.alarm).toBeGreaterThan(now);
-
-      // The alarm fires: the platform consumes it, then onAlarm runs.
-      setNow((twins.optimized.storage.alarm as number) + 1);
-      await twins.both(async (server, storage) => {
-        storage.alarm = null;
-        await server.onAlarm();
-      });
-      await twins.connect();
-
-      // The alarm fires but the handler bails out early before rescheduling.
-      setNow(now + 60_000);
-      await twins.both((server, storage) => {
-        storage.alarm = null;
-        server.circuitBreaker.storage.put("alarmRetryAfter", now + 60_000);
-      });
-      await twins.both((server) => server.onAlarm());
-      await twins.connect();
-      await twins.both((server) =>
-        server.circuitBreaker.storage.delete("alarmRetryAfter"),
-      );
-      await twins.connect();
-
-      // Quarantine cancels the alarm; clearing it reschedules.
-      await twins.both((server) =>
-        server.circuitBreaker.enterQuarantine({
-          reason: "manual",
-          detail: "test",
-          failureKind: null,
-          failureCount: 0,
-          skipExternalWrite: true,
-        }),
-      );
-      expect(twins.optimized.storage.alarm).toBeNull();
-      await twins.connect();
-      expect(twins.optimized.storage.alarm).toBeNull();
-      await twins.both((server) =>
-        server.circuitBreaker.clearQuarantine({ recoveryCompleted: true }),
-      );
-      await twins.connect();
-
-      // Pruning every lease removes the prune alarm, whichever lease goes last.
-      await twins.both((server) => server.setSubscribers([subscriber()]));
-      await twins.connect(sharedReferencesQuery("shared-a"));
-      await twins.both((server) => server.setSharedReferences([]));
-      await twins.connect();
-      expect(twins.optimized.storage.alarm).not.toBeNull();
-      await twins.both((server) => server.setSubscribers([]));
-      await twins.connect();
-      expect(twins.optimized.storage.alarm).toBeNull();
-      await twins.both((server) =>
-        server.mergeAndStoreSharedRefs([
-          { sourceRoomId: "source.example-%2F", elementIds: ["shared-b"] },
-        ]),
-      );
-      await twins.connect();
-      expect(twins.optimized.storage.alarm).not.toBeNull();
-      await twins.both((server) => server.setSharedReferences([]));
-      await twins.connect();
-      expect(twins.optimized.storage.alarm).toBeNull();
-      await twins.connect();
-      expect(twins.optimized.storage.alarm).toBeNull();
-    } finally {
-      console.error = originalError;
-      console.log = originalLog;
-    }
-
-    expect(errors.some((args) => String(args[0]).includes("QUARANTINE"))).toBe(
-      true,
-    );
-  });
+      if (expectedError === null) {
+        expect(errors).toEqual([]);
+      } else {
+        expect(
+          errors.some((args) => String(args[0]).includes(expectedError)),
+        ).toBe(true);
+      }
+    },
+  );
 
   test("a room without leases drops the alarm once its only input clears", async () => {
     const twins = await createTwins();
