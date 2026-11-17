@@ -2216,7 +2216,14 @@ function getElementInitializerInfoForElement(
   }
 
   const customProps = getCustomElementProps(element);
-  // Merge: built-in defaults overridden by any custom properties on the element
+  // Merge: built-in defaults overridden by any custom properties on the element.
+  // `update` and `updateElement` are two names for the same callback, so a
+  // custom one under either name replaces the built-in one under both.
+  if (customProps.update !== undefined || customProps.updateElement !== undefined) {
+    const { update: _update, updateElement: _updateElement, ...builtInRest } =
+      builtIn;
+    return { ...builtInRest, ...customProps };
+  }
   return { ...builtIn, ...customProps };
 }
 
