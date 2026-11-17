@@ -1,6 +1,7 @@
 // ABOUTME: Handles POST /subscribe by adding signup emails to Resend.
 // ABOUTME: Public endpoint, validated and rate-limited; sends email based on signup source.
 
+import { readJsonObject } from '../lib/requestInput';
 import { createResendClient, type SignupSource } from '../lib/resend';
 import type { Env } from '../lib/supabase';
 import { createIpRateLimiter } from '../lib/ipRateLimit';
@@ -32,12 +33,9 @@ export async function handleSubscribe(request: Request, env: Env): Promise<Respo
     return jsonResponse(429, { error: 'Too many requests. Try again in a minute.' });
   }
 
-  let body: SubscribeBody;
-  try {
-    body = (await request.json()) as SubscribeBody;
-  } catch {
-    return jsonResponse(400, { error: 'Invalid JSON body' });
-  }
+  const json = await readJsonObject(request);
+  if (!json) return jsonResponse(400, { error: 'Invalid JSON body' });
+  const body = json as SubscribeBody;
 
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   if (!EMAIL_REGEX.test(email)) {

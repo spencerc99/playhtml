@@ -10,10 +10,12 @@ const { createSupabaseClient } = vi.hoisted(() => ({
 
 vi.mock('../lib/supabase', () => ({ createSupabaseClient }));
 
+import { getEarlierEventFilter } from '../lib/eventCursorFilter';
 import {
-  getEarlierEventFilter,
   getRecentEventTypeFilter,
+  handleRecent,
   loadRecentEventRows,
+  loadRecentEvents,
   loadRecentParticipantIds,
 } from '../routes/recent';
 
@@ -144,5 +146,143 @@ describe('recent participant ids', () => {
     await expect(loadRecentParticipantIds(env, 0, 10)).rejects.toThrow(
       'Recent participant row is missing participant_id',
     );
+  });
+});
+
+type QueryResult = { data: unknown; error: { message: string } | null };
+
+/**
+ * Answers each table's terminal query with that table's result and records
+ * how many page_metadata_history queries are in flight at once.
+ */
+function fakeEventTables(results: {
+  events: QueryResult;
+  pageMeta: (refs: string[]) => QueryResult;
+  participants: QueryResult;
+}) {
+  const metaCalls: string[][] = [];
+  let metaInFlight = 0;
+  let maxMetaInFlight = 0;
+  const client = {
+    from(table: string) {
+      const builder: Record<string, unknown> = {};
+      const chain = () => builder;
+      for (const method of ['select', 'eq', 'gte', 'lte', 'or', 'order']) builder[method] = chain;
+      builder.limit = async () => results.events;
+      builder.in = (_column: string, values: string[]) => {
+        if (table === 'participants') return Promise.resolve(results.participants);
+        return {
+          is: async () => {
+            metaCalls.push(values);
+            metaInFlight += 1;
+            maxMetaInFlight = Math.max(maxMetaInFlight, metaInFlight);
+            await new Promise((resolve) => setTimeout(resolve, 1));
+            metaInFlight -= 1;
+            return results.pageMeta(values);
+          },
+        };
+      };
+      return builder;
+    },
+  };
+  createSupabaseClient.mockReturnValue(client);
+  return { metaCalls, maxMetaInFlight: () => maxMetaInFlight };
+}
+
+function navigationRow(index: number): Record<string, unknown> {
+  return { ...makeRow(index), type: 'navigation', data: { page_ref: `ref-${index}` } };
+}
+
+const ALL_NAVIGATION = {
+  type: 'navigation',
+  limit: 1000,
+  domain: null,
+  pid: null,
+  from: null,
+  to: null,
+  requireTitle: true,
+} as const;
+
+describe('recent events with page metadata', () => {
+  const env = {} as Env;
+
+  it('looks up page metadata in concurrent chunks and keeps only titled events', async () => {
+    const rows = Array.from({ length: 900 }, (_, index) => navigationRow(index));
+    const tables = fakeEventTables({
+      events: { data: rows, error: null },
+      pageMeta: (refs) => ({
+        data: refs
+          .filter((ref) => ref !== 'ref-5')
+          .map((ref) => ({ page_ref: ref, title: `Title ${ref}`, favicon_url: null })),
+        error: null,
+      }),
+      participants: { data: [{ pid: 'participant', cursor_color: '#4a9a8a' }], error: null },
+    });
+
+    const result = await loadRecentEvents(env, ALL_NAVIGATION);
+    if (result.error) throw new Error(result.error.message);
+
+    expect(tables.metaCalls.map((refs) => refs.length)).toEqual([200, 200, 200, 200, 100]);
+    expect(tables.maxMetaInFlight()).toBeGreaterThan(1);
+    expect(tables.maxMetaInFlight()).toBeLessThanOrEqual(4);
+    expect(result.events).toHaveLength(899);
+    expect(result.events.some((event) => event.id === makeRow(5).id)).toBe(false);
+    expect(result.events[0].data).toEqual({ page_ref: 'ref-0', title: 'Title ref-0' });
+    expect(result.events[0].meta.cursor_color).toBe('#4a9a8a');
+  });
+
+  it('throws when a page metadata lookup fails instead of treating pages as untitled', async () => {
+    fakeEventTables({
+      events: { data: [navigationRow(0)], error: null },
+      pageMeta: () => ({ data: null, error: { message: 'statement timeout' } }),
+      participants: { data: [], error: null },
+    });
+
+    await expect(loadRecentEvents(env, ALL_NAVIGATION)).rejects.toThrow(
+      'Page metadata lookup failed: statement timeout',
+    );
+  });
+
+  it('returns a collection_events failure as an error result', async () => {
+    fakeEventTables({
+      events: { data: null, error: { message: 'connection refused' } },
+      pageMeta: () => ({ data: [], error: null }),
+      participants: { data: [], error: null },
+    });
+
+    await expect(loadRecentEvents(env, ALL_NAVIGATION)).resolves.toEqual({
+      events: null,
+      error: { message: 'connection refused' },
+    });
+  });
+
+  it('sends the CORS header on both failure responses', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fakeEventTables({
+      events: { data: null, error: { message: 'connection refused' } },
+      pageMeta: () => ({ data: [], error: null }),
+      participants: { data: [], error: null },
+    });
+    const queryFailure = await handleRecent(
+      new Request('https://worker.example/events/recent?type=navigation'),
+      env,
+    );
+    expect(queryFailure.status).toBe(500);
+    expect(queryFailure.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(error).toHaveBeenCalledWith('Supabase query error:', { message: 'connection refused' });
+
+    fakeEventTables({
+      events: { data: [navigationRow(0)], error: null },
+      pageMeta: () => ({ data: null, error: { message: 'statement timeout' } }),
+      participants: { data: [], error: null },
+    });
+    const lookupFailure = await handleRecent(
+      new Request('https://worker.example/events/recent?type=navigation'),
+      env,
+    );
+    expect(lookupFailure.status).toBe(500);
+    expect(lookupFailure.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(error).toHaveBeenCalledWith('Recent events error:', expect.any(Error));
+    error.mockRestore();
   });
 });

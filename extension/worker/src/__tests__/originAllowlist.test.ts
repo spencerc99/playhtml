@@ -72,9 +72,12 @@ describe('isAllowedOrigin', () => {
     expect(isAllowedOrigin(req({ Origin: 'http://127.0.0.1:3000' }))).toBe(true);
   });
 
-  it('allows installed Chrome and Firefox extension origins', () => {
+  it('allows installed Chrome, Firefox, and Safari extension origins', () => {
     expect(isAllowedOrigin(req({ Origin: 'chrome-extension://abcdefghijklmnop' }))).toBe(true);
     expect(isAllowedOrigin(req({ Origin: 'moz-extension://39a66f04-cdb8-4b00' }))).toBe(true);
+    expect(
+      isAllowedOrigin(req({ Origin: 'safari-web-extension://4c7d2e1a-9b3f-4e8a-a1d2-5f6e7c8b9a0d' })),
+    ).toBe(true);
   });
 
   it('falls back to Referer when Origin is absent', () => {

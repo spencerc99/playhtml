@@ -7,8 +7,6 @@ import { handleRecent } from './routes/recent';
 import { handleRestore } from './routes/restore';
 import { handleSiteDelete } from './routes/siteDelete';
 import { handleDailyCounts } from './routes/dailyCounts';
-import { handleStats } from './routes/stats';
-import { handleExport } from './routes/export';
 import { handleParticipantUpsert } from './routes/participants';
 import { handleSubscribe } from './routes/subscribe';
 import { handleFeedback } from './routes/feedback';
@@ -49,10 +47,18 @@ import {
 import { handleInternetMapFile } from './routes/internetMap';
 import { handlePublishedCollages, matchPublishedCollageRoute } from './routes/publishedCollages';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
+import { decodePathSegment } from './lib/requestInput';
 import type { Env } from './lib/supabase';
 
 export { LiveEventsHub } from './live/LiveEventsHub';
 export { CommuteTrainDispatcherObject } from './commuteTrainDispatcherObject';
+
+function badPathResponse(): Response {
+  return new Response(JSON.stringify({ error: 'Invalid path encoding' }), {
+    status: 400,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
 
 /**
  * Cloudflare Worker entry point
@@ -162,14 +168,6 @@ export default {
       return handleDailyCounts(request, env);
     }
     
-    if (path === '/events/stats' && request.method === 'GET') {
-      return handleStats(request, env);
-    }
-    
-    if (path === '/events/export' && request.method === 'POST') {
-      return handleExport(request, env);
-    }
-
     if (path === '/subscribe' && request.method === 'POST') {
       return handleSubscribe(request, env);
     }
@@ -193,10 +191,9 @@ export default {
 
     const featureAccessMatch = path.match(/^\/feature-access\/(.+)$/);
     if (featureAccessMatch && request.method === 'GET') {
-      return handleFeatureAccessCheck(
-        env,
-        decodeURIComponent(featureAccessMatch[1]),
-      );
+      const publicId = decodePathSegment(featureAccessMatch[1]);
+      if (publicId === null) return badPathResponse();
+      return handleFeatureAccessCheck(env, publicId);
     }
 
     if (path === '/access-requests' && request.method === 'POST') {
@@ -226,29 +223,23 @@ export default {
 
     const adminFeatureMatch = path.match(/^\/admin\/access-control\/features\/([^/]+)$/);
     if (adminFeatureMatch && request.method === 'PUT') {
-      return handleAdminFeatureStageUpdate(
-        request,
-        env,
-        decodeURIComponent(adminFeatureMatch[1]),
-      );
+      const featureId = decodePathSegment(adminFeatureMatch[1]);
+      if (featureId === null) return badPathResponse();
+      return handleAdminFeatureStageUpdate(request, env, featureId);
     }
 
     const adminCohortMatch = path.match(/^\/admin\/access-control\/cohorts\/([^/]+)$/);
     if (adminCohortMatch && request.method === 'PUT') {
-      return handleAdminCohortFeaturesUpdate(
-        request,
-        env,
-        decodeURIComponent(adminCohortMatch[1]),
-      );
+      const cohortId = decodePathSegment(adminCohortMatch[1]);
+      if (cohortId === null) return badPathResponse();
+      return handleAdminCohortFeaturesUpdate(request, env, cohortId);
     }
 
     const adminPersonMatch = path.match(/^\/admin\/access-control\/people\/([^/]+)$/);
     if (adminPersonMatch && request.method === 'PUT') {
-      return handleAdminPersonCohortsUpdate(
-        request,
-        env,
-        decodeURIComponent(adminPersonMatch[1]),
-      );
+      const publicId = decodePathSegment(adminPersonMatch[1]);
+      if (publicId === null) return badPathResponse();
+      return handleAdminPersonCohortsUpdate(request, env, publicId);
     }
 
     const adminRequestMatch = path.match(/^\/admin\/access-control\/requests\/(\d+)$/);
@@ -262,13 +253,15 @@ export default {
 
     if (path === '/page-meta' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
-      return handlePageMeta(request, env);
+      return handlePageMeta(request, env, ctx);
     }
 
     // Match PUT /participants/:pid
     const participantMatch = path.match(/^\/participants\/(.+)$/);
     if (participantMatch && request.method === 'PUT') {
-      return handleParticipantUpsert(request, env, decodeURIComponent(participantMatch[1]));
+      const pid = decodePathSegment(participantMatch[1]);
+      if (pid === null) return badPathResponse();
+      return handleParticipantUpsert(request, env, pid);
     }
 
     // Shared collages: public, view-only links made from the scraps studio.

@@ -3,6 +3,7 @@
 
 import { createSupabaseClient, type Env } from "../lib/supabase";
 import { createIpRateLimiter } from "../lib/ipRateLimit";
+import { isParticipantKey } from "../lib/participantKey";
 import {
   ECDSA_SIGN_ALGORITHM,
   hexToBytes,
@@ -15,8 +16,6 @@ import {
   type SiteDeleteResponse,
 } from "../../../src/utils/siteDeleteRequest";
 
-/** Uncompressed P-256 public key: 0x04 prefix, then 64 bytes of x and y. */
-const PUBLIC_KEY_PID_PATTERN = /^pk_04[0-9a-f]{128}$/;
 /** A normalized host as the extension stores it: lowercase labels, at least one dot. */
 const HOST_PATTERN = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 
@@ -37,7 +36,7 @@ export function parseSiteDeleteRequest(
   if (!body || typeof body !== "object") return null;
   const value = body as Record<string, unknown>;
   const { pid, host, signedAt, signature } = value;
-  if (typeof pid !== "string" || !PUBLIC_KEY_PID_PATTERN.test(pid)) return null;
+  if (!isParticipantKey(pid)) return null;
   if (typeof host !== "string" || host.length > 253 || !HOST_PATTERN.test(host))
     return null;
   if (typeof signedAt !== "number" || !Number.isFinite(signedAt)) return null;
