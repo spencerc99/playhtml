@@ -3621,13 +3621,18 @@ function deleteElementData(tag: string, elementId: string): void {
     }
   }
 
-  // 4. Remove element handler
+  // 4. Tear down and remove the element handler. Runs onMount cleanup (rAF
+  // loops, timers, listeners) and disconnects the descendant observer so
+  // nothing keeps writing to the deleted record.
   const tagElementHandlers = elementHandlers.get(tag);
-  if (tagElementHandlers) {
-    tagElementHandlers.delete(elementId);
+  const handler = tagElementHandlers?.get(elementId);
+  if (handler) {
+    handler.destroy?.();
+    elementAwarenessClient?.removeLocalAwareness(tag, elementId);
+    tagElementHandlers!.delete(elementId);
   }
 
-  // 6. Clean up shared reference tracking
+  // 5. Clean up shared reference tracking
   sharedUpdateSeen.delete(key);
   const timerId = sharedHydrationTimers.get(key);
   if (timerId !== undefined) {
