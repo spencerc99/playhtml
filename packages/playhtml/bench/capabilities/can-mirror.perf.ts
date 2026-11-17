@@ -240,7 +240,7 @@ describe("can-mirror", () => {
 
   // A board (one can-mirror) holding 30 cards that are each their own
   // can-mirror. Someone else rearranges the board's look 20 times; the cards
-  // shouldn't be rebuilt each time.
+  // shouldn't be rebuilt each time. Then someone types into one card.
   it("remote board with nested cards", async () => {
     const cards = Array.from(
       { length: 30 },
@@ -265,5 +265,18 @@ describe("can-mirror", () => {
     expect($("#board").querySelectorAll(".card")).toHaveLength(30);
     metrics.mirror_board_remote_dom_writes = writes;
     metrics.mirror_board_remote_ms = median(timings);
+
+    // Typing into one card's note: that card owns its contents, so the board
+    // shouldn't write a copy of each keystroke too.
+    const note = $<HTMLInputElement>("#card-7 input");
+    const typing = await measureTraffic(() =>
+      runFrames(20, () => typeInto(note, "x")),
+    );
+    expect(
+      (playhtml.syncedStore as any)["can-mirror"]["card-7"].children[1]
+        .formState.value,
+    ).toBe("note 7" + "x".repeat(20));
+    metrics.mirror_board_card_type_bytes = typing.bytes;
+    metrics.mirror_board_card_type_doc_growth = typing.docGrowth;
   });
 });
