@@ -127,31 +127,6 @@ export const computeHotspots = (
   return out;
 };
 
-/**
- * Pick a bucket size that gives the activity strip ~targetBars columns
- * across the visible time span. Snaps to "nice" intervals (1m / 5m / 15m /
- * 1h / 6h / 1d) so timestamps land on round numbers.
- */
-const NICE_BUCKETS_MS = [
-  60 * 1000,
-  5 * 60 * 1000,
-  15 * 60 * 1000,
-  60 * 60 * 1000,
-  6 * 60 * 60 * 1000,
-  24 * 60 * 60 * 1000,
-];
-export const pickStripBucketMs = (
-  spanMs: number,
-  targetBars = 160,
-): number => {
-  if (spanMs <= 0) return NICE_BUCKETS_MS[0];
-  const ideal = spanMs / targetBars;
-  for (const b of NICE_BUCKETS_MS) {
-    if (b >= ideal) return b;
-  }
-  return NICE_BUCKETS_MS[NICE_BUCKETS_MS.length - 1];
-};
-
 export interface SustainedWindow {
   startMs: number;
   endMs: number;
@@ -271,26 +246,6 @@ export const rankSustainedWindows = (
     if (!overlaps) chosen.push(c);
   }
   return chosen;
-};
-
-/**
- * Count distinct participants/sessions/domains across the entire event
- * set without bucketing. Used by the Info readout.
- */
-export const computeOverallStats = (events: CollectionEvent[]) => {
-  const pids = new Set<string>();
-  const sids = new Set<string>();
-  const domains = new Set<string>();
-  for (const e of events) {
-    if (e.meta?.pid) pids.add(e.meta.pid);
-    if (e.meta?.sid) sids.add(e.meta.sid);
-    if (e.domain) domains.add(e.domain);
-  }
-  return {
-    uniquePids: pids.size,
-    uniqueSids: sids.size,
-    uniqueDomains: domains.size,
-  };
 };
 
 /**
