@@ -21,6 +21,10 @@ export default defineConfig({
       },
     }),
   ],
+  // These files are also loaded straight from CDNs, with no bundler after them
+  // to fill in Node's `process`. A dependency that reads `process.env.NODE_ENV`
+  // would otherwise throw "process is not defined" on load.
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
   build: {
     // Vite's esbuild pass keeps whitespace in ES library output; terser strips
     // it, and preserve_annotations keeps pure annotations for downstream
