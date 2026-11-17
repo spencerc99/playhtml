@@ -415,7 +415,7 @@ describe("alarm scheduling on connect", () => {
       },
     ],
     [
-      "a subscriber written through the admin path",
+      "a subscriber is written through the admin path",
       null,
       async (twins) => {
         await twins.connect();
@@ -452,7 +452,7 @@ describe("alarm scheduling on connect", () => {
       },
     ],
     [
-      "a load retry written by the circuit breaker",
+      "the circuit breaker writes a load retry",
       null,
       async (twins) => {
         await twins.connect();
@@ -535,7 +535,7 @@ describe("alarm scheduling on connect", () => {
       },
     ],
     [
-      "pruning every lease removes the prune alarm, whichever lease goes last",
+      "every lease is pruned, whichever goes last",
       null,
       async (twins) => {
         await twins.connect();
