@@ -28,8 +28,6 @@ export type PublishedCollageLoad =
 /** How much the sources toggle shows beside each piece. */
 export type SourcesMode = "off" | "site" | "title";
 
-export const SOURCES_MODES: readonly SourcesMode[] = ["off", "site", "title"];
-
 /** The share id a viewer URL names, or null when it names none. */
 export function publishedCollageIdFrom(search: string): string | null {
   const id = new URLSearchParams(search).get("id");

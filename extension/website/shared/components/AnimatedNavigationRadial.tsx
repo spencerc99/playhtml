@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef, memo } from "react";
 import { RadialState, RadialNode } from "../types";
+import { hashString } from "../utils/styleUtils";
 
 export interface RadialBlobSettings {
   samples?: number;
@@ -41,15 +42,6 @@ function seeded(seed: number) {
     const x = Math.sin(seed + i * 12.9898) * 43758.5453;
     return x - Math.floor(x);
   };
-}
-
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
 }
 
 function generateWobblyPath(
@@ -438,7 +430,6 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
     const sessionStartTimeRef = useRef<number>(0);
     const clearStartTimeRef = useRef<number>(0);
     const pendingNextSessionIndexRef = useRef<number | null>(null);
-    const didLogPauseRef = useRef<boolean>(false);
     const hasShownFirstNodeRef = useRef<boolean>(false);
     const nodeAnimatedRadiusRef = useRef<Map<string, number>>(new Map());
     const footprintAnimatedRadiusRef = useRef<Map<string, number>>(new Map());
@@ -535,25 +526,9 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
           const pauseDuration = isNewDay
             ? PAUSE_BETWEEN_DAYS
             : PAUSE_BETWEEN_SESSIONS;
-          if (!didLogPauseRef.current) {
-            const dayKeys = [...new Set(radialState.sessions.map((s) => s.dayKey))];
-            console.log("[Radial] Pause tick: day check", {
-              currentSessionIndex,
-              nextIdx,
-              currentDayKey: currentSession?.dayKey,
-              nextDayKey: nextSession?.dayKey,
-              isNewDay,
-              pauseDuration,
-              elapsed,
-              allDayKeysInData: dayKeys,
-              sessionOrderLength: sessionOrderRef.current.length,
-            });
-            didLogPauseRef.current = true;
-          }
           if (elapsed > pauseDuration) {
             if (isNewDay) {
               // Clear canvas first: do NOT advance session index yet so we render same SVG with no content (visible clear)
-              console.log("[Radial] New day: clearing canvas for", nextSession.dayKey);
               pendingNextSessionIndexRef.current = nextIdx;
               setPhase("clearing");
               setActiveEdges([]);
@@ -570,7 +545,6 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
               footprintAnimatedRadiusRef.current = new Map();
               clearStartTimeRef.current = timestamp;
             } else {
-              console.log("[Radial] Same day: advancing to next session", { nextIdx });
               setPhase("playing");
               setCurrentSessionIndex(nextIdx);
               setActiveEdges([]);
@@ -588,7 +562,6 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
               sessionStartTimeRef.current = timestamp;
             }
           }
-          didLogPauseRef.current = false;
           animationRef.current = requestAnimationFrame(animate);
           return;
         }
@@ -597,7 +570,6 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
           const clearElapsed = timestamp - clearStartTimeRef.current;
           if (clearElapsed > CLEAR_DURATION) {
             const pending = pendingNextSessionIndexRef.current;
-            console.log("[Radial] Clearing done, starting new day", { pending, clearElapsed });
             if (pending !== null) {
               setCurrentSessionIndex(pending);
               pendingNextSessionIndexRef.current = null;
@@ -750,15 +722,6 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
           nextStepIndexRef.current >= steps.length &&
           activeEdgesRef.current.length === 0
         ) {
-          didLogPauseRef.current = false;
-          const sessionIdxDone = sessionOrderRef.current[currentSessionIndex] ?? 0;
-          const sessionDone = radialState.sessions[sessionIdxDone];
-          console.log("[Radial] Session ended, entering pause", {
-            sessionIndex: currentSessionIndex,
-            sessionIdxInOrder: sessionIdxDone,
-            dayKey: sessionDone?.dayKey,
-            totalSessions: radialState.sessions.length,
-          });
           setPhase("pause");
           sessionStartTimeRef.current = timestamp;
         }

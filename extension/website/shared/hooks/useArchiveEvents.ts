@@ -159,7 +159,7 @@ async function fetchEventType(
     }
     try {
       const response = await fetch(url);
-      if (response.ok) return response.json();
+      if (response.ok) return (await response.json()) as CollectionEvent[];
       const message = `Failed to fetch ${type} events: ${response.status}`;
       throw response.status >= 500
         ? new Error(message)
@@ -222,6 +222,7 @@ export function useArchiveEvents(params: {
   const [batchKey, setBatchKey] = useState("fixed");
   const [batchRefreshVersion, setBatchRefreshVersion] = useState(0);
   const [prefetchRetryVersion, setPrefetchRetryVersion] = useState(0);
+  const [missingTypesRetryVersion, setMissingTypesRetryVersion] = useState(0);
   const batchQueueRef = useRef(batchQueue);
   const batchGenerationRef = useRef(0);
   const fixedFetchGenerationRef = useRef(0);
@@ -232,6 +233,8 @@ export function useArchiveEvents(params: {
   const fetchedTypesRef = useRef<Set<string>>(new Set());
   // Track the last domain+day combo we fetched for so we know when to force refresh
   const lastFetchKeyRef = useRef<string>("");
+  // Pending retry for event types whose broad (no-day) fetch failed
+  const missingTypesRetryRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     fixedFetchGenerationRef.current++;
@@ -296,6 +299,7 @@ export function useArchiveEvents(params: {
       setLoading(true);
       setError(null);
       const requestGeneration = ++fixedFetchGenerationRef.current;
+      const failedTypes = new Set<string>();
 
       try {
         // Retry with exponential backoff so a transient network hiccup or a 5xx
@@ -337,6 +341,11 @@ export function useArchiveEvents(params: {
             [...typesToFetch].map((type) =>
               fetchOne({ limit: "20000" }, type).catch((err) => {
                 console.warn(`Failed to fetch ${type} events:`, err);
+                // A 4xx won't succeed on a later pass; only transient
+                // failures are fetched again.
+                if (!(err instanceof NonRetryableFetchError)) {
+                  failedTypes.add(type);
+                }
                 return [] as CollectionEvent[];
               }),
             ),
@@ -346,9 +355,18 @@ export function useArchiveEvents(params: {
 
         if (requestGeneration !== fixedFetchGenerationRef.current) return;
 
-        // Track what we've fetched
+        // Track what we've fetched. A type that failed stays missing, and a
+        // later pass fetches it again so one bad response can't leave a
+        // visualization empty until reload.
         for (const t of typesToFetch) {
-          fetchedTypesRef.current.add(t);
+          if (!failedTypes.has(t)) fetchedTypesRef.current.add(t);
+        }
+        if (failedTypes.size > 0) {
+          window.clearTimeout(missingTypesRetryRef.current);
+          missingTypesRetryRef.current = window.setTimeout(() => {
+            missingTypesRetryRef.current = undefined;
+            setMissingTypesRetryVersion((version) => version + 1);
+          }, PREFETCH_RETRY_DELAY_MS);
         }
 
         if (forceRefresh) {
@@ -457,7 +475,13 @@ export function useArchiveEvents(params: {
     activeVisualizations,
     fetchEvents,
     batchPlayback,
+    missingTypesRetryVersion,
   ]);
+
+  useEffect(
+    () => () => window.clearTimeout(missingTypesRetryRef.current),
+    [],
+  );
 
   useEffect(() => {
     if (!batchPlayback) return;
