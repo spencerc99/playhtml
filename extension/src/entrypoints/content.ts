@@ -20,6 +20,7 @@ import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { ScrapCollector } from "../collectors/ScrapCollector";
+import type { CollectionEventType } from "../collectors/types";
 import {
   DEV_MODE_KEY,
   SCRAPS_DEBUG_KEY,
@@ -1234,8 +1235,13 @@ export default defineContentScript({
         }
       }
 
+      // Registered once per page; a bfcache restore re-runs presence setup and
+      // must not stack another listener.
+      private listeningForPresenceCount = false;
+
       private listenForPresenceCount() {
-        if (!("cursors" in window)) return;
+        if (this.listeningForPresenceCount || !("cursors" in window)) return;
+        this.listeningForPresenceCount = true;
 
         const emit = () => {
           currentPresenceCount = (window as any).cursors.allColors.length;
@@ -1701,23 +1707,17 @@ export default defineContentScript({
       try {
         browser.storage.onChanged.addListener((changes, area) => {
           if (area !== "local" || !collectorManager) return;
+          const modeKeyPrefix = collectionModeStorageKey("");
           for (const key of Object.keys(changes)) {
-            if (key.startsWith("collection_mode_")) {
-              const type = key.replace("collection_mode_", "");
-              const next = changes[key]?.newValue;
-              const normalized =
-                next === "off" || next === "local" || next === "shared"
-                  ? next
-                  : "local";
-              if (normalized === "off") {
-                collectorManager
-                  .disableCollector(type as any)
-                  .catch(console.error);
-              } else {
-                collectorManager
-                  .enableCollector(type as any)
-                  .catch(console.error);
-              }
+            if (!key.startsWith(modeKeyPrefix)) continue;
+            const type = key.slice(modeKeyPrefix.length) as CollectionEventType;
+            // Only collectors registered on this page can change mode here.
+            if (!collectorManager.getCollector(type)) continue;
+            const mode = normalizeCollectionMode(type, changes[key]?.newValue);
+            if (mode === "off") {
+              collectorManager.disableCollector(type).catch(console.error);
+            } else {
+              collectorManager.enableCollector(type).catch(console.error);
             }
           }
         });
