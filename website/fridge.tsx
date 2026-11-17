@@ -16,7 +16,7 @@ import { PlayProvider } from "../packages/react/src";
 import {
   canDeleteFridgeWord,
   DeleteWordLimit,
-  removeFridgeWord,
+  deleteSharedFridgeWord,
 } from "./fridgeDeletion";
 import { containsProfanity } from "./utils/profanity";
 import { getDefaultFridgeWordId } from "./fridgeWordIdentity";
@@ -631,9 +631,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
         }
       }
 
-      setData((d) => {
-        removeFridgeWord(d, { id, word, color });
-      });
+      deleteSharedFridgeWord(setData, { id, word, color });
       if (!canDeleteFridgeWord(DeleteWordLimit, pid)) {
         setDeleteCount(deleteCount + 1);
         if (deleteCount + 1 === DeleteWordLimit) {

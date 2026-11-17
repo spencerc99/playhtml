@@ -34,3 +34,15 @@ export function removeFridgeWord(
   words.splice(index, 1);
   return true;
 }
+
+// Writes a deletion to the shared word list. The click only carries the
+// word's identity; the match happens inside the mutator, against whatever
+// the list holds when the write lands, never against an index from render.
+export function deleteSharedFridgeWord<Word extends FridgeWordMatchFields>(
+  setData: (mutator: (words: Word[]) => void) => void,
+  target: FridgeWordMatchFields,
+): void {
+  setData((words) => {
+    removeFridgeWord(words, target);
+  });
+}
