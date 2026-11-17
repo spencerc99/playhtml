@@ -155,13 +155,19 @@ describe("can-mirror", () => {
     metrics.mirror_playground_bytes = traffic.bytes;
     metrics.mirror_playground_doc_growth = traffic.docGrowth;
 
-    // Hovering and focusing each demo once: shared presence, not document writes.
+    // Hovering each demo once, then focusing and leaving the focus demo:
+    // shared presence, not document writes.
     const presenceBefore = socket().sent.length;
     const demos = [...document.querySelectorAll("[can-mirror]")];
-    await runFrames(demos.length * 2, (frame) => {
-      const el = demos[Math.floor((frame - 1) / 2)];
-      el.dispatchEvent(new Event(frame % 2 ? "mouseenter" : "mouseleave"));
-    });
+    const focusInput = $<HTMLInputElement>("#pg-mirror-focus");
+    const steps: Array<() => void> = [];
+    for (const el of demos) {
+      steps.push(() => el.dispatchEvent(new Event("mouseenter")));
+      steps.push(() => el.dispatchEvent(new Event("mouseleave")));
+    }
+    steps.push(() => focusInput.focus());
+    steps.push(() => focusInput.blur());
+    await runFrames(steps.length, (frame) => steps[frame - 1]());
     metrics.mirror_hover_presence_msgs = socket().sent.length - presenceBefore;
   });
 

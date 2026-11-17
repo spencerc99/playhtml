@@ -116,7 +116,7 @@ export const METRICS = [
     ),
     count(
       "mirror_hover_presence_msgs",
-      "Playground, hover each demo: presence messages",
+      "Playground, hover each demo and focus one: presence messages",
     ),
     bytes("mirror_form_type_bytes", "50-field form, type 50 chars: bytes sent"),
     bytes(
@@ -281,6 +281,14 @@ const TABLE_HEADER = [
   "| --- | ---: | ---: | ---: | --- | --- |",
 ];
 
+// A counted metric moved if its value changed at all or it was added or
+// dropped. Timings never count: they vary with the runner.
+function hasMoved(metric) {
+  if (metric.infoOnly) return false;
+  if (["new", "missing"].includes(metric.status)) return true;
+  return metric.delta !== null && metric.delta !== 0;
+}
+
 // One line per capability for the collapsed summary: what moved, if anything.
 function capabilitySummary(metrics) {
   const counted = metrics.filter((metric) => !metric.infoOnly);
@@ -332,9 +340,7 @@ export function formatMarkdownReport(comparison) {
     const metrics = comparison.metrics.filter(
       (metric) => metric.capability === name,
     );
-    const moved = metrics.some((metric) =>
-      ["regression", "missing", "improved"].includes(metric.status),
-    );
+    const moved = metrics.some(hasMoved);
     lines.push(
       "",
       `<details${moved ? " open" : ""}><summary><b>${name}</b>: ${capabilitySummary(metrics)}</summary>`,

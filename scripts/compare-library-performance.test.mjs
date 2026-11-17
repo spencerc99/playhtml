@@ -154,3 +154,25 @@ test("capability metrics get their own collapsed section unless something moved"
   const coreTable = moved.split("## Per capability")[0];
   assert.doesNotMatch(coreTable, /50-field form/);
 });
+
+test("a capability opens for changes within threshold and for new metrics", () => {
+  const within = formatMarkdownReport(
+    compareResults(base, { ...base, mirror_list_remove_bytes: 140 }), // +40 B
+  );
+  assert.match(
+    within,
+    /<details open><summary><b>can-mirror<\/b>: 1 changed within threshold<\/summary>/,
+  );
+
+  const { mirror_list_remove_bytes: _dropped, ...older } = base;
+  const added = formatMarkdownReport(compareResults(older, { ...base }));
+  assert.match(
+    added,
+    /<details open><summary><b>can-mirror<\/b>: new<\/summary>/,
+  );
+
+  const timingOnly = formatMarkdownReport(
+    compareResults(base, { ...base, mirror_list_bulk_ms: 500 }),
+  );
+  assert.match(timingOnly, /<details><summary><b>can-mirror<\/b>: no change/);
+});
