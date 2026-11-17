@@ -37,6 +37,12 @@ const CURSOR_INSTRUCTIONS = [
   "Imagine your cursor as a falling rain drop",
 ];
 
+function isGatheringAdmin() {
+  return (
+    window.cursors?.name === "Kristoffer" || window.cursors?.name === "spencer"
+  );
+}
+
 // URL validation helper
 function isValidUrl(url: string) {
   try {
@@ -261,27 +267,44 @@ export const GroupActivityDisplay = withSharedState(
   ({ data, setData }) => {
     const [timeLeft, setTimeLeft] = React.useState(30); // 30 seconds
 
+    // Everyone counts down locally from the shared lastChangeTime. Only an
+    // admin writes the advance when it reaches zero, so open tabs do not all
+    // advance at once and skip activities. With no admin on the page the
+    // activity stays put at 0:00 until an admin arrives or presses SKIP.
+    const dataRef = React.useRef(data);
+    dataRef.current = data;
+    // The lastChangeTime this tab already advanced from, so it does not write
+    // again before its own advance syncs back into data.
+    const advancedFromRef = React.useRef<number | null>(null);
+
     React.useEffect(() => {
-      const interval = setInterval(() => {
-        const now = Date.now();
-        const elapsed = Math.floor((now - data.lastChangeTime) / 1000);
+      const tick = () => {
+        const d = dataRef.current;
+        const elapsed = Math.floor((Date.now() - d.lastChangeTime) / 1000);
         const remaining = 30 - elapsed;
 
-        if (remaining <= 0) {
-          // Update to next instruction
+        if (remaining > 0) {
+          setTimeLeft(remaining);
+          return;
+        }
+
+        setTimeLeft(0);
+        if (
+          isGatheringAdmin() &&
+          advancedFromRef.current !== d.lastChangeTime
+        ) {
+          advancedFromRef.current = d.lastChangeTime;
           setData({
             currentInstructionIndex:
-              (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
-            lastChangeTime: now,
+              (d.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+            lastChangeTime: Date.now(),
           });
-          setTimeLeft(30);
-        } else {
-          setTimeLeft(remaining);
         }
-      }, 1000);
-
+      };
+      tick();
+      const interval = setInterval(tick, 1000);
       return () => clearInterval(interval);
-    }, [data.lastChangeTime, data.currentInstructionIndex, setData]);
+    }, [setData]);
 
     const minutes = Math.floor(timeLeft / 60);
     const seconds = timeLeft % 60;
@@ -295,9 +318,7 @@ export const GroupActivityDisplay = withSharedState(
       setTimeLeft(30);
     };
 
-    const isAdmin =
-      window.cursors?.name === "Kristoffer" ||
-      window.cursors?.name === "spencer";
+    const isAdmin = isGatheringAdmin();
 
     return (
       <div className="group-activity" id="group-activity">
