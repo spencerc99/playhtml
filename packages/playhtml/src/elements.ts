@@ -147,7 +147,6 @@ export class ElementHandler<T = any, U = any, V = any> {
       triggerAwarenessUpdate,
       devMode,
     } = elementData;
-    // console.log("🔨 constructing ", element.id);
     this.scheduleSetupDataWrite = options.scheduleSetupDataWrite;
     this.getUsers = options.getUsers ?? (() => []);
     this.getMeFor = options.getMe;

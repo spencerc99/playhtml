@@ -1834,7 +1834,7 @@ async function initPlayHTMLOnce() {
   markAllElementsAsLoading();
 
   await waitForMainProviderSync();
-  console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
+  console.log("[PLAYHTML]: Setting up elements... Time to have some fun");
 
   setupElements();
 
