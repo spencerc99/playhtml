@@ -1,7 +1,7 @@
 // ABOUTME: Uploads collected browsing events to the Cloudflare Worker for storage.
-// ABOUTME: Handles batching, server backfill mode, and worker URL configuration.
+// ABOUTME: Strips URL fragments from outgoing payloads and drops batches the worker permanently rejects.
 
-import browser from 'webextension-polyfill';
+import { WORKER_URL } from '@movement/config';
 import type { CollectionEvent, NavigationEventData } from '../collectors/types';
 import { VERBOSE } from '../config';
 import { stripFragment } from '../utils/urlNormalization';
@@ -34,63 +34,6 @@ function sanitizeForUpload(events: CollectionEvent[]): CollectionEvent[] {
   });
 }
 
-const STORAGE_KEYS = {
-  WORKER_URL: 'collection_worker_url',
-};
-
-/**
- * Production worker URL
- */
-const PROD_WORKER_URL = 'https://playhtml-game-api.spencerc99.workers.dev';
-
-/**
- * Development worker URL (localhost)
- * Run with: cd extension/worker && wrangler dev
- */
-const DEV_WORKER_URL =
-  import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
-
-/**
- * Detect if we're in development mode
- * Checks build environment (WXT sets this when running `wxt dev`)
- */
-function isDevelopment(): boolean {
-  const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
-  if (isDev && VERBOSE) {
-    console.log('[Sync] Development mode detected from build environment');
-  }
-  return isDev;
-}
-
-/**
- * Get worker URL
- * Uses localhost in development, production URL otherwise
- * Can be overridden via storage if needed
- */
-async function getWorkerUrl(): Promise<string> {
-  try {
-    // Check if custom URL is set in storage (for testing/override - highest priority)
-    const result = await browser.storage.local.get([STORAGE_KEYS.WORKER_URL]);
-    if (result[STORAGE_KEYS.WORKER_URL]) {
-      const customUrl = result[STORAGE_KEYS.WORKER_URL];
-      if (VERBOSE) console.log('[Sync] Using custom worker URL from storage:', customUrl);
-      return customUrl;
-    }
-
-    // Use dev URL if in development mode
-    const isDev = isDevelopment();
-    if (isDev) {
-      if (VERBOSE) console.log('[Sync] Using development worker URL:', DEV_WORKER_URL);
-      return DEV_WORKER_URL;
-    }
-
-    return PROD_WORKER_URL;
-  } catch (error) {
-    console.error('[Sync] Error getting worker URL:', error);
-    return PROD_WORKER_URL;
-  }
-}
-
 /**
  * Upload events to Cloudflare Worker API
  * 
@@ -103,67 +46,72 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
   if (events.length === 0) {
     return;
   }
-  
-  const workerUrl = await getWorkerUrl();
+
   const sanitizedEvents = sanitizeForUpload(events);
 
+  let response: Response;
   try {
-    const response = await fetch(`${workerUrl}/events`, {
+    response = await fetch(`${WORKER_URL}/events`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ events: sanitizedEvents }),
     });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      // Index row size errors are permanent — the data itself is too large
-      // for the DB index. Log and discard rather than retrying forever.
-      if (errorText.includes('index row size') && errorText.includes('exceeds')) {
-        console.warn('[Sync] Dropping events with oversized index values:', errorText);
-        return;
-      }
-      throw new Error(`Upload failed: ${response.status} ${errorText}`);
-    }
-    
-    const result = await response.json();
-    const inserted = result.inserted || 0;
-    const duplicates = result.duplicates || 0;
-    
-    if (VERBOSE) {
-      if (duplicates > 0) {
-        console.log(`[Sync] Uploaded ${inserted} new events, ${duplicates} duplicates (already existed)`);
-      } else {
-        console.log(`[Sync] Uploaded ${inserted} events`);
-      }
-    }
   } catch (error) {
-    console.error('[Sync] Failed to upload events to', workerUrl, ':', error);
-    
-    // If using a non-existent URL (like localhost:9999), don't retry - it's disabled for testing
-    if (workerUrl.includes('localhost:9999')) {
-      if (VERBOSE) console.log('[Sync] Uploads disabled for testing - events stored locally only');
-      return; // Don't throw, so EventBuffer doesn't retry
-    }
-
-    // If using localhost:8787 and it fails, provide helpful message
-    if (workerUrl.includes('localhost:8787')) {
-      console.warn('[Sync] Local worker not responding. Make sure wrangler dev is running:');
-      console.warn('[Sync]   cd extension/worker && wrangler dev');
-      // Still throw so EventBuffer can retry when worker comes online
-    }
-    
-    // Note: Even if this throws, the server might have received and inserted the events
-    // The upsert with ignoreDuplicates handles this gracefully
-    throw error; // Re-throw so EventBuffer can retry
+    console.error('[Sync] Failed to reach worker at', WORKER_URL, ':', error);
+    // Rethrown so the caller keeps the events pending and retries later.
+    // The server may still have inserted them; its upsert ignores duplicates.
+    throw error;
   }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    if (isRejectedBatch(response.status, errorText)) {
+      // The worker will never accept this batch, so retrying only repeats
+      // the failure. Returning lets the caller settle it: the events stay in
+      // local history and are not sent again.
+      console.warn(
+        `[Sync] Worker rejected ${events.length} events (${response.status}); keeping them local only:`,
+        errorText,
+      );
+      return;
+    }
+    throw new Error(`Upload failed: ${response.status} ${errorText}`);
+  }
+
+  const result = await response.json();
+  const inserted = result.inserted || 0;
+  const duplicates = result.duplicates || 0;
+
+  if (VERBOSE) {
+    if (duplicates > 0) {
+      console.log(`[Sync] Uploaded ${inserted} new events, ${duplicates} duplicates (already existed)`);
+    } else {
+      console.log(`[Sync] Uploaded ${inserted} events`);
+    }
+  }
+}
+
+/** 4xx statuses that can succeed on a later attempt without changing the batch. */
+const RETRYABLE_CLIENT_STATUSES = new Set([401, 403, 408, 429]);
+
+/**
+ * Whether the worker refused the batch itself. Other 4xx responses mean the
+ * events are malformed. A Postgres "index row size exceeds" error means a
+ * value is too large to index; it arrives as a server error from workers
+ * that predate malformed-event validation.
+ */
+function isRejectedBatch(status: number, errorText: string): boolean {
+  if (status >= 400 && status < 500) {
+    return !RETRYABLE_CLIENT_STATUSES.has(status);
+  }
+  return errorText.includes('index row size') && errorText.includes('exceeds');
 }
 
 /**
  * Get current configuration
  */
 export async function getConfig(): Promise<{ workerUrl: string }> {
-  const workerUrl = await getWorkerUrl();
-  return { workerUrl };
+  return { workerUrl: WORKER_URL };
 }
