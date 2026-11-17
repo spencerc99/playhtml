@@ -126,7 +126,7 @@ export function initEmotes(
   // within the interaction range. Mirrors spencers-website's "press E" hint.
   const reactHint = showProximityHint ? new ReactHint(shadow, isMac) : null;
   let hintShownThisSession = false;
-  const proximityInterval = showProximityHint
+  let proximityInterval: ReturnType<typeof setInterval> | null = showProximityHint
     ? setInterval(() => {
         if (hintShownThisSession) return;
         const myPid = deps.presence.getMyIdentity().publicKey;
@@ -141,6 +141,10 @@ export function initEmotes(
         if (nearby) {
           hintShownThisSession = true;
           reactHint?.showAt(lastCursor);
+          if (proximityInterval !== null) {
+            clearInterval(proximityInterval);
+            proximityInterval = null;
+          }
         }
       }, 500)
     : null;
