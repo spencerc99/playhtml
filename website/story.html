@@ -139,25 +139,26 @@
                 onMount: ({ setData, getData, setMyAwareness }) => {
                   const onSubmit = () => {
                     submitBtn.disabled = true;
-                    if (!isValidWord(input.value)) {
+                    const word = input.value.trim();
+                    if (!word || !isValidWord(word)) {
                       alert("please enter a single word!");
                       submitBtn.disabled = false;
                       return;
                     }
-                    if (hasExplicitSlur(input.value)) {
+                    if (hasExplicitSlur(word)) {
                       alert("please don't troll and be nice");
                       submitBtn.disabled = false;
                       return;
                     }
                     // valid length again
-                    if (input.value.length > 20) {
+                    if (word.length > 20) {
                       alert("too long!");
                       submitBtn.disabled = false;
                       return;
                     }
                     const existingStory = getData();
                     const newEntry = {
-                      word: input.value,
+                      word,
                       color: getUserColor(),
                       ts: Date.now(),
                     };
