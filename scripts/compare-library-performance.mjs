@@ -123,14 +123,21 @@ export const METRICS = [
       "mirror_form_type_doc_growth",
       "50-field form, type 50 chars: doc growth",
     ),
-    bytes("mirror_list_append_bytes", "100-item list, add 50: bytes sent"),
-    bytes("mirror_list_bulk_bytes", "List, add 200 at once: bytes sent"),
-    bytes("mirror_list_remove_bytes", "List, remove 50: bytes sent"),
+    bytes("mirror_list_append_bytes", "1,000-item list, add 10: bytes sent"),
+    bytes(
+      "mirror_list_bulk_bytes",
+      "1,000-item list, add 500 at once: bytes sent",
+    ),
+    bytes("mirror_list_remove_bytes", "1,000-item list, remove 10: bytes sent"),
     count(
       "mirror_board_remote_dom_writes",
       "Board of 30 nested cards, someone else restyles it 20x: DOM writes",
     ),
-    timing("mirror_list_bulk_ms", "List, add 200 at once: time"),
+    timing(
+      "mirror_list_edit_ms",
+      "1,000-item list, add one item: time (mean of 10)",
+    ),
+    timing("mirror_list_bulk_ms", "1,000-item list, add 500 at once: time"),
     timing(
       "mirror_board_remote_ms",
       "Board of 30 nested cards, apply one remote restyle: time (median)",

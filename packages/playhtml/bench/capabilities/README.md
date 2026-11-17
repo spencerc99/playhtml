@@ -2,7 +2,7 @@
 
 Each `<capability>.perf.ts` here runs a few realistic scenarios for one capability and writes deterministic counts to `bench/out/metrics.<capability>.json`. `bench/run.mjs` merges them with the core benchmark, and the Library Performance Report on every PR shows each capability in its own section, comparing `main` to the PR.
 
-`can-mirror.perf.ts` starts from the demos on the docs' can-mirror playground (`apps/docs/src/content/docs/advanced/mirror-playground.mdx`) and adds a larger form, a list and a board of nested cards.
+`can-mirror.perf.ts` starts from the demos on the docs' can-mirror playground (`apps/docs/src/content/docs/advanced/mirror-playground.mdx`) and adds a 50-field form, a 1,000-item list and a board of nested cards.
 
 ## Budget
 

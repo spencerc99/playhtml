@@ -182,40 +182,41 @@ describe("can-mirror", () => {
     metrics.mirror_form_type_doc_growth = traffic.docGrowth;
   });
 
-  // A shared list of 100 items: add 50 one at a time, add 200 in one go (a
-  // paste or a script), then remove 50 from the middle.
-  it("list of 100 items", async () => {
-    document.body.innerHTML = list("todo", 100);
+  // A shared list of 1,000 items: add 10 one at a time, add 500 in one go (a
+  // paste or a script), then remove 10 from the middle. Times are wall clock
+  // for all of can-mirror's work (observer, shared write, send).
+  it("list of 1,000 items", async () => {
+    document.body.innerHTML = list("todo", 1000);
     await initPage("/bench-mirror-list");
     const ul = $("#todo");
 
+    let start = now();
     const append = await measureTraffic(() =>
-      runFrames(50, (frame) => ul.appendChild(item(`New ${frame}`))),
+      runFrames(10, (frame) => ul.appendChild(item(`New ${frame}`))),
     );
     metrics.mirror_list_append_bytes = append.bytes;
+    metrics.mirror_list_edit_ms = +((now() - start) / 10).toFixed(1);
 
-    let bulkMs = 0;
+    start = now();
     const bulk = await measureTraffic(() =>
       runFrames(1, () => {
-        const start = now();
         const fragment = document.createDocumentFragment();
-        for (let i = 0; i < 200; i += 1)
+        for (let i = 0; i < 500; i += 1)
           fragment.appendChild(item(`Bulk ${i}`));
         // One insert per item, the way a loop of appendChild calls lands.
         for (const li of [...fragment.childNodes]) ul.appendChild(li);
-        bulkMs = now() - start;
       }),
     );
     metrics.mirror_list_bulk_bytes = bulk.bytes;
+    metrics.mirror_list_bulk_ms = +(now() - start).toFixed(1);
 
     const remove = await measureTraffic(() =>
-      runFrames(50, () => ul.children[50].remove()),
+      runFrames(10, () => ul.children[500].remove()),
     );
     expect(
       (playhtml.syncedStore as any)["can-mirror"].todo.children,
-    ).toHaveLength(300);
+    ).toHaveLength(1500);
     metrics.mirror_list_remove_bytes = remove.bytes;
-    metrics.mirror_list_bulk_ms = +bulkMs.toFixed(1);
   });
 
   // A board (one can-mirror) holding 30 cards that are each their own
