@@ -1,5 +1,5 @@
 // ABOUTME: Abstract base class for all browsing behavior collectors.
-// ABOUTME: Defines the lifecycle (start/stop), event emission, and an optional real-time callback.
+// ABOUTME: Defines the lifecycle (start/stop), pausing, sample rate, and buffered event emission.
 
 import type { CollectionEventType } from './types';
 
@@ -8,12 +8,6 @@ import type { CollectionEventType } from './types';
  *
  * Collectors capture browsing behaviors and emit events, which are buffered
  * for local storage and archival upload (Supabase via Worker).
- *
- * Real-time callback:
- * - A collector can also call emitRealTime() for a high-frequency stream.
- *   Only CursorCollector does, and only while a callback is set through
- *   setRealTimeCallback(); nothing in the extension sets one, so the stream
- *   is idle and archival emission is the only output.
  */
 export abstract class BaseCollector<T = unknown> {
   abstract readonly type: CollectionEventType;
@@ -26,7 +20,6 @@ export abstract class BaseCollector<T = unknown> {
   
   // Callbacks for emitting events
   private onEmitCallback?: (event: T) => void | Promise<void>;
-  private onRealTimeCallback?: (data: T) => void;
   private pendingEventEmits = new Set<Promise<void>>();
   
   /**
@@ -114,18 +107,7 @@ export abstract class BaseCollector<T = unknown> {
   }
 
   /**
-   * Set the callback for real-time events (live streaming)
-   */
-  setRealTimeCallback(callback: (data: T) => void): void {
-    this.onRealTimeCallback = callback;
-  }
-
-  protected hasRealTimeCallback(): boolean {
-    return this.onRealTimeCallback !== undefined;
-  }
-  
-  /**
-   * Emit an event to both buffers (archival) and real-time streams
+   * Emit an event to the buffer for local storage and archival upload
    */
   protected emit(data: T): void {
     if (this.paused) return;
@@ -145,20 +127,6 @@ export abstract class BaseCollector<T = unknown> {
       }
     } else {
       console.warn(`[BaseCollector] No emit callback set for ${this.type}`);
-    }
-    
-    // Emit to real-time stream (if applicable)
-    // Note: Real-time streaming is handled separately by collectors
-    // that need it (like CursorCollector)
-  }
-  
-  /**
-   * Emit to real-time stream only (for high-frequency updates)
-   */
-  protected emitRealTime(data: T): void {
-    if (this.paused) return;
-    if (this.onRealTimeCallback) {
-      this.onRealTimeCallback(data);
     }
   }
 
