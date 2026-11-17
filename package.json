@@ -20,6 +20,9 @@
     "test:doctor": "node --test scripts/check-workspace-readiness.test.mjs",
     "contributors": "node scripts/update-contributors.mjs --write",
     "test:contributors": "node --test scripts/update-contributors.test.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs .github/scripts/*.test.mjs && bun test scripts/write-local-supabase-env.test.ts",
+    "test:partykit": "bun test partykit/__tests__",
+    "test:website": "bun test ./website/adminHosts.test.ts ./website/test/adminMessages.test.ts ./website/test/experimentsArchiveLogic.test.ts ./website/test/fridgeDeletion.test.ts ./website/test/fridgeWordIdentity.test.ts ./website/test/guestbookValidation.test.ts ./website/test/siteMetadata.test.ts ./website/utils/adminComparison.test.ts ./website/utils/backup.test.ts ./website/experiments/cinderblock/__tests__/model.test.js && bunx vitest run --config website/vitest.config.mts website/test/adminJsonViewer.test.tsx website/test/adminQuarantine.test.tsx website/test/storyRendering.test.ts website/party/3/ website/experiments/8/ website/events/walking-together/",
     "dev": "vite --config vite.config.site.mts",
     "dev-docs": "cd apps/docs && bun run dev",
     "dev-server": "bunx wrangler dev --config partykit/wrangler.jsonc --port ${PLAYHTML_PARTYKIT_PORT:-1999}",
@@ -44,6 +47,7 @@
     "build-extension:website": "cd extension/website && bun run build",
     "prepare:extension": "bun run --cwd extension prepare:types",
     "test:common": "bun run --cwd packages/common test",
+    "test:extension-types": "bunx vitest run --root packages/extension-types",
     "test:playhtml": "bun run --cwd packages/playhtml test",
     "test:react": "bun run --cwd packages/react test",
     "test:sound": "bun scripts/sound-samples/rampScan.ts && bun scripts/sound-samples/liveScan.ts && bun scripts/sound-samples/typingScan.ts && bun scripts/sound-samples/clickScan.ts",
@@ -95,7 +99,7 @@
     "smoke:partykit:soak": "cd smoke-tests && bun run test:partykit:soak",
     "smoke:partykit:presence-local": "node smoke-tests/partykit/local-presence-smoke.mjs",
     "smoke:partykit:presence-cursor": "cd smoke-tests && bun run test:partykit:presence-cursor",
-    "generate-types": "bunx wrangler types --config partykit/wrangler.jsonc --include-runtime=false"
+    "generate-types": "bunx wrangler types partykit/worker-configuration.d.ts --config partykit/wrangler.jsonc --include-runtime=false"
   },
   "overrides": {
     "yjs": "13.6.18"
@@ -107,7 +111,6 @@
     "@types/node": "^20.3.3",
     "@types/randomcolor": "^0.5.9",
     "@types/react": "^18.2.48",
-    "@types/react-is": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.1",
     "agentation": "^2.2.1",
     "ajv": "^8.18.0",
@@ -118,7 +121,6 @@
     "supabase": "2.109.1",
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
-    "vite-plugin-mpa": "^1.2.0",
     "wrangler": "^4.81.1"
   },
   "dependencies": {

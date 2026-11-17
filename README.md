@@ -65,7 +65,7 @@ Each has a live demo and full docs in the [capabilities reference](https://playh
 
 **Beyond capabilities:**
 
-- **[Element data](https://playhtml.fun/docs/data/data-essentials/)** — persistent, synced state scoped to a single element
+- **[Element data](https://playhtml.fun/docs/concepts/)** — persistent, synced state scoped to a single element
 - **[Page-level data](https://playhtml.fun/docs/data/page-data/)** — shared data channels not tied to DOM elements (counters, votes, etc.)
 - **[Presence & cursors](https://playhtml.fun/docs/data/presence/)** — ephemeral per-user state with custom channels, plus multiplayer cursors
 - **[Events](https://playhtml.fun/docs/data/events/)** — fire-and-forget broadcasts for transient actions (confetti, pings)
@@ -121,13 +121,13 @@ Thank you to everyone who has helped build playhtml.
       <a href="https://github.com/spencerc99"><img src="https://avatars.githubusercontent.com/spencerc99?s=128" width="64" height="64" alt="spencerc99" /><br /><sub><b>Spencer Chang</b></sub></a><br /><sub>Creator and maintainer</sub>
     </td>
     <td align="center" valign="top">
-      <a href="https://github.com/jessa0"><img src="https://avatars.githubusercontent.com/jessa0?s=128" width="64" height="64" alt="jessa0" /><br /><sub><b>Jessa</b></sub></a><br /><sub>Moved the sync server to PartyServer</sub>
+      <a href="https://github.com/jessa0"><img src="https://avatars.githubusercontent.com/jessa0?s=128" width="64" height="64" alt="jessa0" /><br /><sub><b>Jessa</b></sub></a><br /><sub>Infrastructure design and coding</sub>
     </td>
     <td align="center" valign="top">
       <a href="https://github.com/alexwennerberg"><img src="https://avatars.githubusercontent.com/alexwennerberg?s=128" width="64" height="64" alt="alexwennerberg" /><br /><sub><b>Alex Wennerberg</b></sub></a><br /><sub>README fixes</sub>
     </td>
     <td align="center" valign="top">
-      <a href="https://github.com/W-A-James"><img src="https://avatars.githubusercontent.com/W-A-James?s=128" width="64" height="64" alt="W-A-James" /><br /><sub><b>Warren James</b></sub></a><br /><sub>Per-site privacy: turning collection off for a site</sub>
+      <a href="https://github.com/W-A-James"><img src="https://avatars.githubusercontent.com/W-A-James?s=128" width="64" height="64" alt="W-A-James" /><br /><sub><b>Warren James</b></sub></a><br /><sub>Feature design and coding</sub>
     </td>
   </tr>
 </table>
