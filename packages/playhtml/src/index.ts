@@ -54,6 +54,7 @@ import {
   findSharedElementsOnPage,
   findSharedReferencesOnPage,
   isSharedReadOnly,
+  parseSharedPermission,
   setSharedPermission,
 } from "./sharing";
 import { parseDataSource, normalizeHost } from "@playhtml/common";
@@ -376,15 +377,7 @@ function handleNewSharedElement(element: HTMLElement): void {
   if (!element.id) return;
 
   const elementId = element.id;
-  const permissions = element.getAttribute("shared");
-  let permissionMode: "read-only" | "read-write" = "read-write";
-
-  if (permissions && permissions !== "") {
-    const val = permissions.toLowerCase();
-    if (val.includes("read-only") || val === "ro") {
-      permissionMode = "read-only";
-    }
-  }
+  const permissionMode = parseSharedPermission(element.getAttribute("shared"));
 
   // Update local permissions
   setSharedPermission(elementId, permissionMode);
