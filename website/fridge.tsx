@@ -2,7 +2,6 @@
 // ABOUTME: Provides fridge-specific controls for words, walls, zoom, and moderation.
 
 import "./fridge.scss";
-import profaneWords from "profane-words";
 import { MoveData, TagType } from "@playhtml/common";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
@@ -19,6 +18,7 @@ import {
   DeleteWordLimit,
   removeFridgeWord,
 } from "./fridgeDeletion";
+import { containsProfanity } from "./utils/profanity";
 import { getDefaultFridgeWordId } from "./fridgeWordIdentity";
 import { useLocation } from "./useLocation";
 import { mountExperimentBadge } from "./components/experimentBadge";
@@ -238,7 +238,6 @@ interface Props extends FridgeWordType {
 const DefaultRoom = "fridge";
 const DeleteWordInterval = 1000 * 60 * 10; // 10 minutes
 const DeleteLimitReachedKey = "fridge-lastDeleteTime";
-const RestrictedWords = [...profaneWords];
 
 type MoveLocalData = { startMouseX: number; startMouseY: number };
 
@@ -562,12 +561,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
         clearMessage();
         return;
       }
-      if (
-        RestrictedWords.some((word) => {
-          const regex = new RegExp(`\\b${word}\\b`, "gi");
-          return regex.test(input);
-        })
-      ) {
+      if (containsProfanity(input)) {
         alert(
           "we don't seem to like that word :( please keep things nice here",
         );

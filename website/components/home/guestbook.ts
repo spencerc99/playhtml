@@ -1,12 +1,12 @@
 // ABOUTME: The homepage guestbook: a can-post form whose entries show as name chips.
 // ABOUTME: Keeps the original {name, message, timestamp}[] data so every past signature shows.
 
-import words from "profane-words";
 import type { ElementInitializer } from "playhtml";
 import {
   isGuestbookNameAllowed,
   sanitizeGuestbookName,
 } from "../../utils/guestbookValidation";
+import { containsProfanity } from "../../utils/profanity";
 
 export interface GuestbookEntry {
   name: string;
@@ -132,7 +132,7 @@ function renderGuestbookSummary(entries: GuestbookEntry[]) {
 }
 
 function isBlockedWord(text: string) {
-  return words.some((word) => new RegExp(`\\b${word}\\b`, "gi").test(text));
+  return containsProfanity(text);
 }
 
 function readSubmissionTimestamps(): number[] {
