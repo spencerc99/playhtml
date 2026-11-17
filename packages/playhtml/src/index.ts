@@ -2471,91 +2471,88 @@ export interface PlayHTMLComponents {
 export async function resetPlayHTML(): Promise<void> {
   if (lifecycle.phase === "idle") return;
 
-  try {
-    canMirrorDataQueue.clear();
-    if (navigationController) {
-      navigationController.destroy();
-      navigationController = null;
-    }
-    if (detachNavListeners) {
-      detachNavListeners();
-      detachNavListeners = null;
-    }
-
-    if (configureIdentityListener) {
-      document.removeEventListener(
-        "playhtml:configure-identity",
-        configureIdentityListener,
-      );
-      configureIdentityListener = null;
-    }
-
-    for (const [, map] of elementHandlers) {
-      for (const handler of map.values()) {
-        try {
-          (handler as any).destroy?.();
-        } catch {}
-      }
-      map.clear();
-    }
-    elementHandlers.clear();
-    pageDataRefCounts.clear();
-    pageDataListeners.clear();
-    mainProviderSyncWaiters.clear();
-    disconnectRegisteredElementObserver();
-
-    teardownElementAwarenessClient();
-    teardownPresenceClient();
-    teardownCursors();
-    disconnectUsersPresenceTransport();
-    teardownMainProvider();
-    try { usersAPI?.destroy(); } catch {}
-    usersAPI = null;
-
-    for (const [, entry] of presenceTransportsByRoom) {
-      try {
-        entry.selfChangeUnsub?.();
-      } catch {}
-      try {
-        entry.transport.destroy();
-      } catch {}
-    }
-    presenceTransportsByRoom.clear();
-    cursorPresenceTransportRoom = null;
-
-    try {
-      developmentModule?.teardownDevUI();
-    } catch {}
-
-    document.head
-      .querySelectorAll("link[href*='playhtml']")
-      .forEach((n) => n.remove());
-    document
-      .querySelectorAll("#playhtml-cursor-styles")
-      .forEach((n) => n.remove());
-
-    delete (window as any).playhtml;
-    delete document.documentElement.dataset.playhtml;
-
-    lifecycle = INITIAL_LIFECYCLE;
-    trackedElementAwarenessKeys.clear();
-    readyPromise = createReadyPromise();
-    __currentRoomId = "";
-    __currentHost = "";
-    presenceFacade = null;
-    pagePeople = null;
-    // The facade is discarded here without unsubscribing its cursor-channel
-    // subscriptions (unlike navigation, which re-attaches via setInner), so
-    // clear the hub's subscriber set too — otherwise stale wrappers pointing at
-    // the destroyed presence client survive into the next init.
-    cursorPresenceHub.subscribers.clear();
-    roomResetPromise = null;
-    pendingRoomResetEpoch = null;
-    configuredOptions = null;
-  } finally {
-    // lifecycle = idle (set above) is the canonical "not initialized" state —
-    // runHandleNavigation checks it to skip nav after reset.
+  canMirrorDataQueue.clear();
+  if (navigationController) {
+    navigationController.destroy();
+    navigationController = null;
   }
+  if (detachNavListeners) {
+    detachNavListeners();
+    detachNavListeners = null;
+  }
+
+  if (configureIdentityListener) {
+    document.removeEventListener(
+      "playhtml:configure-identity",
+      configureIdentityListener,
+    );
+    configureIdentityListener = null;
+  }
+
+  for (const [, map] of elementHandlers) {
+    for (const handler of map.values()) {
+      try {
+        (handler as any).destroy?.();
+      } catch {}
+    }
+    map.clear();
+  }
+  elementHandlers.clear();
+  pageDataRefCounts.clear();
+  pageDataListeners.clear();
+  mainProviderSyncWaiters.clear();
+  disconnectRegisteredElementObserver();
+
+  teardownElementAwarenessClient();
+  teardownPresenceClient();
+  teardownCursors();
+  disconnectUsersPresenceTransport();
+  teardownMainProvider();
+  try { usersAPI?.destroy(); } catch {}
+  usersAPI = null;
+
+  for (const [, entry] of presenceTransportsByRoom) {
+    try {
+      entry.selfChangeUnsub?.();
+    } catch {}
+    try {
+      entry.transport.destroy();
+    } catch {}
+  }
+  presenceTransportsByRoom.clear();
+  cursorPresenceTransportRoom = null;
+
+  try {
+    developmentModule?.teardownDevUI();
+  } catch {}
+
+  document.head
+    .querySelectorAll("link[href*='playhtml']")
+    .forEach((n) => n.remove());
+  document
+    .querySelectorAll("#playhtml-cursor-styles")
+    .forEach((n) => n.remove());
+
+  delete (window as any).playhtml;
+  delete document.documentElement.dataset.playhtml;
+
+  // idle is the canonical "not initialized" state; runHandleNavigation checks
+  // it to skip navigation after a reset.
+  lifecycle = INITIAL_LIFECYCLE;
+  trackedElementAwarenessKeys.clear();
+  readyPromise = createReadyPromise();
+  __currentRoomId = "";
+  __currentHost = "";
+  presenceFacade = null;
+  pagePeople = null;
+  // The facade is discarded here without unsubscribing its cursor-channel
+  // subscriptions (unlike navigation, which re-attaches via setInner), so
+  // clear the hub's subscriber set too — otherwise stale wrappers pointing at
+  // the destroyed presence client survive into the next init.
+  cursorPresenceHub.subscribers.clear();
+  roomResetPromise = null;
+  pendingRoomResetEpoch = null;
+  configuredOptions = null;
 }
 
 // Expose big variables to the window object for debugging purposes.
