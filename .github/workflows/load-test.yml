@@ -87,6 +87,7 @@ jobs:
       - name: Run load test
         working-directory: tools/load-test
         run: |
+          set -o pipefail
           bun src/runner.ts \
             --scenario ${{ inputs.scenario }} \
             --users ${{ needs.setup.outputs.users_per_worker }} \
