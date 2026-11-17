@@ -20,12 +20,12 @@ describe("play event fan-out", () => {
 
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const received: unknown[] = [];
-    playhtml.registerPlayEventListener("confetti", {
+    const throwingId = playhtml.registerPlayEventListener("confetti", {
       onEvent: () => {
         throw new Error("listener failed");
       },
     });
-    playhtml.registerPlayEventListener("confetti", {
+    const receivingId = playhtml.registerPlayEventListener("confetti", {
       onEvent: (payload: unknown) => received.push(payload),
     });
 
@@ -39,6 +39,8 @@ describe("play event fan-out", () => {
       '[playhtml] "confetti" event listener callback threw:',
       expect.objectContaining({ message: "listener failed" }),
     );
+    playhtml.removePlayEventListener("confetti", throwingId);
+    playhtml.removePlayEventListener("confetti", receivingId);
     errorSpy.mockRestore();
   });
 
