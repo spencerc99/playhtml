@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef, memo } from "react";
 import { RadialState, RadialNode } from "../types";
+import { hashString } from "../utils/styleUtils";
 
 export interface RadialBlobSettings {
   samples?: number;
@@ -41,15 +42,6 @@ function seeded(seed: number) {
     const x = Math.sin(seed + i * 12.9898) * 43758.5453;
     return x - Math.floor(x);
   };
-}
-
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
 }
 
 function generateWobblyPath(

@@ -15,6 +15,7 @@ import {
   extractDomain,
   type FilterChip,
 } from "../utils/eventUtils";
+import { hashString, seededRandom } from "../utils/styleUtils";
 
 // Settings interface for navigation timeline
 export interface NavigationTimelineSettings {
@@ -40,26 +41,6 @@ function normalizeUrl(url: string): string {
   } catch {
     return url;
   }
-}
-
-/**
- * Seeded random for consistent layout
- */
-function seededRandom(seed: number, offset: number = 0): number {
-  const x = Math.sin(seed + offset * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-/**
- * Hash string to number
- */
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
 }
 
 /**

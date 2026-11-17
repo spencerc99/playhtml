@@ -16,6 +16,7 @@ import {
   eventMatchesAnyFilter,
   type FilterChip,
 } from "../utils/eventUtils";
+import { hashString, seededRandom } from "../utils/styleUtils";
 
 export interface NavigationRadialSettings {
   filters: readonly FilterChip[];
@@ -39,20 +40,6 @@ function normalizeUrl(url: string): string {
   } catch {
     return url;
   }
-}
-
-function seededRandom(seed: number, offset: number = 0): number {
-  const x = Math.sin(seed + offset * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
 }
 
 /** Local date YYYY-MM-DD for day segmentation. Use event creator's timezone when available (meta.tz). */
