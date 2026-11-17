@@ -123,8 +123,8 @@ export function ChatPanel({
                 <path
                   d="M8 1.5c-2.6 0-4.5 2-4.5 4.5 0 3.1 4.5 8 4.5 8s4.5-4.9 4.5-8c0-2.5-1.9-4.5-4.5-4.5z"
                   stroke="currentColor"
-                  stroke-width="1.4"
-                  stroke-linejoin="round"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
                 />
                 <circle cx="8" cy="6" r="1.6" fill="currentColor" />
               </svg>
@@ -138,7 +138,7 @@ export function ChatPanel({
             title="reroll name"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-              <rect x="1.5" y="1.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.4" />
+              <rect x="1.5" y="1.5" width="13" height="13" rx="3" stroke="currentColor" strokeWidth="1.4" />
               <circle cx="5" cy="5" r="1.1" fill="currentColor" />
               <circle cx="11" cy="5" r="1.1" fill="currentColor" />
               <circle cx="8" cy="8" r="1.1" fill="currentColor" />
