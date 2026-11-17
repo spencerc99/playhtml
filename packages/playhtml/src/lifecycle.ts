@@ -29,8 +29,7 @@ export type LifecycleEvent =
   | { type: "elementsReady" }
   | { type: "delegate" }
   | { type: "delegateSettled" }
-  | { type: "fail"; error: unknown }
-  | { type: "reset" };
+  | { type: "fail"; error: unknown };
 
 export const INITIAL_LIFECYCLE: Lifecycle = { phase: "idle" };
 
@@ -45,8 +44,6 @@ export function nextLifecycle(
   event: LifecycleEvent,
 ): Lifecycle {
   switch (event.type) {
-    case "reset":
-      return INITIAL_LIFECYCLE;
     case "connect":
       // The first connection, a room change, or a server reset rebuilding the
       // connection: each one has to sync again.
