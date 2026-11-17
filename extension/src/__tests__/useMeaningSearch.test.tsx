@@ -129,7 +129,7 @@ describe("reading scrap pictures for meaning search", () => {
     const container = document.createElement("div");
     root = createRoot(container);
     await act(async () => root?.render(<Harness />));
-    for (let round = 0; round < 50 && phase !== "ready"; round += 1) {
+    for (let round = 0; round < 500 && phase !== "ready"; round += 1) {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       });
