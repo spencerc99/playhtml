@@ -90,6 +90,7 @@ describe("CursorChat", () => {
   it.each([
     ["input", () => document.createElement("input")],
     ["textarea", () => document.createElement("textarea")],
+    ["select", () => document.createElement("select")],
     [
       "contenteditable child",
       () => {
@@ -100,16 +101,43 @@ describe("CursorChat", () => {
         return child;
       },
     ],
+    [
+      "contenteditable element",
+      () => {
+        const editor = document.createElement("div");
+        editor.setAttribute("contenteditable", "");
+        return editor;
+      },
+    ],
+    [
+      "input inside an open shadow root",
+      () => {
+        const host = document.createElement("div");
+        const input = document.createElement("input");
+        host.attachShadow({ mode: "open" }).appendChild(input);
+        return input;
+      },
+    ],
   ])("leaves keys typed into a host-page %s alone", (_label, makeTarget) => {
     vi.useFakeTimers();
     const onMessageUpdate = vi.fn();
     const chat = new CursorChat({ onMessageUpdate });
     const target = makeTarget();
-    document.body.appendChild(target.closest("[contenteditable]") ?? target);
+    const root = target.getRootNode();
+    const pageNode =
+      root instanceof ShadowRoot
+        ? root.host
+        : (target.closest("[contenteditable]") ?? target);
+    document.body.appendChild(pageNode);
 
     for (const key of ["/", "h", "i"]) {
       const notCancelled = target.dispatchEvent(
-        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }),
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          key,
+        }),
       );
       expect(notCancelled).toBe(true);
     }
