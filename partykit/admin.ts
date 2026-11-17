@@ -4,12 +4,10 @@ import { Buffer } from "node:buffer";
 import { env } from "cloudflare:workers";
 import * as Y from "yjs";
 import { supabase } from "./db";
-import { PartyServer } from "./party";
+import type { PartyServer } from "./party";
 import { docToJson } from "./docUtils";
 import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 import { getAdminAuthError } from "./adminAuth";
-
-export { getAdminAuthError } from "./adminAuth";
 
 function compareKeys(
   obj1: any,
@@ -692,10 +690,6 @@ export class AdminHandler {
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
-
-    if (request.method !== "POST") {
-      return new Response("Method Not Allowed", { status: 405 });
-    }
 
     try {
       const body = (await request.json()) as any;
