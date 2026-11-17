@@ -120,6 +120,10 @@ export function useFollowerCoordination(
 
     const channel = new BroadcastChannel(CHANNEL_NAME);
     channelRef.current = channel;
+    // Both refs hold one value for the hook's lifetime; the cleanup releases
+    // under this id and empties this map.
+    const id = idRef.current;
+    const claims = claimsRef.current;
 
     channel.onmessage = (event: MessageEvent<ClaimMessage>) => {
       const msg = event.data;
@@ -166,14 +170,14 @@ export function useFollowerCoordination(
         const release: ClaimMessage = {
           type: "release",
           cursor: myClaimRef.current,
-          by: idRef.current,
+          by: id,
         };
         channel.postMessage(release);
       }
       channel.onmessage = null;
       channel.close();
       channelRef.current = null;
-      claimsRef.current.clear();
+      claims.clear();
       myClaimRef.current = null;
     };
   }, [isFollower, broadcastClaim]);

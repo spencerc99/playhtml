@@ -1939,6 +1939,7 @@ const DynamicViewportRect = memo(
                   cloudy patches. DISABLED — the bold background color above bakes
                   in the deep look the mottle gave. Flip `false` to revive the
                   cloud/speckle texture. */}
+              {/* eslint-disable-next-line no-constant-binary-expression -- switched off on purpose, see above */}
               {false && !mono && (
                 <>
                   <rect

@@ -241,7 +241,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         pendingClicks.current = [];
         setActiveClickEffects((prev) => [...prev, ...clicks]);
       });
-    }, []);
+    }, [setActiveClickEffects]);
 
     // Loop wrap detection
     const prevElapsedRef = useRef(0);
@@ -366,7 +366,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           return pruned.length === prev.length ? prev : pruned;
         });
       });
-    }, []);
+    }, [setActiveClickEffects]);
 
     // The animation loop — pure imperative, no per-frame setState
     useEffect(() => {
@@ -842,7 +842,14 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
         document.removeEventListener("visibilitychange", handleVisibilityChange);
         clearScheduledFrame();
       };
-    }, [trailStates, timeRange.duration, frozen]);
+    }, [
+      trailStates,
+      timeRange.duration,
+      frozen,
+      scheduleFlushClicks,
+      scheduleRipplePrune,
+      setActiveClickEffects,
+    ]);
 
     const debug = useDebugHover();
 
