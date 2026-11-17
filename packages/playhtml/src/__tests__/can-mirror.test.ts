@@ -1172,6 +1172,15 @@ describe("can-mirror: onMount cleanup", () => {
     expect(typeof cleanup).toBe("function");
     expect((element as any).__playhtml_observer).toBeDefined();
 
+    // Before cleanup, an attribute change writes and hovering publishes.
+    element.setAttribute("data-color", "blue");
+    element.dispatchEvent(new MouseEvent("mouseenter"));
+    element.dispatchEvent(new MouseEvent("mouseleave"));
+    await flush();
+    expect(writes).toBeGreaterThan(0);
+    expect(published).toEqual([{ hover: true, focus: false }, undefined]);
+    const writesBeforeCleanup = writes;
+
     (cleanup as () => void)();
     expect((element as any).__playhtml_observer).toBeUndefined();
 
@@ -1185,7 +1194,7 @@ describe("can-mirror: onMount cleanup", () => {
     element.dispatchEvent(new Event("change"));
     await flush();
 
-    expect(writes).toBe(0);
-    expect(published).toEqual([]);
+    expect(writes).toBe(writesBeforeCleanup);
+    expect(published).toEqual([{ hover: true, focus: false }, undefined]);
   });
 });
