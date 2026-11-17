@@ -26,6 +26,7 @@ import {
   type PinnedCollage,
 } from "./pinnedCollages";
 import { coverColors } from "./coverPalette";
+import { boardContents, type PinnedLoad } from "./boardContents";
 import { GALLERY_STYLES } from "./galleryStyles";
 
 interface Pinned {
@@ -169,22 +170,29 @@ function PinnedCard({ pinned, at }: { pinned: Pinned; at: number }) {
   );
 }
 
-function usePinnedCollages(list: readonly PinnedCollage[]): Pinned[] | null {
-  const [pinned, setPinned] = useState<Pinned[] | null>(null);
+function usePinnedCollages(
+  list: readonly PinnedCollage[],
+): Pinned[] | "failed" | null {
+  const [pinned, setPinned] = useState<Pinned[] | "failed" | null>(null);
   useEffect(() => {
     let cancelled = false;
     void Promise.all(
-      list.map(async ({ id, by }) => {
+      list.map(async ({ id, by }): Promise<PinnedLoad<Pinned>> => {
         const load = await loadPublishedCollage(WORKER_URL, id);
         if (load.kind === "ok") return { id, by, collage: load.collage };
         if (load.kind === "error") {
           console.warn(`[collages] ${id} could not be opened:`, load.message);
+          return "failed";
         }
-        return null;
+        return "missing";
       }),
     ).then((loaded) => {
       if (cancelled) return;
-      const found = loaded.filter((entry): entry is Pinned => entry !== null);
+      const found = boardContents(loaded);
+      if (found === "failed") {
+        setPinned(found);
+        return;
+      }
       // Newest share first; the list's own order breaks ties.
       found.sort(
         (a, b) => (b.collage.sharedAt ?? 0) - (a.collage.sharedAt ?? 0),
@@ -273,6 +281,10 @@ function CollagesPage() {
         {pinned === null ? (
           <p className="collage-board__status" role="status">
             pinning up the collages...
+          </p>
+        ) : pinned === "failed" ? (
+          <p className="collage-board__status" role="status">
+            the collages could not be reached.
           </p>
         ) : pinned.length === 0 ? (
           <p className="collage-board__status" role="status">
