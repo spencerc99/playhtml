@@ -17,13 +17,13 @@ function traceSummary() {
       {
         label: "base",
         runs: 1,
-        meanMetrics: {
+        medianMetrics: {
           TaskDuration: 1,
           ScriptDuration: 0.4,
           LayoutDuration: 0.01,
           RecalcStyleDuration: 0.01,
+          JSHeapUsedSize: 10 * MB,
         },
-        medianMetrics: { JSHeapUsedSize: 10 * MB },
         metricSpread: {
           TaskDuration: 0.02,
           ScriptDuration: 0.01,
@@ -37,13 +37,13 @@ function traceSummary() {
       {
         label: "head",
         runs: 1,
-        meanMetrics: {
+        medianMetrics: {
           TaskDuration: 1.4,
           ScriptDuration: 0.41,
           LayoutDuration: 0.011,
           RecalcStyleDuration: 0.011,
+          JSHeapUsedSize: 17 * MB,
         },
-        medianMetrics: { JSHeapUsedSize: 17 * MB },
         metricSpread: {
           TaskDuration: 0.03,
           ScriptDuration: 0.01,
@@ -126,7 +126,7 @@ test("reports enforcement when failing on regression", () => {
 test("flags a metric the head trace stopped reporting", () => {
   const summary = traceSummary();
   const head = summary.summary.find((item) => item.label === "head");
-  delete head.meanMetrics.ScriptDuration;
+  delete head.medianMetrics.ScriptDuration;
 
   const comparison = compareSummaries(summary, { failOnRegression: true });
 
@@ -179,8 +179,8 @@ test("shows a small change on a tiny base as noise with no percent", () => {
 
 test("drops the percent for a real change on a duration base under the noise floor", () => {
   const summary = traceSummary();
-  summary.summary[0].meanMetrics.LayoutDuration = 0.01;
-  summary.summary[1].meanMetrics.LayoutDuration = 0.09;
+  summary.summary[0].medianMetrics.LayoutDuration = 0.01;
+  summary.summary[1].medianMetrics.LayoutDuration = 0.09;
 
   const layout = compareSummaries(summary).metrics.find(
     (metric) => metric.name === "LayoutDuration",
@@ -280,7 +280,7 @@ test("flags a heap median the base trace did not report", () => {
 
 test("drops the sign from a change that rounds to zero", () => {
   const summary = traceSummary();
-  summary.summary[1].meanMetrics.LayoutDuration = 0.0099;
+  summary.summary[1].medianMetrics.LayoutDuration = 0.0099;
 
   assert.match(
     formatMarkdownReport(compareSummaries(summary)),

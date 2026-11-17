@@ -190,31 +190,44 @@ describe("can-mirror", () => {
 
   // A shared list of 1,000 items: add 10 one at a time, add 500 in one go (a
   // paste or a script), then remove 10 from the middle. Times are wall clock
-  // for all of can-mirror's work (observer, shared write, send).
+  // for all of can-mirror's work (observer, shared write, send), as medians so
+  // one slow garbage collection on the runner doesn't move the number.
   it("list of 1,000 items", async () => {
     document.body.innerHTML = list("todo", 1000);
     await initPage("/bench-mirror-list");
     const ul = $("#todo");
 
-    let start = now();
-    const append = await measureTraffic(() =>
-      runFrames(10, (frame) => ul.appendChild(item(`New ${frame}`))),
-    );
+    let appendTimes: number[] = [];
+    const append = await measureTraffic(async () => {
+      appendTimes = await runFrames(10, (frame) =>
+        ul.appendChild(item(`New ${frame}`)),
+      );
+    });
     metrics.mirror_list_append_bytes = append.bytes;
-    metrics.mirror_list_edit_ms = +((now() - start) / 10).toFixed(1);
+    metrics.mirror_list_edit_ms = median(appendTimes);
 
-    start = now();
-    const bulk = await measureTraffic(() =>
-      runFrames(1, () => {
-        const fragment = document.createDocumentFragment();
-        for (let i = 0; i < 500; i += 1)
-          fragment.appendChild(item(`Bulk ${i}`));
-        // One insert per item, the way a loop of appendChild calls lands.
-        for (const li of [...fragment.childNodes]) ul.appendChild(li);
-      }),
-    );
-    metrics.mirror_list_bulk_bytes = bulk.bytes;
-    metrics.mirror_list_bulk_ms = +(now() - start).toFixed(1);
+    // Add 500 at once three times, taking each batch out again in between,
+    // and report the median. Bytes are from the first batch.
+    const addBulk = () => {
+      const fragment = document.createDocumentFragment();
+      for (let i = 0; i < 500; i += 1) fragment.appendChild(item(`Bulk ${i}`));
+      // One insert per item, the way a loop of appendChild calls lands.
+      for (const li of [...fragment.childNodes]) ul.appendChild(li);
+    };
+    const bulkTimes: number[] = [];
+    for (let run = 0; run < 3; run += 1) {
+      if (run > 0)
+        await runFrames(1, () => {
+          for (const li of [...ul.children].slice(-500)) li.remove();
+        });
+      let frameTimes: number[] = [];
+      const bulk = await measureTraffic(async () => {
+        frameTimes = await runFrames(1, addBulk);
+      });
+      bulkTimes.push(frameTimes[0]);
+      if (run === 0) metrics.mirror_list_bulk_bytes = bulk.bytes;
+    }
+    metrics.mirror_list_bulk_ms = median(bulkTimes);
 
     const remove = await measureTraffic(() =>
       runFrames(10, () => ul.children[500].remove()),
