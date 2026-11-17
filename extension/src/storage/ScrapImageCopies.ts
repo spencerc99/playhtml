@@ -152,21 +152,6 @@ export async function hasImageCopy(src: string): Promise<boolean> {
   });
 }
 
-/** The stored copy's metadata for a URL, if one is held. */
-export async function imageCopyFor(
-  src: string,
-): Promise<ImageCopy | undefined> {
-  return transact([SOURCES, COPIES], "readonly", async (transaction) => {
-    const source = (await requestResult(
-      transaction.objectStore(SOURCES).get(src),
-    )) as SourceRow | undefined;
-    if (!source) return undefined;
-    return (await requestResult(
-      transaction.objectStore(COPIES).get(source.hash),
-    )) as ImageCopy | undefined;
-  });
-}
-
 /** The stored image bytes for each URL that has a copy. */
 export async function readImageCopies(
   srcs: readonly string[],

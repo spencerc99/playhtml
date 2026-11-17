@@ -61,7 +61,7 @@ interface OverlaySettings {
   documentSpace: boolean;
 }
 
-export const defaultSettings: OverlaySettings = {
+const defaultSettings: OverlaySettings = {
   showCursorTrails: true,
   showCursorClicks: false,
   showTyping: false,
@@ -89,7 +89,7 @@ type Props = {
 
 const DOUBLE_TAP_THRESHOLD_MS = 300;
 
-export type OverlayLoadState = "loading" | "ready" | "empty" | "error";
+type OverlayLoadState = "loading" | "ready" | "empty" | "error";
 
 /** Shown in place of the trails when a load fails; the dev bar has the details. */
 export const LOAD_FAILED_TEXT = "couldn't load trails";
@@ -494,11 +494,9 @@ export function HistoricalOverlay({
   );
 
   const {
-    trails,
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
-    documentCanvasSize,
   } = useCursorTrails(
     events as unknown as MovementCollectionEvent[],
     viewportSize,
@@ -597,18 +595,6 @@ export function HistoricalOverlay({
     viewportSize,
     viewportSettings,
   );
-
-  // Compute date range
-  const dateRange = useMemo(() => {
-    if (events.length === 0) return null;
-    const timestamps = events.map((e) => e.ts);
-    const oldest = Math.min(...timestamps);
-    const newest = Math.max(...timestamps);
-    return {
-      oldest: new Date(oldest).toISOString(),
-      newest: new Date(newest).toISOString(),
-    };
-  }, [events]);
 
   async function handleCapturePagePortrait() {
     try {
