@@ -1037,10 +1037,18 @@ export class PartyServerV2 extends PresenceServer {
   ): void {
     const state = connection.state as Record<string, unknown> | null;
     if (state?.[V2_CLIENT_ID_STATE_KEY] === clientId) return;
-    connection.setState((previous: unknown) => ({
-      ...((previous as Record<string, unknown> | null) ?? {}),
-      [V2_CLIENT_ID_STATE_KEY]: clientId,
-    }));
+    try {
+      connection.setState((previous: unknown) => ({
+        ...((previous as Record<string, unknown> | null) ?? {}),
+        [V2_CLIENT_ID_STATE_KEY]: clientId,
+      }));
+    } catch (error) {
+      // Connection state has a size limit shared with presence. Failing to
+      // record the client must not cost the write that is being handled.
+      console.warn(
+        `[PartyServerV2] Could not record client id on connection for room=${this.name}: ${getErrorMessage(error)}`,
+      );
+    }
   }
 
   private getConnectedClientIds(): Set<string> {

@@ -746,8 +746,7 @@ describe("pending operations past the replay age limit", () => {
     ).toBe(2);
   });
 
-  it("the transport does not resend an old unconfirmed operation after a snapshot", () => {
-    const server = new InProcessServer();
+  it("the transport never resends an old unconfirmed operation when it reconnects", () => {
     const socket = new FakeSocket();
     let now = 1_000_000;
     const transport = new V2Transport(
@@ -779,8 +778,9 @@ describe("pending operations past the replay age limit", () => {
     now += PENDING_OPERATION_MAX_AGE_MS + 1;
     transport.send(operation(2));
     socket.disconnect();
-    socket.receive(server.snapshotMessage());
     socket.sent = [];
+    // Real reconnect order: the socket opens and pending operations are
+    // resent before any snapshot from the server can arrive.
     socket.open();
 
     const resent = socket.sent

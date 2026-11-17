@@ -452,4 +452,53 @@ describe("playhtml version 2 integration", () => {
     expect(elementHandlers.get("can-play")?.get("v2-doomed")).toBeUndefined();
     expect(sentCount).toBeGreaterThan(0);
   });
+
+  it("puts its copy back when it changes an element someone else deleted", async () => {
+    const server = new InProcessServer();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const element = document.createElement("div");
+    element.id = "v2-revived";
+    element.setAttribute("can-play", "");
+    (element as any).defaultData = { count: 4, entries: ["a"] };
+    (element as any).updateElement = () => {};
+    document.body.appendChild(element);
+
+    const initialized = playhtml.init({
+      v2: true,
+      host: "localhost:1999",
+      room: "/v2-remote-delete",
+    });
+    const socket = await waitForV2Socket();
+    socket.receive(server.snapshotMessage());
+    await initialized;
+    await waitForOutgoingFlush();
+    let sentCount = flushClientMessages(server, socket, 0);
+
+    socket.receive(
+      server.applyRemote({
+        type: "delete-element",
+        capability: "can-play",
+        elementId: "v2-revived",
+        path: [],
+      }),
+    );
+    await waitForAnimationFrame();
+    expect(server.snapshot.state).toEqual({});
+
+    const handler = elementHandlers.get("can-play")?.get("v2-revived");
+    handler?.setData((draft: { count: number; entries: string[] }) => {
+      draft.count += 1;
+      draft.entries.push("b");
+    });
+    await waitForOutgoingFlush();
+    sentCount = flushClientMessages(server, socket, sentCount);
+    await waitForAnimationFrame();
+
+    expect(server.snapshot.state["can-play"]?.["v2-revived"]).toEqual({
+      count: 5,
+      entries: ["a", "b"],
+    });
+    expect(handler?.data).toEqual({ count: 5, entries: ["a", "b"] });
+    expect(sentCount).toBeGreaterThan(0);
+  });
 });

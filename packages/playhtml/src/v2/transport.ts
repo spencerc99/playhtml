@@ -406,6 +406,7 @@ export class V2Transport {
     this.hasConnected = true;
     this.isConnected = true;
     if (reconnecting) this.requestSnapshot();
+    this.dropExpiredPending();
     for (const pending of this.pending) this.sendIfOpen(pending);
     this.emitStatus({ type: "connected" });
   };
@@ -442,20 +443,10 @@ export class V2Transport {
       const confirmed = this.clientId
         ? (message.snapshot.lastMutationIds[this.clientId] ?? 0)
         : 0;
-      // An operation older than the limit is dropped rather than replayed:
-      // the server may have applied it and since forgotten this client, and
-      // would then apply it a second time.
-      const oldestAllowed = this.now() - PENDING_OPERATION_MAX_AGE_MS;
       this.pending = this.pending.filter(
-        (pending) =>
-          pending.mutationId > confirmed &&
-          (this.pendingCreatedAt.get(pending.mutationId) ?? oldestAllowed) >=
-            oldestAllowed,
+        (pending) => pending.mutationId > confirmed,
       );
-      const kept = new Set(this.pending.map((pending) => pending.mutationId));
-      for (const mutationId of this.pendingCreatedAt.keys()) {
-        if (!kept.has(mutationId)) this.pendingCreatedAt.delete(mutationId);
-      }
+      this.dropExpiredPending();
       return;
     }
 
@@ -475,6 +466,22 @@ export class V2Transport {
       this.dropPending(message.mutationId);
     }
     this.emitStatus({ type: "write-rejected", rejection: message });
+  }
+
+  // An operation older than the limit is dropped rather than resent: the
+  // server may have applied it and since forgotten this client, and would
+  // then apply it a second time. This runs before every resend.
+  private dropExpiredPending(): void {
+    const oldestAllowed = this.now() - PENDING_OPERATION_MAX_AGE_MS;
+    this.pending = this.pending.filter(
+      (pending) =>
+        (this.pendingCreatedAt.get(pending.mutationId) ?? oldestAllowed) >=
+        oldestAllowed,
+    );
+    const kept = new Set(this.pending.map((pending) => pending.mutationId));
+    for (const mutationId of this.pendingCreatedAt.keys()) {
+      if (!kept.has(mutationId)) this.pendingCreatedAt.delete(mutationId);
+    }
   }
 
   private dropPending(mutationId: number): void {

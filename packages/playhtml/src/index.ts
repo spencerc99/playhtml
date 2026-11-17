@@ -2278,6 +2278,16 @@ function createPlayElementData<T extends TagType, TData = any>(
         if (!v2Store) {
           throw new Error("playhtml version 2 store is unavailable after sync");
         }
+        if (
+          typeof newData === "function" &&
+          v2Store.getSnapshot().state[tag]?.[elementId] === undefined
+        ) {
+          // Someone else deleted this element's data from the room. A change
+          // needs something to change, so this page's copy is put back first.
+          const current = elementHandlers.get(tag)?.get(elementId)?.data;
+          if (current === undefined) return;
+          mutateV2Element(tag, elementId, clonePlain(current) as JsonValue);
+        }
         mutateV2Element(
           tag,
           elementId,
@@ -3911,14 +3921,6 @@ function deleteElementData(tag: string, elementId: string): void {
   const key = `${tag}:${elementId}`;
 
   if (configuredOptions?.v2) {
-    v2ElementUnsubscribeByKey.get(key)?.();
-    v2ElementUnsubscribeByKey.delete(key);
-    const pendingFrame = v2ElementApplyFrameByKey.get(key);
-    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
-    v2ElementApplyFrameByKey.delete(key);
-    const handler = elementHandlers.get(tag)?.get(elementId);
-    handler?.destroy();
-    elementHandlers.get(tag)?.delete(elementId);
     if (!v2Store) {
       throw new Error("playhtml version 2 store is not connected");
     }
@@ -3932,6 +3934,14 @@ function deleteElementData(tag: string, elementId: string): void {
       );
       return;
     }
+    v2ElementUnsubscribeByKey.get(key)?.();
+    v2ElementUnsubscribeByKey.delete(key);
+    const pendingFrame = v2ElementApplyFrameByKey.get(key);
+    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+    v2ElementApplyFrameByKey.delete(key);
+    const handler = elementHandlers.get(tag)?.get(elementId);
+    handler?.destroy();
+    elementHandlers.get(tag)?.delete(elementId);
     v2Store.deleteElement(tag, elementId);
     return;
   }
