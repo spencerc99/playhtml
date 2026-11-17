@@ -591,7 +591,7 @@ function canGrowCursorHandler(
     }
     element.style.cursor = cutCursor;
   } else {
-    if (data.scale >= data.maxScale) {
+    if (data.scale >= localData.maxScale) {
       element.style.cursor = "not-allowed";
       return;
     }
@@ -943,14 +943,20 @@ export const TagTypeToElement: DefaultTagInitializers = {
     defaultPresence: { hover: false },
     onMount: ({ getElement, setMyPresence }) => {
       const element = getElement();
-      element.addEventListener("mouseenter", () => {
+      const onMouseEnter = () => {
         setMyPresence({ hover: true });
         element.setAttribute("data-playhtml-hover", "");
-      });
-      element.addEventListener("mouseleave", () => {
+      };
+      const onMouseLeave = () => {
         setMyPresence({ hover: false });
         element.removeAttribute("data-playhtml-hover");
-      });
+      };
+      element.addEventListener("mouseenter", onMouseEnter);
+      element.addEventListener("mouseleave", onMouseLeave);
+      return () => {
+        element.removeEventListener("mouseenter", onMouseEnter);
+        element.removeEventListener("mouseleave", onMouseLeave);
+      };
     },
     update: ({ element, everyone }) => {
       const anyHover = everyone.some((person) => person.presence?.hover);
