@@ -39,7 +39,7 @@ import type {
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import type { Map as YMap } from "yjs";
 import { ElementHandler } from "./elements";
-import { cloneStoreValue, hashElement } from "./utils";
+import { cloneStoreValue, hashElement, warnHashedElementId } from "./utils";
 import type { CursorClientAwareness } from "./cursors/cursor-client";
 import { getPresencePage } from "./cursors/presence-page";
 import { createUsersAPI, defaultSeedIdentity } from "./users";
@@ -2751,6 +2751,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
       element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
       selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
     } else {
+      if (isDevMode()) warnHashedElementId(tag, element);
       element.id = await hashElement(tag, element);
     }
   }
