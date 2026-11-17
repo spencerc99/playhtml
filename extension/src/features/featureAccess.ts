@@ -14,6 +14,11 @@ import {
   type FeatureState,
 } from "../flags";
 import { FEATURE_CATALOG, isFeatureStage } from "../../shared/featureCatalog";
+import { getStoredPlayerIdentity } from "../storage/playerIdentity";
+import {
+  featureAccessHeaders,
+  signFeatureAccessRequest,
+} from "../utils/featureAccessRequest";
 
 export const FEATURE_ACCESS_STORAGE_KEY = "wwoFeatureAccess";
 export const FEATURE_OVERRIDES_STORAGE_KEY = "wwoFeatureOverrides";
@@ -156,9 +161,26 @@ export async function clearFeatureOverrides(): Promise<void> {
   await browser.storage.local.remove(FEATURE_OVERRIDES_STORAGE_KEY);
 }
 
+/**
+ * Reads this participant's feature access from the Worker, signed with the
+ * stored identity key so nobody else can look up the same id. Throws when no
+ * stored identity holds the key for `publicId`.
+ */
 export async function refreshFeatureAccess(publicId: string): Promise<FeatureAccessSnapshot> {
+  const identity = await getStoredPlayerIdentity();
+  if (!identity) {
+    throw new Error("Feature access check needs a stored identity");
+  }
+  if (identity.public.publicKey !== publicId) {
+    throw new Error("Feature access check is for a different identity than the stored one");
+  }
+  const signed = await signFeatureAccessRequest(identity.privateKey, {
+    publicId,
+    signedAt: Date.now(),
+  });
   const response = await fetch(
     `${WORKER_URL}/feature-access/${encodeURIComponent(publicId)}`,
+    { headers: featureAccessHeaders(signed), cache: "no-store" },
   );
   if (!response.ok) {
     throw new Error(`Feature access check failed with ${response.status}`);
