@@ -345,6 +345,69 @@ describe("leaving the studio", () => {
   });
 });
 
+/** Whether a promise has settled within a short real-time wait. */
+async function settlesSoon(promise: Promise<unknown>): Promise<boolean> {
+  const pending = Symbol("pending");
+  const outcome = await Promise.race([
+    promise.then(
+      () => "settled",
+      () => "settled",
+    ),
+    new Promise((resolve) => setTimeout(() => resolve(pending), 50)),
+  ]);
+  return outcome !== pending;
+}
+
+describe("leaving the studio while the drawer fails", () => {
+  // Reopening the collage waits on this promise, so one that never settled
+  // would leave "opening collage tools..." on screen for good.
+  it("lets go of the reopen once the last write has failed", async () => {
+    const timers = manualTimers();
+    const loaded = new Blob(["the original picture"], { type: "image/png" });
+    const attempts: CollageRecord[] = [];
+    const closings: Promise<void>[] = [];
+    const autosave = await mountAutosave({
+      draft: () => ({
+        record: baseRecord({ drawn: true, image: loaded }),
+        hasContent: true,
+      }),
+      bake: () => deferredBlob().promise,
+      store: async (record) => {
+        attempts.push(record);
+        throw new Error("the collage drawer would not open");
+      },
+      onStored: () => {},
+      startsStored: true,
+      reopening: baseRecord({ drawn: true, image: loaded }),
+      timers,
+      onClosed: (stored) => closings.push(stored),
+    });
+
+    // One write has already failed and is waiting on its retry.
+    await act(async () => {
+      autosave.current().noteChange();
+      timers.runAll();
+    });
+    await act(async () => {});
+    expect(autosave.current().standing.kind).toBe("failed");
+    expect(attempts).toHaveLength(1);
+
+    const root = mounted!;
+    mounted = null;
+    await act(async () => root.unmount());
+    await act(async () => {});
+
+    expect(closings).toHaveLength(1);
+    // Leaving writes once more, and that write fails too.
+    expect(attempts).toHaveLength(2);
+    expect(await settlesSoon(closings[0])).toBe(true);
+    // A closed studio no longer retries on its own.
+    await act(async () => timers.runAll());
+    await act(async () => {});
+    expect(attempts).toHaveLength(2);
+  });
+});
+
 describe("a write that fails", () => {
   it("is tried again on its own until it lands", async () => {
     const timers = manualTimers();
