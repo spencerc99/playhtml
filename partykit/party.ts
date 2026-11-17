@@ -1548,7 +1548,12 @@ export class PartyServer extends YServer {
           const response = await sourceRoom.fetch(
             internalRequest("/subscribe", subscribeRequest)
           );
-          if (!response.ok) return;
+          if (!response.ok) {
+            console.warn(
+              `[Bridge] Subscribe request rejected: consumer=${this.name} source=${sourceRoomId} status=${response.status}`
+            );
+            return;
+          }
 
           const subscribeResponse =
             (await response.json()) as SubscribeResponse;
@@ -1572,7 +1577,11 @@ export class PartyServer extends YServer {
               ORIGIN_S2C
             );
           }
-        } catch {}
+        } catch (error) {
+          console.warn(
+            `[Bridge] Subscribe and hydrate failed: consumer=${this.name} source=${sourceRoomId}: ${getErrorMessage(error)}`
+          );
+        }
       })
     );
 
@@ -1808,7 +1817,11 @@ export class PartyServer extends YServer {
           }
         )
       );
-    } catch {}
+    } catch (error) {
+      console.warn(
+        `[Bridge] Shared element fanout failed: source=${this.name} elementId=${element.elementId}: ${getErrorMessage(error)}`
+      );
+    }
   }
 
   // Counts joined sockets. Pending and held ones are excluded like everywhere
