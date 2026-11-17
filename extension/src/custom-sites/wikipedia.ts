@@ -263,6 +263,51 @@ export function isWikipediaPortalArticleUrl(url: string): boolean {
   return isWikiArticleUrl(url);
 }
 
+/**
+ * Modified and non-primary clicks open links in new tabs or windows, so they
+ * are left to the browser rather than delayed for followers.
+ */
+export function isPlainPrimaryClick(
+  event: Pick<MouseEvent, "button" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">,
+): boolean {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
+
+/**
+ * Returns a filter over chat presence batches that yields each message id
+ * once, like ChatManager: the first (subscribe-time replay) batch only records
+ * what peers already hold, and later batches skip messages already echoed.
+ */
+export function createChatEchoTracker(): (
+  presences: Map<string, unknown>,
+) => Array<{ pid: string; text: string; view: unknown }> {
+  const echoedIds = new Map<string, string>();
+  let seeded = false;
+  return (presences) => {
+    const seeding = !seeded;
+    seeded = true;
+    const echoes: Array<{ pid: string; text: string; view: unknown }> = [];
+    presences.forEach((view, pid) => {
+      const raw = (view as Record<string, unknown> | null)?.chat;
+      if (!raw || typeof raw !== "object") return;
+      const message = raw as Record<string, unknown>;
+      if (typeof message.text !== "string" || typeof message.id !== "string") {
+        return;
+      }
+      if (echoedIds.get(pid) === message.id) return;
+      echoedIds.set(pid, message.id);
+      if (!seeding) echoes.push({ pid, text: message.text, view });
+    });
+    return echoes;
+  };
+}
+
 export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   const cleanups: (() => void)[] = [];
 
@@ -496,16 +541,13 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   // Cursor-anchored echo bubble for each message
   if (deps.cursorClient) {
     const echoRenderer = new ChatEchoRenderer(deps.cursorClient);
+    const takeNewEchoes = createChatEchoTracker();
     const unsubEcho = deps.presence.onPresenceChange("chat", (presences) => {
-      presences.forEach((view, pid) => {
-        const raw = (view as Record<string, unknown>).chat;
-        if (!raw || typeof raw !== "object") return;
-        const m = raw as Record<string, unknown>;
-        if (typeof m.text !== "string" || typeof m.id !== "string") return;
+      for (const { pid, text, view } of takeNewEchoes(presences)) {
         const color =
           (view as any).playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#c4724e";
-        echoRenderer.setEcho(pid, m.text, color);
-      });
+        echoRenderer.setEcho(pid, text, color);
+      }
     });
     cleanups.push(unsubEcho);
     cleanups.push(() => echoRenderer.destroy());
@@ -514,6 +556,7 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   // Broadcast navigatingTo on Wikipedia article link clicks.
   // Only delay navigation when someone is following — solo users get instant clicks.
   const onClick = (e: MouseEvent) => {
+    if (!isPlainPrimaryClick(e)) return;
     const link = (e.target as HTMLElement).closest("a[href]") as HTMLAnchorElement | null;
     if (!link || !link.href || link.target === "_blank") return;
 
