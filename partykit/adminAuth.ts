@@ -23,8 +23,9 @@ function bearerToken(request: Request): string | null {
 // `?token=` query parameter is a fallback; each use logs a warning (path only,
 // never the token) so its remaining callers are visible in server logs.
 function presentedToken(request: Request): string | null {
-  const fromHeader = bearerToken(request);
-  if (fromHeader) return fromHeader;
+  // A header that is present decides the outcome, valid or not: a malformed
+  // one is rejected instead of falling through to the query parameter.
+  if (request.headers.has("Authorization")) return bearerToken(request);
 
   const url = new URL(request.url);
   const fromQuery = url.searchParams.get("token");

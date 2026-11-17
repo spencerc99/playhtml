@@ -129,6 +129,18 @@ describe("getAdminAuthError", () => {
     expect(res?.status).toBe(401);
     expect(warnSpy).not.toHaveBeenCalled();
   });
+
+  it.each(["secret", "Basic secret", "Bearer"])(
+    "rejects a malformed header (%s) even with a valid query token",
+    async (authorization) => {
+      const res = await getAdminAuthError(
+        request(`${ADMIN_URL}?token=secret`, { Authorization: authorization }),
+        "secret",
+      );
+      expect(res?.status).toBe(401);
+      expect(warnSpy).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("secretMatches", () => {
