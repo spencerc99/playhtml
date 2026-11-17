@@ -13,7 +13,7 @@ npm install playhtml @playhtml/react # or
 
 ## Compatibility
 
-`@playhtml/react` is compatible with React versions 16.8.0 and above, including React 17, React 18, and React 19.
+`@playhtml/react` works with React 18.2 and above, including React 19. It uses the `react` and `react-dom` installed in your app instead of bringing its own copy.
 
 ## Usage
 
