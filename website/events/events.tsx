@@ -2,6 +2,12 @@ import { withSharedState } from "@playhtml/react";
 import randomColor from "randomcolor";
 import React, { useEffect, useState } from "react";
 import "./events.scss";
+import {
+  formatTime,
+  isTimerRunning,
+  timerElapsedMs,
+  type TimerData,
+} from "./eventTimer";
 
 const NumCursors = 50;
 
@@ -50,38 +56,6 @@ export function Cursors() {
   );
 }
 
-interface TimerData {
-  // Whole seconds shown when the timer was last paused or reset. Rooms saved
-  // before startedAt/pausedElapsedMs existed only have this field.
-  time: number;
-  isRunning: boolean;
-  // When the current run started (Date.now()), present only while running.
-  startedAt?: number;
-  // Milliseconds accumulated before the current run.
-  pausedElapsedMs?: number;
-}
-
-function timerElapsedMs(data: TimerData, now: number): number {
-  const base =
-    typeof data.pausedElapsedMs === "number"
-      ? data.pausedElapsedMs
-      : (data.time ?? 0) * 1000;
-  if (data.isRunning && typeof data.startedAt === "number") {
-    return base + Math.max(0, now - data.startedAt);
-  }
-  return base;
-}
-
-function formatTime(totalSeconds: number) {
-  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
-  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
-    2,
-    "0",
-  );
-  const seconds = String(totalSeconds % 60).padStart(2, "0");
-  return `${hours}:${minutes}:${seconds}`;
-}
-
 // Shared stopwatch. The room stores when the current run started and how much
 // time came before it; each visitor ticks the display locally. Shared data is
 // written only from the Start/Pause and Reset buttons.
@@ -91,9 +65,7 @@ export const Timer = withSharedState(
   },
   ({ data, setData }) => {
     const [now, setNow] = useState(() => Date.now());
-    // A room saved before startedAt existed can say it is running with no
-    // start time; it shows as paused until someone presses Start.
-    const isRunning = data.isRunning && typeof data.startedAt === "number";
+    const isRunning = isTimerRunning(data);
 
     useEffect(() => {
       if (!isRunning) return;
