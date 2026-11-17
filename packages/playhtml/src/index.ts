@@ -242,6 +242,8 @@ let v2TransportPlayEventUnsubscribe: (() => void) | null = null;
 let v2StoreStatusUnsubscribe: (() => void) | null = null;
 const v2ElementUnsubscribeByKey = new Map<string, () => void>();
 const v2ElementApplyFrameByKey = new Map<string, number>();
+// Elements whose own-write render is queued for the end of the current tick.
+const v2ElementLocalApplyQueued = new Set<string>();
 const v2PageDataChannels = new Set<V2PageDataChannel<unknown>>();
 let mainUpdateCoalescer: UpdateCoalescer | null = null;
 let flushesUpdatesOnPageHide = false;
@@ -1254,6 +1256,7 @@ function teardownV2Connection(): void {
     cancelAnimationFrame(frame);
   }
   v2ElementApplyFrameByKey.clear();
+  v2ElementLocalApplyQueued.clear();
   v2StoreStatusUnsubscribe?.();
   v2StoreStatusUnsubscribe = null;
   v2TransportMessageUnsubscribe?.();
@@ -3274,6 +3277,7 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
     const pendingFrame = v2ElementApplyFrameByKey.get(key);
     if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
     v2ElementApplyFrameByKey.delete(key);
+    v2ElementLocalApplyQueued.delete(key);
     if (!v2Store) return;
     const unsubscribe = v2Store.subscribe(tag, elementId, () => {
       // A local write must be readable in the same tick: drag math reads
@@ -3287,6 +3291,21 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
           // @ts-ignore private usage intended
           handler.__dataSilent = clonePlain(value);
         }
+        // The writer's own change renders as soon as the write finishes, so
+        // a click is not held back a frame. Running after the write, never
+        // during it, is what keeps this free of re-entrant write-backs.
+        if (v2ElementLocalApplyQueued.has(key)) return;
+        v2ElementLocalApplyQueued.add(key);
+        queueMicrotask(() => {
+          if (!v2ElementLocalApplyQueued.delete(key)) return;
+          const pendingRemoteFrame = v2ElementApplyFrameByKey.get(key);
+          if (pendingRemoteFrame !== undefined) {
+            cancelAnimationFrame(pendingRemoteFrame);
+            v2ElementApplyFrameByKey.delete(key);
+          }
+          applySharedElementDataToHandler(tag, elementId, handler);
+        });
+        return;
       }
       if (v2ElementApplyFrameByKey.has(key)) return;
       const frame = requestAnimationFrame(() => {
@@ -3501,6 +3520,7 @@ function removePlayElement(element: Element | null) {
       const pendingFrame = v2ElementApplyFrameByKey.get(key);
       if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
       v2ElementApplyFrameByKey.delete(key);
+      v2ElementLocalApplyQueued.delete(key);
     } else {
       detachElementObserver(key);
     }
@@ -3987,6 +4007,7 @@ function deleteElementData(tag: string, elementId: string): void {
     const pendingFrame = v2ElementApplyFrameByKey.get(key);
     if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
     v2ElementApplyFrameByKey.delete(key);
+    v2ElementLocalApplyQueued.delete(key);
     const handler = elementHandlers.get(tag)?.get(elementId);
     handler?.destroy();
     elementHandlers.get(tag)?.delete(elementId);

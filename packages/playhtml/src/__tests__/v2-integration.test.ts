@@ -238,6 +238,44 @@ describe("playhtml version 2 integration", () => {
     expect(sentCount).toBeGreaterThan(0);
   });
 
+  it("renders a person's own write as soon as the write finishes, without waiting for a frame", async () => {
+    const server = new InProcessServer();
+    const element = document.createElement("div");
+    element.id = "v2-own-write";
+    element.setAttribute("can-play", "");
+    (element as any).defaultData = { count: 0 };
+    (element as any).updateElement = ({
+      element: target,
+      data,
+    }: {
+      element: HTMLElement;
+      data: { count: number };
+    }) => {
+      target.textContent = String(data.count);
+    };
+    document.body.appendChild(element);
+
+    const initialized = playhtml.init({
+      v2: true,
+      host: "localhost:1999",
+      room: "/v2-own-write",
+    });
+    const socket = await waitForV2Socket();
+    socket.receive(server.snapshotMessage());
+    await initialized;
+    await waitForAnimationFrame();
+    expect(element.textContent).toBe("0");
+
+    const frame = vi.spyOn(window, "requestAnimationFrame");
+    const handler = elementHandlers.get("can-play")?.get("v2-own-write");
+    handler?.setData({ count: 1 });
+    handler?.setData({ count: 2 });
+    await Promise.resolve();
+
+    expect(element.textContent).toBe("2");
+    expect(frame).not.toHaveBeenCalled();
+  });
+
   it("seeds, mutates, and renders remote operations without a Yjs provider", async () => {
     const server = new InProcessServer();
     const updateElement = vi.fn(({ element, data }) => {
