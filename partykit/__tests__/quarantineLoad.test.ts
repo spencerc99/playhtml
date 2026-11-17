@@ -3054,8 +3054,11 @@ describe("quarantine data safety", () => {
       }
       await originalPut(key, value);
     };
+    const errors: string[] = [];
     const originalError = console.error;
-    console.error = () => {};
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
 
     try {
       await expect(
@@ -3068,6 +3071,9 @@ describe("quarantine data safety", () => {
       console.error = originalError;
     }
 
+    expect(
+      errors.some((line) => line.includes("epoch storage unavailable"))
+    ).toBe(true);
     expect(upsertCalls).toHaveLength(1);
     const committedDocument = persistedRow.document;
     expect(room.documentMaintenanceInProgress).toBe(true);
@@ -3083,8 +3089,11 @@ describe("quarantine data safety", () => {
     const { room } = createRoom();
     room.documentLoadCompleted = true;
     upsertError = new Error("database unavailable");
+    const errors: string[] = [];
     const originalError = console.error;
-    console.error = () => {};
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
 
     try {
       await expect(
@@ -3097,6 +3106,9 @@ describe("quarantine data safety", () => {
       console.error = originalError;
     }
 
+    expect(
+      errors.some((line) => line.includes("Database save failed"))
+    ).toBe(true);
     expect(room.documentMaintenanceInProgress).toBe(false);
   });
 
