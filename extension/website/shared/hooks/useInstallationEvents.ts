@@ -58,7 +58,7 @@ export function useInstallationEvents(
   // be inert for it. Passing no active visualizations makes it fetch nothing
   // (deriveRequiredEventTypes is empty → it bails before any request). The
   // master and standalone (null) pass the real params. If a follower's
-  // IndexedDB is unavailable it flips this ref and re-runs with real params so
+  // IndexedDB is unavailable it flips this flag and re-runs with real params so
   // it can fall back to fetching.
   const [followerMustFetch, setFollowerMustFetch] = useState(false);
   const useLiveFetch = role !== "follower" || followerMustFetch;

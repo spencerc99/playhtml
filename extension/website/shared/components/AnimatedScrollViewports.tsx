@@ -1994,7 +1994,7 @@ const DynamicViewportRect = memo(
             </g>
           </g>
 
-          {/* Abstract pixelated page preview via iframe */}
+          {/* Live page preview via iframe */}
           {settings.showPagePreview && animation.pageUrl && (
             <PagePreview
               url={animation.pageUrl}
