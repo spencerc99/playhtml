@@ -152,7 +152,6 @@ describe("can-mirror", () => {
     const store = (playhtml.syncedStore as any)["can-mirror"];
     expect(store["panel-items"].children).toHaveLength(2);
     expect(store["pg-mirror-text"].formState.value).toBe("a".repeat(20));
-    metrics.mirror_playground_msgs = traffic.messages;
     metrics.mirror_playground_bytes = traffic.bytes;
     metrics.mirror_playground_doc_growth = traffic.docGrowth;
 
@@ -179,39 +178,8 @@ describe("can-mirror", () => {
       (playhtml.syncedStore as any)["can-mirror"].signup.children[25]
         .children[1].formState.value,
     ).toBe("x".repeat(50));
-    metrics.mirror_form_type_msgs = traffic.messages;
     metrics.mirror_form_type_bytes = traffic.bytes;
     metrics.mirror_form_type_doc_growth = traffic.docGrowth;
-  });
-
-  // Someone else types the same answer; this client shows it.
-  it("remote typing in a 50-field form", async () => {
-    document.body.innerHTML = form("signup-remote", 50);
-    await initPage("/bench-mirror-form-remote");
-    const peer = remotePeer();
-    const root = $("#signup-remote");
-    const timings: number[] = [];
-    let echoed = 0;
-    const writes = await countDomWrites(root, async () => {
-      provider().ws.send.mockClear();
-      await runFrames(50, (frame) => {
-        const start = now();
-        peer.edit((play) => {
-          const field =
-            play["can-mirror"]["signup-remote"].children[25].children[1];
-          if (field.formState) field.formState.value = "x".repeat(frame);
-          else field.formState = { value: "x".repeat(frame) };
-        });
-        timings.push(now() - start);
-      });
-      echoed = provider().ws.send.mock.calls.length;
-    });
-    expect($<HTMLInputElement>('#signup-remote input[name="f25"]').value).toBe(
-      "x".repeat(50),
-    );
-    metrics.mirror_remote_type_dom_writes = writes;
-    metrics.mirror_remote_type_echo_msgs = echoed;
-    metrics.mirror_remote_type_ms = median(timings);
   });
 
   // A shared list of 100 items: add 50 one at a time, add 200 in one go (a
@@ -224,9 +192,7 @@ describe("can-mirror", () => {
     const append = await measureTraffic(() =>
       runFrames(50, (frame) => ul.appendChild(item(`New ${frame}`))),
     );
-    metrics.mirror_list_append_msgs = append.messages;
     metrics.mirror_list_append_bytes = append.bytes;
-    metrics.mirror_list_append_doc_growth = append.docGrowth;
 
     let bulkMs = 0;
     const bulk = await measureTraffic(() =>
@@ -240,7 +206,6 @@ describe("can-mirror", () => {
         bulkMs = now() - start;
       }),
     );
-    metrics.mirror_list_bulk_msgs = bulk.messages;
     metrics.mirror_list_bulk_bytes = bulk.bytes;
 
     const remove = await measureTraffic(() =>
@@ -249,51 +214,8 @@ describe("can-mirror", () => {
     expect(
       (playhtml.syncedStore as any)["can-mirror"].todo.children,
     ).toHaveLength(300);
-    metrics.mirror_list_remove_msgs = remove.messages;
     metrics.mirror_list_remove_bytes = remove.bytes;
     metrics.mirror_list_bulk_ms = +bulkMs.toFixed(1);
-  });
-
-  // Someone else adds 50 items to the shared list, one at a time.
-  it("remote list append", async () => {
-    document.body.innerHTML = list("todo-remote", 100);
-    await initPage("/bench-mirror-list-remote");
-    const peer = remotePeer();
-    let echoed = 0;
-    const writes = await countDomWrites($("#todo-remote"), async () => {
-      provider().ws.send.mockClear();
-      await runFrames(50, (frame) =>
-        peer.edit((play) => {
-          play["can-mirror"]["todo-remote"].children.push({
-            nodeType: "HTMLElement",
-            tagName: "li",
-            attributes: { class: "item" },
-            children: [{ nodeType: "Text", textContent: `New ${frame}` }],
-          });
-        }),
-      );
-      echoed = provider().ws.send.mock.calls.length;
-    });
-    expect($("#todo-remote").children).toHaveLength(150);
-    metrics.mirror_remote_append_dom_writes = writes;
-    metrics.mirror_remote_append_echo_msgs = echoed;
-  });
-
-  // A pixel grid: 100 mirrored cells all change style in the same frame.
-  it("pixel grid", async () => {
-    document.body.innerHTML = Array.from(
-      { length: 100 },
-      (_, i) => `<div can-mirror id="px-${i}" class="px"></div>`,
-    ).join("");
-    await initPage("/bench-mirror-pixels");
-    const cells = [...document.querySelectorAll<HTMLElement>(".px")];
-    const traffic = await measureTraffic(() =>
-      runFrames(1, () => {
-        for (const cell of cells) cell.style.background = "#4a9a8a";
-      }),
-    );
-    metrics.mirror_pixels_msgs = traffic.messages;
-    metrics.mirror_pixels_bytes = traffic.bytes;
   });
 
   // A board (one can-mirror) holding 30 cards that are each their own

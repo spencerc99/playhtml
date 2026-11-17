@@ -142,7 +142,7 @@ test("capability metrics get their own collapsed section unless something moved"
   const moved = formatMarkdownReport(
     compareResults(base, {
       ...base,
-      mirror_remote_append_dom_writes: 50, // was 100
+      mirror_init_presence_msgs: 50, // was 100
       mirror_board_remote_dom_writes: 300,
     }),
   );

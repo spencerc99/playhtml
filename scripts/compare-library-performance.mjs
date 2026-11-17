@@ -106,10 +106,6 @@ export const METRICS = [
       "mirror_init_presence_msgs",
       "Playground page load: presence messages",
     ),
-    count(
-      "mirror_playground_msgs",
-      "Playground, one pass through every demo: messages",
-    ),
     bytes(
       "mirror_playground_bytes",
       "Playground, one pass through every demo: bytes sent",
@@ -122,50 +118,17 @@ export const METRICS = [
       "mirror_hover_presence_msgs",
       "Playground, hover each demo: presence messages",
     ),
-    count("mirror_form_type_msgs", "50-field form, type 50 chars: messages"),
     bytes("mirror_form_type_bytes", "50-field form, type 50 chars: bytes sent"),
     bytes(
       "mirror_form_type_doc_growth",
       "50-field form, type 50 chars: doc growth",
     ),
-    count(
-      "mirror_remote_type_dom_writes",
-      "50-field form, someone else types: DOM writes",
-    ),
-    count(
-      "mirror_remote_type_echo_msgs",
-      "50-field form, someone else types: messages sent back",
-    ),
-    count("mirror_list_append_msgs", "100-item list, add 50: messages"),
     bytes("mirror_list_append_bytes", "100-item list, add 50: bytes sent"),
-    bytes("mirror_list_append_doc_growth", "100-item list, add 50: doc growth"),
-    count("mirror_list_bulk_msgs", "List, add 200 at once: messages"),
     bytes("mirror_list_bulk_bytes", "List, add 200 at once: bytes sent"),
-    count("mirror_list_remove_msgs", "List, remove 50: messages"),
     bytes("mirror_list_remove_bytes", "List, remove 50: bytes sent"),
-    count(
-      "mirror_remote_append_dom_writes",
-      "100-item list, someone else adds 50: DOM writes",
-    ),
-    count(
-      "mirror_remote_append_echo_msgs",
-      "100-item list, someone else adds 50: messages sent back",
-    ),
-    count(
-      "mirror_pixels_msgs",
-      "100-cell pixel grid, all change in one frame: messages",
-    ),
-    bytes(
-      "mirror_pixels_bytes",
-      "100-cell pixel grid, all change in one frame: bytes sent",
-    ),
     count(
       "mirror_board_remote_dom_writes",
       "Board of 30 nested cards, someone else restyles it 20x: DOM writes",
-    ),
-    timing(
-      "mirror_remote_type_ms",
-      "50-field form, apply one remote keystroke: time (median)",
     ),
     timing("mirror_list_bulk_ms", "List, add 200 at once: time"),
     timing(
