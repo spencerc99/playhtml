@@ -35,6 +35,7 @@ import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { useKeyboardTyping } from "@movement/hooks/useKeyboardTyping";
 import { useViewportScroll } from "@movement/hooks/useViewportScroll";
 import { SoundEngine } from "@movement/sound/SoundEngine";
+import { DEV_MODE_KEY } from "../features/debugModes/debugModes";
 
 // Note: Styles are inlined below since this component is injected into arbitrary web pages
 // and external stylesheets don't get bundled with content script injections
@@ -74,7 +75,9 @@ export const defaultSettings: OverlaySettings = {
   documentSpace: false,
 };
 
-interface Props {
+// A type alias rather than an interface, so it fits injectShadowReact's
+// Record<string, unknown> props constraint.
+type Props = {
   visible: boolean;
   currentUrl: string;
   onClose: () => void;
@@ -82,7 +85,7 @@ interface Props {
   initialSource?: TrailSource;
   /** Open with the controls hidden, for clean recordings and stills. */
   initialUiHidden?: boolean;
-}
+};
 
 const DOUBLE_TAP_THRESHOLD_MS = 300;
 
@@ -145,9 +148,9 @@ export function HistoricalOverlay({
   // Load dev mode setting from storage once on mount
   useEffect(() => {
     browser.storage.local
-      .get(["dev_mode"])
+      .get([DEV_MODE_KEY])
       .then((result) => {
-        setDevMode(Boolean(result["dev_mode"]));
+        setDevMode(Boolean(result[DEV_MODE_KEY]));
       })
       .catch(() => {});
   }, []);
