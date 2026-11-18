@@ -435,12 +435,6 @@
     text-transform: capitalize;
   }
 
-  &__count {
-    font-family: $font-mono;
-    font-size: 10px;
-    color: $text-muted;
-  }
-
   &__description {
     font-size: 11px;
     color: $text-muted;
@@ -474,11 +468,6 @@
     }
   }
 
-  // The status badge is now removed from the compact card design
-  &__status-badge {
-    display: none;
-  }
-
   &__privacy-section {
     margin-top: 8px;
     padding-top: 8px;
@@ -502,14 +491,6 @@
   &__privacy-desc {
     font-size: 11px;
     color: $text-muted;
-  }
-
-  &__privacy-select {
-    @include input-field;
-    padding: 6px 12px;
-    font-size: 12px;
-    min-width: 100px;
-    cursor: pointer;
   }
 
   &__legibility-slider {

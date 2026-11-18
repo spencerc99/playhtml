@@ -122,11 +122,7 @@ export default defineContentScript({
             });
           }
 
-          // Check if page already has PlayHTML
-          this.detectExistingPlayHTML();
-
           // Initialize extension features
-          this.setupElementPicker();
           this.setupPresenceDetection();
 
           if (await isFeatureEnabled("PAGE_COLLECTION")) {
@@ -143,19 +139,6 @@ export default defineContentScript({
         }
       }
 
-      private detectExistingPlayHTML() {
-        // Look for existing PlayHTML elements
-        const existingElements = document.querySelectorAll(
-          "[can-move], [can-spin], [can-toggle], [can-grow], [can-duplicate], [can-mirror], [can-play]",
-        );
-
-        if (existingElements.length > 0) {
-          // TODO: Coordinate with existing PlayHTML instance
-        }
-
-        return existingElements.length;
-      }
-
       public checkPlayHTMLStatus() {
         const existingElements = document.querySelectorAll(
           "[can-move], [can-spin], [can-toggle], [can-grow], [can-duplicate], [can-mirror], [can-play]",
@@ -164,10 +147,6 @@ export default defineContentScript({
           elementCount: existingElements.length,
           detected: existingElements.length > 0,
         };
-      }
-
-      private setupElementPicker() {
-        // Element picker will be activated on demand
       }
 
       private findBestTarget(startElement: HTMLElement): HTMLElement | null {
@@ -570,7 +549,7 @@ export default defineContentScript({
               data: {
                 domain: currentDomain,
                 title: siteTitle,
-                favicon: this.getFaviconUrl(),
+                favicon: getFaviconUrl(),
                 discoveredAt: Date.now(),
               },
             });
@@ -578,10 +557,6 @@ export default defineContentScript({
         } catch (error) {
           console.error("Failed to check site discovery:", error);
         }
-      }
-
-      private getFaviconUrl(): string {
-        return getFaviconUrl();
       }
 
       private setupCollectionDetection() {
@@ -1655,39 +1630,6 @@ export default defineContentScript({
             })
             .catch((error) => {
               console.error("Failed to disable collector:", error);
-              sendResponse({
-                success: false,
-                error: error.message || String(error),
-              });
-            });
-          return true;
-        }
-
-        if (message.type === "FLUSH_EVENTS") {
-          if (!collectorManager) {
-            sendResponse({
-              success: false,
-              error: "Collector manager not initialized",
-            });
-            return true;
-          }
-          collectorManager
-            .flushEvents()
-            .then(() => {
-              browser.runtime
-                .sendMessage({ type: "GET_PENDING_COUNT" })
-                .then((res: any) => {
-                  sendResponse({
-                    success: true,
-                    pendingCount: res?.count ?? 0,
-                  });
-                })
-                .catch(() => {
-                  sendResponse({ success: true, pendingCount: 0 });
-                });
-            })
-            .catch((error) => {
-              console.error("Failed to flush events:", error);
               sendResponse({
                 success: false,
                 error: error.message || String(error),
