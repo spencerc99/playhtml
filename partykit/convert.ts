@@ -10,6 +10,7 @@ import type {
   RoomSnapshot,
   RoomState,
 } from "@playhtml/common";
+import { randomItemIds } from "@playhtml/common";
 import {
   docToJson,
   encodeDocToBase64,
@@ -63,7 +64,7 @@ function collectArrayIdentities(
   arrays: ArrayIdentity[],
 ): void {
   if (Array.isArray(value)) {
-    const itemIds = value.map(() => crypto.randomUUID());
+    const itemIds = randomItemIds(value.length);
     arrays.push({ capability, elementId, path, itemIds });
 
     value.forEach((item, index) => {

@@ -8,7 +8,7 @@ import {
   type Patch,
 } from "immer";
 import { applyOperation } from "./engine";
-import { randomId } from "./randomId";
+import { randomItemId, randomItemIds } from "./randomId";
 import type {
   JsonObject,
   JsonValue,
@@ -179,7 +179,7 @@ const createOperationValue = (value: JsonValue): OperationValue => {
 
   const visit = (current: JsonValue, path: ProtocolPath): void => {
     if (Array.isArray(current)) {
-      const itemIds = current.map(() => randomId());
+      const itemIds = randomItemIds(current.length);
       arrays.push({ path, itemIds });
       current.forEach((item, index) =>
         visit(item, [...path, { itemId: itemIds[index] }]),
@@ -335,7 +335,7 @@ const updateArrayTokens = (
 ): void => {
   const createTokens = (count: number): ArrayItemToken[] =>
     Array.from({ length: count }, () => ({
-      itemId: randomId(),
+      itemId: randomItemId(),
       existing: false,
     }));
 
@@ -518,7 +518,7 @@ const recordPatch = (
         capability,
         elementId,
         path: parentPath,
-        target: { kind: "array", index: target, itemId: randomId() },
+        target: { kind: "array", index: target, itemId: randomItemId() },
         ...createOperationValue(patch.value as JsonValue),
       };
       return { operation, next: applyRecordedOperation(snapshot, operation) };
