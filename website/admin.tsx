@@ -971,11 +971,10 @@ const AdminConsole: React.FC = () => {
         setBackupComparisonData(null);
         setBackupBase64(null);
         setDebugToolsEnabled(false);
-        // Load new room data if authenticated. The URL already names this
-        // room, so loading it must not push another history entry.
-        if (stored || adminToken) {
-          loadRoom(roomId, { history: "replace" });
-        }
+        // The URL already names this room, so loading it must not push
+        // another history entry. This listener is registered once, so it goes
+        // through the ref to reach the loader that holds the current token.
+        void loadRoomRef.current?.(roomId, { history: "replace" });
       } else {
         setCurrentRoomId("");
         setRoomData(null);
@@ -997,6 +996,12 @@ const AdminConsole: React.FC = () => {
       window.removeEventListener("popstate", handlePopState);
     };
   }, [addLog]); // Remove adminToken dependency to avoid infinite loops
+
+  // The loader as of the latest render, for listeners registered only once.
+  const loadRoomRef = React.useRef<
+    | ((roomId?: string, options?: { history?: "push" | "replace" }) => Promise<void>)
+    | null
+  >(null);
 
   // Loads the room named in the page URL once each time a token is set.
   // Later room switches go through loadRoom directly.
@@ -1227,6 +1232,7 @@ const AdminConsole: React.FC = () => {
       // Keep room data as null on error so UI shows no data
     }
   };
+  loadRoomRef.current = loadRoom;
 
   const fetchRoomData = async (roomId: string): Promise<RoomData> => {
     if (!adminToken) {
