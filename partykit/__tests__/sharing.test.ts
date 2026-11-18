@@ -66,17 +66,20 @@ describe("parseSharedElementsFromUrl", () => {
     ]);
   });
 
-  it("drops entries without an element id and ignores non-string permissions", () => {
+  it("drops entries without an element id or with non-string permissions", () => {
     const url = connectionUrl({
       sharedElements: JSON.stringify([
         null,
         { permissions: "read-only" },
         { elementId: 4 },
         { elementId: "door", permissions: ["read-only"] },
+        { elementId: "locked", permissions: 42 },
+        { elementId: "rug", permissions: null },
+        { elementId: "lamp", permissions: "read-only" },
       ]),
     });
     expect(parseSharedElementsFromUrl(url)).toEqual([
-      { elementId: "door", permissions: undefined },
+      { elementId: "lamp", permissions: "read-only" },
     ]);
   });
 });

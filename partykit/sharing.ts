@@ -43,7 +43,9 @@ export function parseSharedReferencesFromUrl(url: string): Array<{
 
 // --- Helper: parse shared elements (declared on source) from URL params
 // `permissions` is the client's raw declaration; callers treat any value
-// containing "read-only" as read-only and everything else as read-write.
+// containing "read-only" as read-only and everything else, including an
+// omitted value, as read-write. A present but non-string value is malformed,
+// so the entry is dropped rather than guessed as read-write.
 export function parseSharedElementsFromUrl(url: string): Array<{
   elementId: string;
   permissions?: string;
@@ -56,8 +58,10 @@ export function parseSharedElementsFromUrl(url: string): Array<{
     ) {
       return [];
     }
-    const permissions =
-      typeof entry.permissions === "string" ? entry.permissions : undefined;
+    const { permissions } = entry;
+    if (permissions !== undefined && typeof permissions !== "string") {
+      return [];
+    }
     return [{ elementId: entry.elementId, permissions }];
   });
 }
