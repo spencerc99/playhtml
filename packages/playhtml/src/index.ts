@@ -39,7 +39,8 @@ import type {
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import type { Map as YMap } from "yjs";
 import { ElementHandler } from "./elements";
-import { cloneStoreValue, hashElement, warnHashedElementId } from "./utils";
+import { cloneStoreValue, warnHashedElementId } from "./utils";
+import { getHashedElementId, type HashedElementId } from "./hashedElementId";
 import type { CursorClientAwareness } from "./cursors/cursor-client";
 import { getPresencePage } from "./cursors/presence-page";
 import { createUsersAPI, defaultSeedIdentity } from "./users";
@@ -1976,15 +1977,18 @@ function createPlayElementData<T extends TagType, TData = any>(
   tag: T,
   tagInfo: ElementInitializer<TData>,
   elementId: string,
+  dataSavedUnderPreviousId?: TData,
 ): ElementData<TData> {
   if (VERBOSE) {
     console.log("registering element", elementId, "using SyncedStore data");
   }
 
   const initialData =
-    tagInfo.defaultData instanceof Function
-      ? tagInfo.defaultData(element)
-      : tagInfo.defaultData;
+    dataSavedUnderPreviousId !== undefined
+      ? dataSavedUnderPreviousId
+      : tagInfo.defaultData instanceof Function
+        ? tagInfo.defaultData(element)
+        : tagInfo.defaultData;
 
   const dataProxy =
     tagInfo.defaultData === undefined
@@ -2715,6 +2719,41 @@ function removeDisconnectedElementHandlerForReplacement(
 }
 
 /**
+ * The ids an element with a hashed id may already have data under for `tag`.
+ * Empty when the element already has a record under its current id, or reads
+ * its data from another page.
+ */
+async function getPreviousIdsForNewRecord(
+  element: HTMLElement,
+  tag: string,
+  hashed: HashedElementId,
+): Promise<string[]> {
+  if (element.hasAttribute("data-source")) return [];
+  if (store.play[tag]?.[element.id] !== undefined) return [];
+  return (await hashed.previousIds()).get(tag) ?? [];
+}
+
+/**
+ * A plain copy of the data saved for `tag` under the first of `previousIds`
+ * that has any, when the element has no record under `elementId` yet. Seeding
+ * the new record with it carries the element's saved state over to its
+ * current id. The earlier record is left in place.
+ */
+function findDataSavedUnderPreviousId(
+  tag: string,
+  elementId: string,
+  previousIds: string[],
+): unknown {
+  const tagRecord = store.play[tag];
+  if (!tagRecord || tagRecord[elementId] !== undefined) return undefined;
+  for (const previousId of previousIds) {
+    const saved = tagRecord[previousId];
+    if (saved !== undefined) return cloneStoreValue(saved);
+  }
+  return undefined;
+}
+
+/**
  * Sets up a playhtml element to handle the given tag's capabilities.
  */
 async function setupPlayElementForTag<T extends TagType | string>(
@@ -2733,6 +2772,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   }
 
+  let previousElementIds: string[] = [];
   if (!element.id) {
     // TODO: better way for unique ID here? but actually having it reversible is a nice property
     const selectorId = element.getAttribute("selector-id");
@@ -2743,7 +2783,21 @@ async function setupPlayElementForTag<T extends TagType | string>(
       selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
     } else {
       if (isDevMode()) warnHashedElementId(tag, element);
-      element.id = await hashElement(tag, element);
+      const elementTags = getTagTypes().filter((tagType) =>
+        element.hasAttribute(tagType),
+      );
+      if (!elementTags.includes(tag)) elementTags.push(tag);
+      const hashed = getHashedElementId(element, elementTags, {
+        mark: markElementAsLoading,
+        clear: markElementAsReady,
+      });
+      const hashedId = await hashed.id;
+      if (!element.id) element.id = hashedId;
+      previousElementIds = await getPreviousIdsForNewRecord(
+        element,
+        tag,
+        hashed,
+      );
     }
   }
   const elementId = getIdForElement(element);
@@ -2777,6 +2831,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
     tag as TagType,
     elementInitializerInfo,
     elementId,
+    findDataSavedUnderPreviousId(tag, elementId, previousElementIds),
   );
   const existingHandler = tagElementHandlers.get(elementId);
   if (existingHandler) {
