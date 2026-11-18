@@ -650,6 +650,7 @@ export function ScrapsPage() {
               : openStudio(record)
           }
           onStartNew={() => openStudio(null)}
+          settling={closing.settled}
           onSaved={(record) => {
             inBackground(keepCollageImages(record));
             // A studio that has been left still writes what was pending; that

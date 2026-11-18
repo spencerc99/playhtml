@@ -12,7 +12,16 @@ import {
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
 import { CollageHistory } from "../entrypoints/scraps/CollageHistory";
-import { listCollages, saveCollage } from "../entrypoints/scraps/collageStore";
+import {
+  listCollages,
+  loadCollage,
+  saveCollage,
+  saveCollagePreview,
+} from "../entrypoints/scraps/collageStore";
+import {
+  useCollageAutosave,
+  type AutosaveTimers,
+} from "../entrypoints/scraps/useCollageAutosave";
 import type { CollageRecord } from "../entrypoints/scraps/collageRecord";
 import { readCollageFile } from "../entrypoints/scraps/collageFile";
 
@@ -88,13 +97,21 @@ async function settle(): Promise<void> {
   }
 }
 
-async function mount(onEdit = vi.fn()) {
+async function mount(
+  onEdit = vi.fn(),
+  settling: () => Promise<void> = async () => {},
+) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
     root?.render(
-      <CollageHistory revision={0} onEdit={onEdit} onStartNew={() => {}} />,
+      <CollageHistory
+        revision={0}
+        onEdit={onEdit}
+        onStartNew={() => {}}
+        settling={settling}
+      />,
     );
   });
   await settle();
@@ -475,5 +492,85 @@ describe("the history heading", () => {
     const stored = await listCollages();
     expect(stored).toHaveLength(2);
     expect(stored.some((row) => row.id === "collage_away")).toBe(false);
+  });
+});
+
+/**
+ * A studio left with its last write still on its way into the drawer: the
+ * real autosave over the real store, holding that write until `land` is
+ * called. Hands back the promise the page waits on while it settles.
+ */
+async function leaveMidWrite(
+  edited: CollageRecord,
+): Promise<{ closing: Promise<void>; land: () => void }> {
+  let land!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    land = resolve;
+  });
+  const timers: AutosaveTimers = {
+    setTimer: () => 0,
+    clearTimer: () => {},
+  };
+  let closing: Promise<void> | null = null;
+  let noteChange: (() => void) | null = null;
+  function Studio() {
+    const autosave = useCollageAutosave({
+      draft: () => ({ record: edited, hasContent: true }),
+      bake: async () => {
+        throw new Error("not drawn in a test");
+      },
+      store: async (stored) => {
+        await gate;
+        await saveCollage(stored);
+      },
+      storePreview: saveCollagePreview,
+      onStored: () => {},
+      startsStored: true,
+      reopening: { ...edited, title: "before the edit" },
+      timers,
+      onClosed: (stored) => {
+        closing = stored;
+      },
+    });
+    noteChange = autosave.noteChange;
+    return null;
+  }
+  const studioRoot = createRoot(document.createElement("div"));
+  await act(async () => studioRoot.render(<Studio />));
+  act(() => noteChange!());
+  await act(async () => studioRoot.unmount());
+  if (!closing) throw new Error("the studio did not say it was closing");
+  return { closing, land };
+}
+
+describe("a collage whose studio is still saving as it is left", () => {
+  it("stays deleted when the studio's last write lands after the delete", async () => {
+    await saveCollage(record());
+    const studio = await leaveMidWrite(record({ title: "a walk, edited" }));
+    const { view } = await mount(vi.fn(), () => studio.closing);
+
+    await act(async () => buttonNamed(view, "Delete a walk").click());
+    await act(async () => buttonNamed(view, "delete for good").click());
+    await settle();
+    studio.land();
+    await settle();
+
+    expect(await listCollages()).toHaveLength(0);
+    expect(view.querySelectorAll(".collage-card")).toHaveLength(0);
+  });
+
+  it("copies the collage as that last write left it", async () => {
+    await saveCollage(record());
+    const studio = await leaveMidWrite(record({ title: "a walk, edited" }));
+    const { view } = await mount(vi.fn(), () => studio.closing);
+
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await settle();
+    studio.land();
+    await settle();
+
+    const titles = (await listCollages()).map((entry) => entry.title).sort();
+    expect(titles).toEqual(["a walk, edited", "a walk, edited copy"]);
+    expect((await loadCollage("collage_1"))?.title).toBe("a walk, edited");
   });
 });

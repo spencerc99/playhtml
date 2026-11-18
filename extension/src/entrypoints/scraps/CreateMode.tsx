@@ -18,6 +18,8 @@ interface CreateModeProps {
   savedRevision: number;
   onEdit: (record: CollageRecord) => void;
   onStartNew: () => void;
+  /** Settles once every studio that has closed has stored what it had. */
+  settling: () => Promise<void>;
   /** Why a collage could not be reopened, shown over the list. */
   notice?: string | null;
   onClosed?: (stored: Promise<void>) => void;
@@ -33,6 +35,7 @@ export function CreateMode({
   savedRevision,
   onEdit,
   onStartNew,
+  settling,
   onSaved,
   onLeave,
   notice = null,
@@ -51,6 +54,7 @@ export function CreateMode({
             revision={savedRevision}
             onEdit={onEdit}
             onStartNew={onStartNew}
+            settling={settling}
             notice={notice}
           />
         ) : (

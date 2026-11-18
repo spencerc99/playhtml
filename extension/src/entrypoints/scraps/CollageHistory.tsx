@@ -39,6 +39,12 @@ interface CollageHistoryProps {
   revision: number;
   onEdit: (record: CollageRecord) => void;
   onStartNew: () => void;
+  /**
+   * Settles once every studio that has closed has stored what it had. Delete
+   * and duplicate wait on it, so a write still landing from a studio just left
+   * can neither bring a deleted collage back nor be missed by a copy.
+   */
+  settling: () => Promise<void>;
   /** A problem from outside the list to show, such as a collage that could not be reopened. */
   notice?: string | null;
 }
@@ -62,6 +68,7 @@ export function CollageHistory({
   revision,
   onEdit,
   onStartNew,
+  settling,
   notice = null,
 }: CollageHistoryProps) {
   const [entries, setSummaries] = useState<CollageEntry[] | null>(null);
@@ -114,6 +121,7 @@ export function CollageHistory({
    */
   const duplicate = async (id: string) => {
     try {
+      await settling();
       const source = await loadCollage(id);
       if (!source) {
         setError("that collage could not be opened to copy");
@@ -202,6 +210,7 @@ export function CollageHistory({
    * link that can be read, so it is deleted as it is.
    */
   const remove = async (id: string, readable = true) => {
+    await settling();
     let publication: CollageRecord["publication"];
     if (readable) {
       try {
