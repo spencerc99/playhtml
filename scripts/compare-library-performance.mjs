@@ -125,6 +125,14 @@ export const METRICS = [
       "mirror_board_remote_dom_writes",
       "Board of 30 nested cards, someone else restyles it 20x: DOM writes",
     ),
+    bytes(
+      "mirror_board_card_type_bytes",
+      "Board of 30 nested cards, type 20 chars in one card: bytes sent",
+    ),
+    bytes(
+      "mirror_board_card_type_doc_growth",
+      "Board of 30 nested cards, type 20 chars in one card: doc growth",
+    ),
     timing(
       "mirror_list_edit_ms",
       "1,000-item list, add one item: time (median of 10)",
