@@ -2,8 +2,8 @@
 // ABOUTME: A stalled image host fails that one image instead of holding a bake, and a reopen waiting on it, open.
 
 /**
- * How long one image gets to arrive, and then to decode. Generous for a real
- * image on a slow connection; past it the host is treated as stalled.
+ * How long an image host may stay silent, and how long a decode may take.
+ * Past it the host is treated as stalled.
  */
 export const IMAGE_LOAD_LIMIT_MS = 15_000;
 
@@ -37,22 +37,42 @@ export async function loadImage(
   return image;
 }
 
-/** Fetches an image's bytes, giving up on a host that does not answer in time. */
+/**
+ * Fetches an image's bytes, giving up on a host that goes quiet. The limit is
+ * on silence, not on the whole download: each piece of the image that arrives
+ * starts it again, so a large image on a slow connection still finishes.
+ */
 export async function fetchImageBlob(
   src: string,
   limitMs = IMAGE_LOAD_LIMIT_MS,
 ): Promise<Blob> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), limitMs);
+  let timer = setTimeout(() => controller.abort(), limitMs);
+  const heard = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), limitMs);
+  };
   try {
     const response = await fetch(src, { signal: controller.signal });
     if (!response.ok) {
       throw new Error(`fetch returned ${response.status}`);
     }
-    return await response.blob();
+    heard();
+    if (!response.body) return await response.blob();
+    const reader = response.body.getReader();
+    const parts: BlobPart[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value);
+      heard();
+    }
+    return new Blob(parts, {
+      type: response.headers.get("content-type") ?? "",
+    });
   } catch (error) {
     if (controller.signal.aborted) {
-      throw tooSlow("the image did not arrive", limitMs);
+      throw tooSlow("the image stopped arriving", limitMs);
     }
     throw error;
   } finally {

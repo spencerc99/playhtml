@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   IMAGE_LOAD_LIMIT_MS,
+  fetchImageBlob,
   loadImage,
   loadRemoteImage,
 } from "../entrypoints/scraps/imageLoading";
@@ -33,6 +34,43 @@ function answeringHost(): typeof fetch {
       status: 200,
       headers: { "content-type": "image/png" },
     })) as typeof fetch;
+}
+
+/**
+ * A host that sends one byte every `gapMs`, `pieces` times, then either ends
+ * the image or goes quiet until the request is called off.
+ */
+function trickleHost(gapMs: number, pieces: number, finishes: boolean): typeof fetch {
+  return (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        init?.signal?.addEventListener("abort", () =>
+          controller.error(
+            new DOMException("The operation was aborted.", "AbortError"),
+          ),
+        );
+      },
+      pull(controller) {
+        return new Promise<void>((resolve) => {
+          if (sent === pieces) {
+            if (finishes) controller.close();
+            resolve();
+            return;
+          }
+          setTimeout(() => {
+            sent += 1;
+            controller.enqueue(new Uint8Array([sent]));
+            resolve();
+          }, gapMs);
+        });
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "image/png" },
+    });
+  }) as typeof fetch;
 }
 
 /** Records how a promise ended, without letting a rejection go unhandled. */
@@ -109,7 +147,7 @@ describe("an image host that never answers", () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(outcome.done).toBe(true);
-    expect(String(outcome.error)).toMatch(/did not arrive within 15 seconds/);
+    expect(String(outcome.error)).toMatch(/stopped arriving within 15 seconds/);
   });
 
   it("leaves the bake to fail that piece, as it does a broken image", async () => {
@@ -125,7 +163,31 @@ describe("an image host that never answers", () => {
     const failures = (outcome.error as CollageBakeError).failures;
     expect(failures).toHaveLength(1);
     expect(failures[0].label).toBe("a photo from a slow host");
-    expect(failures[0].reason).toMatch(/did not arrive/);
+    expect(failures[0].reason).toMatch(/stopped arriving/);
+  });
+});
+
+describe("an image that arrives slowly", () => {
+  it("finishes however long it takes, while pieces keep coming", async () => {
+    vi.stubGlobal("fetch", trickleHost(IMAGE_LOAD_LIMIT_MS - 1_000, 4, true));
+    const outcome = outcomeOf(fetchImageBlob("https://slow.example/big.png"));
+
+    await vi.advanceTimersByTimeAsync(IMAGE_LOAD_LIMIT_MS * 4);
+
+    expect(outcome.done).toBe(true);
+    expect(outcome.error).toBeNull();
+  });
+
+  it("fails once the host goes quiet partway through", async () => {
+    vi.stubGlobal("fetch", trickleHost(1_000, 2, false));
+    const outcome = outcomeOf(fetchImageBlob("https://slow.example/big.png"));
+
+    await vi.advanceTimersByTimeAsync(2_000 + IMAGE_LOAD_LIMIT_MS - 1);
+    expect(outcome.done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(outcome.done).toBe(true);
+    expect(String(outcome.error)).toMatch(/stopped arriving within 15 seconds/);
   });
 });
 
