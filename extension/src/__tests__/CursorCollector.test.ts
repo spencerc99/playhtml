@@ -17,16 +17,13 @@ import {
 describe("CursorCollector", () => {
   let collector: CursorCollector;
   let emitCallback: ReturnType<typeof vi.fn>;
-  let realTimeCallback: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     emitCallback = vi.fn();
-    realTimeCallback = vi.fn();
 
     collector = new CursorCollector();
     collector.setEmitCallback(emitCallback);
-    collector.setRealTimeCallback(realTimeCallback);
 
     // Set up document
     document.body.innerHTML = "";
@@ -74,34 +71,6 @@ describe("CursorCollector", () => {
   });
 
   describe("movement tracking", () => {
-    it("does not run the real-time loop without a real-time callback", () => {
-      collector.disable();
-      collector = new CursorCollector();
-      collector.setEmitCallback(emitCallback);
-      const requestAnimationFrameSpy = vi.spyOn(window, "requestAnimationFrame");
-
-      collector.enable();
-
-      expect(requestAnimationFrameSpy).not.toHaveBeenCalled();
-      requestAnimationFrameSpy.mockRestore();
-    });
-
-    it("does not schedule real-time mousemove work without a real-time callback", () => {
-      collector.disable();
-      collector = new CursorCollector();
-      collector.setEmitCallback(emitCallback);
-      const scheduleRealTimeSpy = vi.spyOn(
-        collector as unknown as { scheduleRealTimeUpdate: () => void },
-        "scheduleRealTimeUpdate",
-      );
-
-      collector.enable();
-      simulateMouseMove(100, 100);
-
-      expect(scheduleRealTimeSpy).not.toHaveBeenCalled();
-      scheduleRealTimeSpy.mockRestore();
-    });
-
     it("emits move events when cursor moves beyond threshold", async () => {
       collector.enable();
 
@@ -187,18 +156,6 @@ describe("CursorCollector", () => {
       expect(emitCallback).toHaveBeenCalled();
       const call = emitCallback.mock.calls[0][0] as CursorEventData;
       expect(call.t).toBe("#test-element");
-    });
-
-    it("emits real-time updates at higher frequency", async () => {
-      collector.enable();
-
-      simulateMouseMove(100, 100);
-
-      // Real-time updates should happen faster (16ms)
-      await advanceTime(20);
-
-      // Real-time callback should be called
-      expect(realTimeCallback).toHaveBeenCalled();
     });
 
     it("reads cursor style only when the pointer enters a target", () => {
@@ -476,7 +433,6 @@ describe("CursorCollector", () => {
       await simulateClick(100, 100, 100);
 
       expect(emitCallback).not.toHaveBeenCalled();
-      expect(realTimeCallback).not.toHaveBeenCalled();
     });
   });
 });

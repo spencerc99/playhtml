@@ -7,6 +7,7 @@
 // would hide the gate.
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -214,7 +215,14 @@ try {
   const cursorRead = recentRequests.find(
     (params) => params.get("type") === "cursor",
   );
-  assert.equal(cursorRead?.get("domain"), "127.0.0.1");
+  // The page is not a site root, so the overlay reads "this page": it sends md5
+  // hashes of the page's stored URL forms (as is, and with a trailing slash),
+  // never the domain or the URL itself.
+  const md5 = (text) => createHash("md5").update(text, "utf8").digest("hex");
+  const pageUrl = `${origin}${PAGE_PATH}`;
+  assert.equal(cursorRead?.get("domain"), null);
+  assert.equal(cursorRead?.get("url"), null);
+  assert.equal(cursorRead?.get("urlHash"), `${md5(pageUrl)},${md5(`${pageUrl}/`)}`);
   assert.equal(cursorRead?.get("limit"), "5000");
   await page.waitForTimeout(4000);
   const everyonePixels = await trailPixelCount(page);

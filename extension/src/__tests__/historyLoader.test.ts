@@ -1,14 +1,16 @@
 // ABOUTME: Tests that shared trails on web pages are read through the background, one type per message,
-// ABOUTME: and that a failed Worker read reaches the overlay as an error instead of an empty result.
+// ABOUTME: page mode sends only hashes of the page URL, and a failed Worker read reaches the overlay as an error.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
+import { createHash } from "node:crypto";
 import { WORKER_URL } from "@movement/config";
 import type { CollectionEvent } from "../collectors/types";
 import {
   FETCH_SERVER_EVENTS_MESSAGE,
   fetchRecentServerEvents,
   loadHistoricalData,
+  pageUrlHashes,
 } from "../storage/historyLoader";
 
 function cursorEvent(id: string, url: string, ts: number): CollectionEvent {
@@ -69,6 +71,51 @@ describe("loadHistoricalData on a web page", () => {
       },
     ]);
     expect(events.map((e) => e.id)).toEqual(["c1", "c2"]);
+  });
+
+  it("asks for this page only in page mode and keeps the normalized filter", async () => {
+    const page = "https://en.wikipedia.org/wiki/Cat?useskin=vector#History";
+    sendMessage.mockImplementation(async () => ({
+      ok: true,
+      events: [
+        cursorEvent("c1", "https://en.wikipedia.org/wiki/Cat?useskin=vector", 1),
+        cursorEvent("c2", "https://en.wikipedia.org/wiki/Cat/", 2),
+        cursorEvent("d1", "https://en.wikipedia.org/wiki/Dog", 3),
+      ],
+    }));
+
+    const events = await loadHistoricalData(page, "url", {
+      source: "everyone",
+      types: ["cursor"],
+      limit: 5000,
+    });
+
+    const md5 = (text: string) => createHash("md5").update(text, "utf8").digest("hex");
+    expect(sendMessage.mock.calls.map(([message]) => message)).toEqual([
+      {
+        type: FETCH_SERVER_EVENTS_MESSAGE,
+        urlHashes: [
+          md5("https://en.wikipedia.org/wiki/Cat?useskin=vector"),
+          md5("https://en.wikipedia.org/wiki/Cat/?useskin=vector"),
+          md5("https://en.wikipedia.org/wiki/Cat"),
+          md5("https://en.wikipedia.org/wiki/Cat/"),
+        ],
+        eventType: "cursor",
+        limit: 5000,
+      },
+    ]);
+    expect(JSON.stringify(sendMessage.mock.calls)).not.toContain("wikipedia");
+    expect(events.map((e) => e.id)).toEqual(["c1", "c2"]);
+  });
+
+  it("refuses page mode on a page that is not http(s) without asking the Worker", async () => {
+    await expect(
+      loadHistoricalData("file:///Users/me/notes.html", "url", {
+        source: "everyone",
+        types: ["cursor"],
+      }),
+    ).rejects.toThrow("Could not load shared trails for this page");
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("rejects with the background's error so the overlay can show it", async () => {
@@ -140,6 +187,20 @@ describe("fetchRecentServerEvents", () => {
     expect(headers.get("X-WWO-Signature")).toMatch(/^[0-9a-f]{128}$/);
   });
 
+  it("asks for one page by its url hashes instead of its domain", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const hashes = ["0cc175b9c0f1b6a831c399e269772661", "900150983cd24fb0d6963f7d28e17f72"];
+
+    await fetchRecentServerEvents({ urlHashes: hashes, type: "keyboard", limit: 10 });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `${WORKER_URL}/events/recent?type=keyboard&limit=10&urlHash=${hashes.join("%2C")}`,
+    );
+  });
+
   it("throws with the status when the worker refuses the request", async () => {
     vi.stubGlobal(
       "fetch",
@@ -151,5 +212,24 @@ describe("fetchRecentServerEvents", () => {
       fetchRecentServerEvents({ domain: "example.com", type: "cursor", limit: 10 }),
     ).rejects.toThrow("Could not load shared trails (server error 403)");
     expect(error).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("pageUrlHashes for a very long page URL", () => {
+  const md5 = (value: string) => createHash("md5").update(value).digest("hex");
+
+  it("looks the page up by its address without the query string", () => {
+    const long = `https://example.com/search?q=${"a".repeat(3000)}#top`;
+
+    expect(pageUrlHashes(long)).toEqual([
+      md5("https://example.com/search"),
+      md5("https://example.com/search/"),
+    ]);
+  });
+
+  it("still refuses a page whose path alone is too long", () => {
+    expect(() =>
+      pageUrlHashes(`https://example.com/${"a".repeat(3000)}`),
+    ).toThrow("Could not load shared trails for this page");
   });
 });

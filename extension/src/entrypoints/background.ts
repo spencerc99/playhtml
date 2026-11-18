@@ -1,6 +1,7 @@
 // ABOUTME: Background service worker — holds the extension-origin event store and
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
+import { relaySameDocumentNavigations } from '../utils/sameDocumentNavigation'
 import type { Alarms } from 'webextension-polyfill'
 import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
 import type { ScrapSource } from '@movement/utils/scrapPhotoGroups'
@@ -22,6 +23,7 @@ import {
   FETCH_SERVER_EVENTS_MESSAGE,
   fetchRecentServerEvents,
 } from '../storage/historyLoader'
+import { formatUrlHashes, parseUrlHashes } from '../utils/pageEventUrls'
 import { removeSiteMigrationMarkers } from '../storage/siteMigrationMarkers'
 import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
@@ -493,6 +495,12 @@ export default defineBackground(() => {
     }
   })
 
+  // Single-page apps change URL through the History API, which the content
+  // script cannot observe from its isolated world.
+  relaySameDocumentNavigations(browser.webNavigation, (tabId, message, options) =>
+    browser.tabs.sendMessage(tabId, message, options),
+  )
+
   // Extension lifecycle
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
@@ -926,8 +934,16 @@ export default defineBackground(() => {
     if (message.type === FETCH_SERVER_EVENTS_MESSAGE) {
       // Content scripts read shared events through here: their own fetch
       // carries the page's Origin, which the Worker refuses.
+      // Exactly one scope: a whole site (domain) or one page (urlHashes).
+      const hasDomain = typeof message.domain === 'string'
+      const hasUrlHashes =
+        Array.isArray(message.urlHashes) &&
+        message.urlHashes.every((hash: unknown) => typeof hash === 'string') &&
+        parseUrlHashes(formatUrlHashes(message.urlHashes)) !== null
       if (
-        typeof message.domain !== 'string' ||
+        hasDomain === hasUrlHashes ||
+        (message.domain !== undefined && !hasDomain) ||
+        (message.urlHashes !== undefined && !hasUrlHashes) ||
         !isCollectionEventType(message.eventType) ||
         typeof message.limit !== 'number' ||
         !Number.isFinite(message.limit) ||
@@ -936,11 +952,11 @@ export default defineBackground(() => {
         reply({ ok: false, error: 'Could not load shared trails: bad request' })
         return
       }
-      fetchRecentServerEvents({
-        domain: message.domain,
-        type: message.eventType,
-        limit: message.limit,
-      })
+      fetchRecentServerEvents(
+        hasUrlHashes
+          ? { urlHashes: message.urlHashes, type: message.eventType, limit: message.limit }
+          : { domain: message.domain, type: message.eventType, limit: message.limit },
+      )
         .then((events) => reply({ ok: true, events }))
         .catch((error: unknown) =>
           reply({

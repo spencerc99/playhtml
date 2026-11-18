@@ -2,6 +2,10 @@
 // ABOUTME: Initializes playhtml copresence, data collectors, and domain-specific features.
 import "./content/style.css";
 import browser from "webextension-polyfill";
+import {
+  SAME_DOCUMENT_NAVIGATION_MESSAGE,
+  onEachNewUrl,
+} from "../utils/sameDocumentNavigation";
 import { toPublicPlayerIdentity, type PlayerIdentity } from "@playhtml/common";
 import {
   MILESTONE_DURATION_MS,
@@ -1323,8 +1327,10 @@ export default defineContentScript({
       }
     };
 
-    // Re-render overlay with updated URL on SPA navigation
-    const handleNavigation = () => {
+    // Re-render the overlay with the new URL when the page navigates without
+    // loading: back/forward arrives as popstate, pushState/replaceState as a
+    // message from the background (SAME_DOCUMENT_NAVIGATION_MESSAGE).
+    const handleNavigation = onEachNewUrl(() => {
       if (overlayVisible && overlayUI) {
         overlayUI.render({
           visible: true,
@@ -1332,7 +1338,7 @@ export default defineContentScript({
           onClose: () => toggleHistoricalOverlay(),
         });
       }
-    };
+    });
 
     window.addEventListener("popstate", handleNavigation);
 
@@ -1348,18 +1354,6 @@ export default defineContentScript({
     window.addEventListener("hashchange", () => {
       void openTrailsFromHash();
     });
-
-    // Intercept pushState/replaceState for SPA frameworks
-    const origPushState = history.pushState.bind(history);
-    const origReplaceState = history.replaceState.bind(history);
-    history.pushState = (...args) => {
-      origPushState(...args);
-      handleNavigation();
-    };
-    history.replaceState = (...args) => {
-      origReplaceState(...args);
-      handleNavigation();
-    };
 
     const initializeCollectors = async () => {
       try {
@@ -1556,6 +1550,12 @@ export default defineContentScript({
           extensionInstance?.activateElementPicker();
           sendResponse({ success: true });
           return true; // Keep message channel open for async response
+        }
+
+        if (message.type === SAME_DOCUMENT_NAVIGATION_MESSAGE) {
+          handleNavigation();
+          sendResponse({ success: true });
+          return true;
         }
 
         if (message.type === "TOGGLE_HISTORICAL_OVERLAY") {
