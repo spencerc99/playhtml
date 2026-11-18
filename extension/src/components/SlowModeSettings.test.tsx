@@ -1,5 +1,5 @@
-// ABOUTME: Verifies the popup's scenic route (Slow Mode) controls, boarding sign, and ride history.
-// ABOUTME: Confirms setting, frequency, and sign-dismissal changes persist through extension storage.
+// ABOUTME: Verifies the popup's scenic route (Slow Mode) controls, train board button, and ride history.
+// ABOUTME: Confirms setting and frequency changes persist through extension storage.
 
 import React from "react";
 import { act } from "react";
@@ -11,10 +11,7 @@ import {
   SLOW_MODE_STATE_KEY,
   type SlowModeState,
 } from "../features/slowMode/slowMode";
-import {
-  COMMUTE_SIGN_DISMISSED_KEY,
-  SlowModeSettings,
-} from "./SlowModeSettings";
+import { SlowModeSettings } from "./SlowModeSettings";
 
 const ENABLED_SETTINGS = {
   enabled: true,
@@ -114,38 +111,23 @@ describe("SlowModeSettings", () => {
     expect(container.textContent).toContain("share my stop");
   });
 
-  it("swaps the boarding sign for the train button once dismissed", async () => {
+  it("boards the commute from the train button", async () => {
     const onBoard = vi.fn();
     const rendered = await render(<SlowModeSettings onBoard={onBoard} />);
     root = rendered.root;
-    const { container } = rendered;
 
-    expect(container.textContent).toContain("BOARDING NOW");
-    expect(container.querySelector(".board-train")).toBeNull();
-
-    const dismiss = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Hide the boarding sign"]',
-    )!;
-    await act(async () => dismiss.click());
-
-    expect(browser.storage.local.set).toHaveBeenCalledWith({
-      [COMMUTE_SIGN_DISMISSED_KEY]: true,
-    });
-    expect(container.textContent).not.toContain("BOARDING NOW");
-
-    const train = container.querySelector<HTMLButtonElement>(".board-train")!;
+    const train =
+      rendered.container.querySelector<HTMLButtonElement>(".board-train")!;
     expect(train.getAttribute("aria-label")).toBe("Board the Internet Commute");
     await act(async () => train.click());
     expect(onBoard).toHaveBeenCalledTimes(1);
   });
 
-  it("starts with the train button when the sign was dismissed earlier", async () => {
-    mockStorage({ [COMMUTE_SIGN_DISMISSED_KEY]: true });
-    const rendered = await render(<SlowModeSettings onBoard={() => {}} />);
+  it("leaves out the train button when there is no way to board", async () => {
+    const rendered = await render(<SlowModeSettings />);
     root = rendered.root;
 
-    expect(rendered.container.textContent).not.toContain("BOARDING NOW");
-    expect(rendered.container.querySelector(".board-train")).not.toBeNull();
+    expect(rendered.container.querySelector(".board-train")).toBeNull();
   });
 
   it("folds today's rides behind a history toggle", async () => {

@@ -1,5 +1,5 @@
 // ABOUTME: Renders the popup's Internet Commute entry and its scenic route (Slow Mode) controls.
-// ABOUTME: Persists the setting, stop sharing, and boarding-sign dismissal; folds today's rides behind a toggle.
+// ABOUTME: Persists the setting and stop sharing, offers a train button to board, and folds today's rides behind a toggle.
 
 import React, { useEffect, useMemo, useState } from "react";
 import browser from "webextension-polyfill";
@@ -15,9 +15,6 @@ import {
   type SlowModeSettings as Settings,
   type SlowModeState,
 } from "../features/slowMode/slowMode";
-
-/** Set once the person closes the "boarding now" sign; the train button replaces it. */
-export const COMMUTE_SIGN_DISMISSED_KEY = "commuteSignDismissed";
 
 const CHANCE_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
@@ -41,7 +38,7 @@ function rideDescription(ride: SlowModeState["rides"][number]): string {
 }
 
 interface Props {
-  /** Opens the Internet Commute. Without it, no boarding sign or train button shows. */
+  /** Opens the Internet Commute. Without it, no train button shows. */
   onBoard?: () => void;
   commuteIsOpen?: boolean;
 }
@@ -51,21 +48,15 @@ export function SlowModeSettings({ onBoard, commuteIsOpen = false }: Props) {
     DEFAULT_SLOW_MODE_SETTINGS,
   );
   const [state, setState] = useState<SlowModeState>(EMPTY_STATE);
-  const [signDismissed, setSignDismissed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const now = Date.now();
 
   useEffect(() => {
     browser.storage.local
-      .get([
-        SLOW_MODE_SETTINGS_KEY,
-        SLOW_MODE_STATE_KEY,
-        COMMUTE_SIGN_DISMISSED_KEY,
-      ])
+      .get([SLOW_MODE_SETTINGS_KEY, SLOW_MODE_STATE_KEY])
       .then((stored) => {
         setSettings(normalizeSlowModeSettings(stored[SLOW_MODE_SETTINGS_KEY]));
         setState(normalizeSlowModeState(stored[SLOW_MODE_STATE_KEY]));
-        setSignDismissed(stored[COMMUTE_SIGN_DISMISSED_KEY] === true);
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
@@ -84,57 +75,12 @@ export function SlowModeSettings({ onBoard, commuteIsOpen = false }: Props) {
     void browser.storage.local.set({ [SLOW_MODE_SETTINGS_KEY]: next });
   };
 
-  const dismissSign = () => {
-    setSignDismissed(true);
-    void browser.storage.local.set({ [COMMUTE_SIGN_DISMISSED_KEY]: true });
-  };
-
   const boardLabel = commuteIsOpen
     ? "Return to the Internet Commute"
     : "Board the Internet Commute";
-  const showSign = Boolean(onBoard) && loaded && !signDismissed;
-  const showTrainButton = Boolean(onBoard) && loaded && signDismissed;
 
   return (
-    <div className={`scenic-route${showSign ? " scenic-route--signed" : ""}`}>
-      {showSign && (
-        <div className="commute-sign">
-          <button
-            type="button"
-            className="commute-sign__board"
-            onClick={onBoard}
-            aria-label={boardLabel}
-          >
-            <span className="commute-sign__route" aria-hidden="true">
-              <span className="commute-sign__stop commute-sign__stop--blue" />
-              <span className="commute-sign__stop commute-sign__stop--gold" />
-              <span className="commute-sign__stop commute-sign__stop--rust" />
-            </span>
-            <span className="commute-sign__copy">
-              <span className="commute-sign__eyebrow">
-                {commuteIsOpen ? "ON BOARD" : "BOARDING NOW"}
-              </span>
-              <strong>
-                {commuteIsOpen
-                  ? "Return to the internet commute"
-                  : "Pass through recent websites people visited"}
-              </strong>
-            </span>
-            <span className="commute-sign__arrow" aria-hidden="true">
-              →
-            </span>
-          </button>
-          <button
-            type="button"
-            className="commute-sign__dismiss"
-            onClick={dismissSign}
-            aria-label="Hide the boarding sign"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
+    <div className="scenic-route">
       <section
         className="scenic-route__panel"
         aria-label="Scenic route settings"
@@ -153,7 +99,7 @@ export function SlowModeSettings({ onBoard, commuteIsOpen = false }: Props) {
             <span className="scenic-route__switch" aria-hidden="true" />
             <strong>scenic route</strong>
           </label>
-          {showTrainButton && (
+          {onBoard && (
             <button
               type="button"
               className="board-train"
