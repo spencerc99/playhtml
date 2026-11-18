@@ -40,7 +40,11 @@ import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import type { Map as YMap } from "yjs";
 import { ElementHandler } from "./elements";
 import { cloneStoreValue, warnHashedElementId } from "./utils";
-import { getHashedElementId, type HashedElementId } from "./hashedElementId";
+import {
+  findHashedElementId,
+  getHashedElementId,
+  type HashedElementId,
+} from "./hashedElementId";
 import type { CursorClientAwareness } from "./cursors/cursor-client";
 import { getPresencePage } from "./cursors/presence-page";
 import { createUsersAPI, defaultSeedIdentity } from "./users";
@@ -2729,8 +2733,9 @@ async function getPreviousIdsForNewRecord(
   hashed: HashedElementId,
 ): Promise<string[]> {
   if (element.hasAttribute("data-source")) return [];
+  if (element.id !== (await hashed.id)) return [];
   if (store.play[tag]?.[element.id] !== undefined) return [];
-  return (await hashed.previousIds()).get(tag) ?? [];
+  return hashed.previousIds(tag);
 }
 
 /**
@@ -2772,7 +2777,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   }
 
-  let previousElementIds: string[] = [];
+  let hashed = findHashedElementId(element);
   if (!element.id) {
     // TODO: better way for unique ID here? but actually having it reversible is a nice property
     const selectorId = element.getAttribute("selector-id");
@@ -2787,19 +2792,20 @@ async function setupPlayElementForTag<T extends TagType | string>(
         element.hasAttribute(tagType),
       );
       if (!elementTags.includes(tag)) elementTags.push(tag);
-      const hashed = getHashedElementId(element, elementTags, {
+      hashed = getHashedElementId(element, elementTags, {
         mark: markElementAsLoading,
         clear: markElementAsReady,
       });
       const hashedId = await hashed.id;
       if (!element.id) element.id = hashedId;
-      previousElementIds = await getPreviousIdsForNewRecord(
-        element,
-        tag,
-        hashed,
-      );
     }
   }
+  // Looked up on every setup, not only when the id is first assigned: after a
+  // move to another room, or for a capability added later, the element keeps
+  // its id but has no record under it yet.
+  const previousElementIds = hashed
+    ? await getPreviousIdsForNewRecord(element, tag, hashed)
+    : [];
   const elementId = getIdForElement(element);
 
   if (!elementId) {

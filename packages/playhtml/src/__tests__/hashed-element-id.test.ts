@@ -203,4 +203,26 @@ describe("hashed element ids", () => {
       on: false,
     });
   });
+
+  it("carries over data for a capability set up after the element has its id", async () => {
+    await playhtml.init({});
+    await settle();
+    const element = addElement(["can-toggle"], "grows later");
+    await setUp(element, ["can-toggle"]);
+    // Before, such an element's id was its can-toggle hash without the
+    // loading marks, and a capability set up later saved under that id.
+    const earlierId = await hashHtml(
+      "can-toggle",
+      readyHtml(`can-toggle=""`, "grows later"),
+    );
+    saveRecord("can-move", earlierId, { x: 5, y: 6 });
+
+    element.setAttribute("can-move", "");
+    await setUp(element, ["can-move"]);
+
+    expect((playhtml.syncedStore as any)["can-move"][element.id]).toEqual({
+      x: 5,
+      y: 6,
+    });
+  });
 });

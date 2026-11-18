@@ -2,6 +2,15 @@
 // ABOUTME: Production mode stays silent and the element still gets its hashed id.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { playhtml, resetPlayHTML } from "../index";
+import { hashHtml } from "../utils";
+
+// The id an id-less toggle gets: hashed from its HTML as it reads while loading.
+function expectedToggleId(text: string): Promise<string> {
+  return hashHtml(
+    "can-toggle",
+    `<div can-toggle="" class="playhtml-loading" aria-busy="true" aria-live="polite">${text}</div>`,
+  );
+}
 
 function addIdlessToggle(text: string): HTMLElement {
   const element = document.createElement("div");
@@ -41,7 +50,7 @@ describe("hashed id fallback warning", () => {
     // Set up again: the element now has its hashed id and does not warn again.
     await playhtml.setupPlayElementForTag(first, "can-toggle");
 
-    expect(first.id).toMatch(/^[0-9a-f]{40}$/);
+    expect(first.id).toBe(await expectedToggleId("first"));
     const warnings = hashFallbackWarnings(warnSpy);
     expect(warnings).toHaveLength(2);
     expect(warnings[0][0]).toContain("add an id");
@@ -71,7 +80,7 @@ describe("hashed id fallback warning", () => {
     const element = addIdlessToggle("quiet");
     await playhtml.setupPlayElementForTag(element, "can-toggle");
 
-    expect(element.id).toMatch(/^[0-9a-f]{40}$/);
+    expect(element.id).toBe(await expectedToggleId("quiet"));
     expect(hashFallbackWarnings(warnSpy)).toHaveLength(0);
   });
 });

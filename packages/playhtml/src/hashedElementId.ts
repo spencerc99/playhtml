@@ -6,10 +6,10 @@ export interface HashedElementId {
   /** The element's id, shared by all of its capabilities. */
   id: Promise<string>;
   /**
-   * For each capability on the element, the other ids its data may already be
-   * saved under, most likely first. Hashed on first call.
+   * The other ids the element's data for `tag` may already be saved under,
+   * most likely first. Hashed on first call.
    */
-  previousIds(): Promise<Map<string, string[]>>;
+  previousIds(tag: string): Promise<string[]>;
 }
 
 export interface LoadingMarks {
@@ -21,6 +21,17 @@ export interface LoadingMarks {
 
 const LOADING_CLASS = "playhtml-loading";
 const hashedIdByElement = new WeakMap<HTMLElement, HashedElementId>();
+
+// Copies are built in a document that never renders, runs scripts or loads
+// resources. One is enough for every element.
+let inertDocument: Document | undefined;
+
+/** The hashed id already given to `element`, if it got one. */
+export function findHashedElementId(
+  element: HTMLElement,
+): HashedElementId | undefined {
+  return hashedIdByElement.get(element);
+}
 
 /**
  * The HTML of `element` as it reads while loading and once ready.
@@ -35,7 +46,8 @@ function loadingAndReadyHtml(
   marks: LoadingMarks,
 ): { loading: string; ready: string } {
   const current = element.outerHTML;
-  const inert = document.implementation.createHTMLDocument("");
+  inertDocument ??= document.implementation.createHTMLDocument("");
+  const inert = inertDocument;
   const shell = inert.importNode(element, false) as HTMLElement;
 
   // Rebuilds the full HTML from a childless copy by putting the live
@@ -95,42 +107,36 @@ export function getHashedElementId(
   const { loading, ready } = loadingAndReadyHtml(element, marks);
   const id = hashHtml(tags[0], loading);
 
-  let previous: Promise<Map<string, string[]>> | undefined;
-  const previousIds = () => {
-    previous ??= (async () => {
-      const currentId = await id;
+  let hashesByTag: Promise<Map<string, string[]>> | undefined;
+  const previousIds = async (tag: string): Promise<string[]> => {
+    hashesByTag ??= (async () => {
       const forms = loading === ready ? [loading] : [loading, ready];
       const hashes = new Map<string, string[]>();
       await Promise.all(
-        tags.map(async (tag) => {
+        tags.map(async (elementTag) => {
           hashes.set(
-            tag,
-            await Promise.all(forms.map((html) => hashHtml(tag, html))),
+            elementTag,
+            await Promise.all(forms.map((html) => hashHtml(elementTag, html))),
           );
         }),
       );
-      const byTag = new Map<string, string[]>();
-      for (const tag of tags) {
-        // A capability's data sits under its own hash after a normal load.
-        // After a re-setup it sits under whichever hash became the element's
-        // id, so the other capabilities' hashes come next, last one first.
-        const candidates = [
-          ...hashes.get(tag)!,
-          ...tags
-            .filter((other) => other !== tag)
-            .reverse()
-            .flatMap((other) => hashes.get(other)!),
-        ];
-        byTag.set(
-          tag,
-          Array.from(new Set(candidates)).filter(
-            (candidate) => candidate !== currentId,
-          ),
-        );
-      }
-      return byTag;
+      return hashes;
     })();
-    return previous;
+    const [currentId, hashes] = await Promise.all([id, hashesByTag]);
+    // A capability's data sits under its own hash after a normal load. After
+    // a re-setup, or for a capability added to the element later, it sits
+    // under whichever hash was the element's id then, so the other
+    // capabilities' hashes come next, last one first.
+    const candidates = [
+      ...(hashes.get(tag) ?? []),
+      ...tags
+        .filter((other) => other !== tag)
+        .reverse()
+        .flatMap((other) => hashes.get(other)!),
+    ];
+    return Array.from(new Set(candidates)).filter(
+      (candidate) => candidate !== currentId,
+    );
   };
 
   const hashed: HashedElementId = { id, previousIds };
