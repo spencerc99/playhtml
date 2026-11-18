@@ -3,6 +3,7 @@
 import ReactDOM from "react-dom";
 import React from "react";
 import { PlayProvider } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import { Cursors, Guestbook, PlayhtmlToolBox } from "../events";
 import { useStickyState } from "../../hooks/useStickyState";
 import "./gray-area.scss";
@@ -12,8 +13,12 @@ function Main() {
     "username",
     null,
     (newName) => {
-      // Cursor identity is exposed through settable properties, not methods.
-      if (window.cursors) window.cursors.name = newName ?? "";
+      // Nothing saved or typed yet: keep the name playhtml already has.
+      if (newName == null) return;
+      // Your name only saves once playhtml has connected.
+      playhtml.ready.then(() => {
+        playhtml.people.me.name = newName ?? "";
+      });
     },
   );
   const [from, setFrom] = useStickyState<string | null>("from", null);

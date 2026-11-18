@@ -1,8 +1,7 @@
-// ABOUTME: Turns recent WWO navigation events into safe, deduplicated train stops.
-// ABOUTME: Curates landing routes while preserving the full pool for scenery.
+// ABOUTME: Parses the commute API response into train stops and passing scenery.
+// ABOUTME: Formats stop titles, favicons, and ages for the commute scene.
 
 import type { CommuteResponse } from "@playhtml/extension-types";
-import type { CollectionEvent } from "@movement/types";
 
 export interface CommuteStop {
   id: string;
@@ -109,35 +108,6 @@ export const SAMPLE_STOPS: CommuteStop[] = [
   },
 ];
 
-const NEVER_LAND_DOMAINS = ["x.com", "twitter.com", "gemini.google.com"];
-const TITLE_REQUIRED_DOMAINS = [
-  "youtube.com",
-  "youtu.be",
-  "github.com",
-  "wikipedia.org",
-  "itch.io",
-  "wordpress.com",
-  "tiktok.com",
-  "instagram.com",
-];
-const GENERIC_PATHS = [
-  "/dashboard",
-  "/feed",
-  "/home",
-  "/newtab",
-  "/search",
-];
-const NEVER_LAND_PATH_SEGMENTS = new Set([
-  "auth",
-  "authorize",
-  "login",
-  "oauth",
-  "outbound",
-  "redirect",
-  "redir",
-  "signin",
-  "sso",
-]);
 const GENERIC_TITLES = new Set([
   "attentionrequiredcloudflare",
   "checkingyourbrowser",
@@ -152,10 +122,6 @@ const GENERIC_TITLES = new Set([
   "untitled",
 ]);
 
-function domainMatches(domain: string, candidate: string): boolean {
-  return domain === candidate || domain.endsWith(`.${candidate}`);
-}
-
 function comparableLabel(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
@@ -166,22 +132,6 @@ function hasUnusableTitle(stop: CommuteStop): boolean {
     GENERIC_TITLES.has(comparableLabel(title)) ||
     /^https?:\/\/\S+$/i.test(title)
   );
-}
-
-function hasBlockedPath(stop: CommuteStop): boolean {
-  if (
-    GENERIC_PATHS.some(
-      (path) => stop.path === path || stop.path.startsWith(`${path}/`),
-    )
-  ) {
-    return true;
-  }
-
-  return stop.path
-    .split("/")
-    .some((segment) =>
-      NEVER_LAND_PATH_SEGMENTS.has(comparableLabel(segment)),
-    );
 }
 
 export function getMeaningfulStopTitle(stop: CommuteStop): string | null {
@@ -206,51 +156,6 @@ export function getStopDisplayName(stop: CommuteStop): string {
 
 export function getStopDisplayDetail(stop: CommuteStop): string {
   return stop.domain;
-}
-
-export function curateCommuteStops(
-  stops: CommuteStop[],
-  limit = 10,
-): CommuteStop[] {
-  const curated: CommuteStop[] = [];
-  const seenDomains = new Set<string>();
-  const stopsByRider = new Map<string, number>();
-  const rankedStops = [...stops].sort((a, b) => {
-    const visitDifference = a.recentDomainVisits - b.recentDomainVisits;
-    if (visitDifference !== 0) return visitDifference;
-    return (b.visitedAt ?? 0) - (a.visitedAt ?? 0);
-  });
-
-  for (const stop of rankedStops) {
-    if (hasUnusableTitle(stop)) continue;
-    if (hasBlockedPath(stop)) continue;
-    if (
-      NEVER_LAND_DOMAINS.some((domain) =>
-        domainMatches(stop.domain, domain),
-      )
-    ) {
-      continue;
-    }
-    if (
-      TITLE_REQUIRED_DOMAINS.some((domain) =>
-        domainMatches(stop.domain, domain),
-      ) &&
-      !getMeaningfulStopTitle(stop)
-    ) {
-      continue;
-    }
-    if (seenDomains.has(stop.domain)) continue;
-
-    const riderStopCount = stopsByRider.get(stop.visitedBy) ?? 0;
-    if (riderStopCount >= 2) continue;
-
-    curated.push(stop);
-    seenDomains.add(stop.domain);
-    stopsByRider.set(stop.visitedBy, riderStopCount + 1);
-    if (curated.length === limit) break;
-  }
-
-  return curated;
 }
 
 export function getFaviconUrl(
@@ -281,88 +186,6 @@ export function formatStopAge(stop: CommuteStop, now = Date.now()): string {
   if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
 
   return `${Math.floor(elapsedMinutes / 60)}h`;
-}
-
-function formatRiderLabel(playerId: string): string {
-  if (playerId.length <= 24) return playerId;
-  return `rider-${playerId.slice(-6)}`;
-}
-
-function toCommuteStop(event: CollectionEvent): CommuteStop | null {
-  const candidate = event.normalizedUrl ?? event.meta?.url;
-  if (!candidate) return null;
-
-  try {
-    const url = new URL(candidate);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-
-    const domain = url.hostname.replace(/^www\./, "");
-    if (!domain) return null;
-
-    const path = url.pathname || "/";
-    const canonicalUrl = `${url.protocol}//${url.host}${path}`;
-    const data = event.data as Record<string, unknown>;
-    const title = typeof data.title === "string" ? data.title : null;
-    const faviconUrl =
-      typeof data.favicon_url === "string" ? data.favicon_url : null;
-
-    return {
-      id: canonicalUrl,
-      url: canonicalUrl,
-      domain,
-      path,
-      title,
-      faviconUrl,
-      recentDomainVisits: 1,
-      visitedBy: formatRiderLabel(event.meta.pid),
-      visitedAt: event.ts,
-      sampleAge: null,
-      hue: event.meta.cursor_color ?? "#4a9a8a",
-      source: "live",
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function deriveRecentStops(
-  events: CollectionEvent[],
-  limit = 5,
-): CommuteStop[] {
-  const stops = new Map<string, CommuteStop>();
-  const newestFirst = [...events].sort((a, b) => b.ts - a.ts);
-  const parsedStops = newestFirst
-    .filter((event) => event.type === "navigation")
-    .map(toCommuteStop)
-    .filter((stop): stop is CommuteStop => stop !== null);
-  const visitsByDomain = new Map<string, number>();
-
-  for (const stop of parsedStops) {
-    visitsByDomain.set(stop.domain, (visitsByDomain.get(stop.domain) ?? 0) + 1);
-  }
-
-  for (const stop of parsedStops) {
-    if (stops.has(stop.url)) continue;
-
-    stops.set(stop.url, {
-      ...stop,
-      recentDomainVisits: visitsByDomain.get(stop.domain) ?? 1,
-    });
-    if (stops.size === limit) break;
-  }
-
-  return [...stops.values()];
-}
-
-export function parseRecentCommuteStops(
-  payload: unknown,
-  limit = 10,
-): CommuteStop[] {
-  if (!Array.isArray(payload)) {
-    throw new Error("Recent navigation response must be an array");
-  }
-
-  return deriveRecentStops(payload as CollectionEvent[], limit);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

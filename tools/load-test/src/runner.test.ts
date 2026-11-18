@@ -68,3 +68,17 @@ test("returns a nonzero exit status for uncaught runner failures", async () => {
 
   expect(result.exitCode).not.toBe(0);
 });
+
+test("refuses to target production without the confirm flag", async () => {
+  for (const args of [
+    ["--scenario", "fridge", "--target", "prod", "--users", "1", "--duration", "1"],
+    ["--scenario", "fridge", "--target", "api.playhtml.fun", "--users", "1", "--duration", "1"],
+    ["--config", "full-suite", "--target", "prod"],
+  ]) {
+    const result = await runRunner(args);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--i-know-this-is-prod");
+    expect(result.stdout).not.toContain("Run ");
+  }
+});

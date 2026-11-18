@@ -7,7 +7,6 @@ import {
   findNearbyCommuteSeat,
   getCommuteArrivalRiderId,
   getCommutePointFromClient,
-  getCommutePointFromZone,
   getCommuteStopExitNavigation,
   getMyCommuteRiderStart,
   getCommuteRiderStart,
@@ -129,15 +128,13 @@ describe("mobile commute geometry", () => {
     expect(getStandingPosition(SEATS[1])).toEqual({ x: 125, y: 270 });
   });
 
-  it("maps desktop clicks and shared cursor zones into carriage coordinates", () => {
+  it("maps desktop clicks into carriage coordinates", () => {
     expect(
       getCommutePointFromClient(
         { x: 375, y: 140 },
         { left: 100, top: 50, width: 550, height: 180 },
       ),
     ).toEqual({ x: 550, y: 180 });
-    expect(getCommutePointFromZone(0.5, 0.5)).toEqual({ x: 550, y: 180 });
-    expect(getCommutePointFromZone(-1, 2)).toEqual({ x: 38, y: 316 });
   });
 
   it("gives every rider a stable visible position before they move", () => {
