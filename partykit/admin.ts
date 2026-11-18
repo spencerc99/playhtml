@@ -130,7 +130,7 @@ export class AdminHandler {
     }
   }
 
-  private checkAdminAuth(request: Request): Response | null {
+  private checkAdminAuth(request: Request): Promise<Response | null> {
     return getAdminAuthError(request, env.ADMIN_TOKEN);
   }
 
@@ -139,7 +139,7 @@ export class AdminHandler {
   }
 
   private async handleAdminInspect(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -295,7 +295,7 @@ export class AdminHandler {
   }
 
   private async handleAdminRawData(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -361,7 +361,7 @@ export class AdminHandler {
   }
 
   private async handleAdminLiveCompare(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -468,7 +468,7 @@ export class AdminHandler {
    * This manually triggers a save without waiting for the background autosave.
    */
   private async handleAdminForceSaveLive(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
@@ -505,7 +505,7 @@ export class AdminHandler {
   private async handleAdminForceReloadLive(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     // Reloading the persisted document into the live doc is the exact operation
     // that OOMs a quarantined room, and it is a tempting thing to reach for
@@ -563,7 +563,7 @@ export class AdminHandler {
    * Save edited JSON data as the authoritative room snapshot.
    */
   private async handleAdminSaveEditedData(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
@@ -613,7 +613,7 @@ export class AdminHandler {
   }
 
   private async handleModerationRemove(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
@@ -688,7 +688,7 @@ export class AdminHandler {
   private async handleAdminRemoveSubscriber(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -744,7 +744,7 @@ export class AdminHandler {
    * }
    */
   private async handleAdminCleanupOrphans(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
@@ -920,7 +920,7 @@ export class AdminHandler {
    * 5. Reload the live server from this new snapshot
    */
   private async handleAdminHardReset(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
@@ -984,7 +984,7 @@ export class AdminHandler {
   private async handleAdminRestoreRawDocument(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     // Quarantine also runs the room in transient mode, but this endpoint is how
     // an oversized document gets replaced with a repaired one, so it stays open
@@ -1142,7 +1142,7 @@ export class AdminHandler {
   private async handleAdminQuarantineStatus(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -1165,7 +1165,7 @@ export class AdminHandler {
   // persistence entirely, so nothing automatic reaches for it except as a last
   // resort after the retry backoff is exhausted.
   private async handleAdminQuarantineSet(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     let body: { reason?: string } | null = null;
@@ -1242,7 +1242,7 @@ export class AdminHandler {
   private async handleAdminQuarantineClear(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -1296,7 +1296,7 @@ export class AdminHandler {
   private async handleAdminCompactionRetry(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {

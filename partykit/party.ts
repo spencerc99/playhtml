@@ -2719,7 +2719,7 @@ export class PartyServer extends YServer {
         isExportPermissionsRequest(body) ||
         isApplySubtreesImmediateRequest(body)
       ) {
-        const bridgeAuthFailure = getBridgeAuthFailure(
+        const bridgeAuthFailure = await getBridgeAuthFailure(
           request,
           env.PARTYKIT_BRIDGE_SECRET
         );
