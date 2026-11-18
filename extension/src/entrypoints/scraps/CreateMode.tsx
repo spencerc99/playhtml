@@ -18,6 +18,13 @@ interface CreateModeProps {
   savedRevision: number;
   onEdit: (record: CollageRecord) => void;
   onStartNew: () => void;
+  /** Settles once every studio that has closed has stored what it had. */
+  settling: () => Promise<void>;
+  /** Why a collage could not be reopened, shown over the list. */
+  notice?: string | null;
+  onClosed?: (stored: Promise<void>) => void;
+  /** Told after a studio has gone when its last write failed. */
+  onUnsaved?: (lost: { title: string; reason: string }) => void;
   onSaved: (record: CollageRecord) => void;
   onLeave: () => void;
 }
@@ -30,8 +37,12 @@ export function CreateMode({
   savedRevision,
   onEdit,
   onStartNew,
+  settling,
   onSaved,
   onLeave,
+  notice = null,
+  onClosed,
+  onUnsaved,
 }: CreateModeProps) {
   const shareLinks = useSettledFeatureState("COLLAGE_SHARE_LINKS");
 
@@ -46,6 +57,8 @@ export function CreateMode({
             revision={savedRevision}
             onEdit={onEdit}
             onStartNew={onStartNew}
+            settling={settling}
+            notice={notice}
           />
         ) : (
           <CollageStudio
@@ -54,6 +67,8 @@ export function CreateMode({
             editing={editing}
             onSaved={onSaved}
             onLeave={onLeave}
+            onClosed={onClosed}
+            onUnsaved={onUnsaved}
             canPublish={shareLinks?.enabled === true}
             signer={extensionSigner}
           />

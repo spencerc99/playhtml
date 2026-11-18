@@ -119,6 +119,8 @@ describe('public read access', () => {
     expect(allowed).toEqual(
       expect.arrayContaining(['x-wwo-public-id', 'x-wwo-signed-at', 'x-wwo-signature']),
     );
+    // Signed reads are GETs, so the preflight has to let that method through.
+    expect(response.headers.get('Access-Control-Allow-Methods')).toContain('GET');
   });
 });
 

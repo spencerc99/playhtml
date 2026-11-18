@@ -5,6 +5,7 @@ import type { ScrapSnapshot } from "./collageRecord";
 import type { CollageFrame, CollagePiece } from "./collageRecord";
 import { sourceBoxForCrop, type CropFraction } from "./collageGeometry";
 import { cutoutCanvas } from "./cutoutImages";
+import { loadImage, loadRemoteImage } from "./imageLoading";
 import { drawGrain } from "./paperGrain";
 import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 import { headingDisplayFontSize } from "@movement/components/ScrapCollage";
@@ -36,35 +37,7 @@ export interface BakeFailure {
   reason: string;
 }
 
-export async function loadImage(source: string): Promise<HTMLImageElement> {
-  const image = new Image();
-  image.decoding = "sync";
-  image.src = source;
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve();
-    image.onerror = () => reject(new Error("image failed to decode"));
-  });
-  return image;
-}
-
-/**
- * Loads a remote image through `fetch` so the bytes arrive as a same-origin
- * blob URL. The extension holds host permissions for all http/https, so this
- * keeps the canvas untainted where a plain crossorigin `<img>` would not.
- */
-async function loadRemoteImage(src: string): Promise<HTMLImageElement> {
-  if (src.startsWith("data:")) return loadImage(src);
-  const response = await fetch(src);
-  if (!response.ok) {
-    throw new Error(`fetch returned ${response.status}`);
-  }
-  const objectUrl = URL.createObjectURL(await response.blob());
-  try {
-    return await loadImage(objectUrl);
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
+export { loadImage };
 
 /**
  * Draws a button scrap through an SVG foreignObject so it bakes as the thing

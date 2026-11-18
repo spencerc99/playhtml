@@ -1,5 +1,5 @@
 // ABOUTME: Verifies the background reads shared events from the Worker for content scripts.
-// ABOUTME: Covers the signed request, success, a refused request, no identity, and a malformed message.
+// ABOUTME: Covers signed site and page reads, a refused request, no identity, and malformed messages.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WORKER_URL } from "@movement/config";
@@ -7,6 +7,8 @@ import { ECDSA_SIGN_ALGORITHM, bytesToHex, hexToBytes } from "../utils/restoreRe
 import { recentEventsSigningMessage } from "../utils/recentEventsRequest";
 
 const originalDefineBackground = (globalThis as any).defineBackground;
+const HASH_A = "0cc175b9c0f1b6a831c399e269772661";
+const HASH_B = "900150983cd24fb0d6963f7d28e17f72";
 
 async function generateStoredIdentity() {
   const pair = (await crypto.subtle.generateKey(
@@ -40,6 +42,37 @@ function memoryStorage(initial: Record<string, unknown>) {
       for (const k of Array.isArray(keys) ? keys : [keys]) delete data[k];
     }),
   };
+}
+
+/** Asserts the read carries a signature that the stored identity's public key verifies. */
+async function expectSignedBy(
+  init: RequestInit | undefined,
+  identity: Awaited<ReturnType<typeof generateStoredIdentity>>,
+  notBefore: number,
+) {
+  const headers = new Headers(init?.headers);
+  const publicId = headers.get("X-WWO-Public-Id");
+  const signedAt = Number(headers.get("X-WWO-Signed-At"));
+  const signature = headers.get("X-WWO-Signature");
+  expect(publicId).toBe(identity.public.publicKey);
+  expect(signedAt).toBeGreaterThanOrEqual(notBefore);
+  expect(signedAt).toBeLessThanOrEqual(Date.now());
+  expect(signature).toMatch(/^[0-9a-f]{128}$/);
+
+  const verifyKey = await crypto.subtle.importKey(
+    "raw",
+    hexToBytes(identity.public.publicKey.slice("pk_".length)),
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["verify"],
+  );
+  const verified = await crypto.subtle.verify(
+    ECDSA_SIGN_ALGORITHM,
+    verifyKey,
+    hexToBytes(signature!),
+    new TextEncoder().encode(recentEventsSigningMessage({ publicId: publicId!, signedAt })),
+  );
+  expect(verified).toBe(true);
 }
 
 async function loadBackgroundListener(storage: Record<string, unknown> = {}) {
@@ -127,29 +160,7 @@ describe("background shared-event reads", () => {
     expect(call?.[0]).toBe(
       `${WORKER_URL}/events/recent?type=cursor&limit=5000&domain=example.com`,
     );
-    const headers = new Headers(call?.[1]?.headers);
-    const publicId = headers.get("X-WWO-Public-Id");
-    const signedAt = Number(headers.get("X-WWO-Signed-At"));
-    const signature = headers.get("X-WWO-Signature");
-    expect(publicId).toBe(identity.public.publicKey);
-    expect(signedAt).toBeGreaterThanOrEqual(before);
-    expect(signedAt).toBeLessThanOrEqual(Date.now());
-    expect(signature).toMatch(/^[0-9a-f]{128}$/);
-
-    const verifyKey = await crypto.subtle.importKey(
-      "raw",
-      hexToBytes(identity.public.publicKey.slice("pk_".length)),
-      { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["verify"],
-    );
-    const verified = await crypto.subtle.verify(
-      ECDSA_SIGN_ALGORITHM,
-      verifyKey,
-      hexToBytes(signature!),
-      new TextEncoder().encode(recentEventsSigningMessage({ publicId: publicId!, signedAt })),
-    );
-    expect(verified).toBe(true);
+    await expectSignedBy(call?.[1], identity, before);
   });
 
   it("sends nothing and replies with an error when there is no identity yet", async () => {
@@ -169,6 +180,64 @@ describe("background shared-event reads", () => {
     expect(reply).toEqual({
       ok: false,
       error: "Could not load shared trails: this browser has no identity yet",
+    });
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes("/events/recent")),
+    ).toBe(false);
+  });
+
+  it("fetches one page's events when the message carries url hashes, signed the same way", async () => {
+    const identity = await generateStoredIdentity();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
+      String(input).startsWith(`${WORKER_URL}/events/recent`)
+        ? new Response("[]", { status: 200 })
+        : new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const send = await loadBackgroundListener({ playerIdentity: identity });
+    const before = Date.now();
+
+    const reply = await send({
+      type: "FETCH_SERVER_EVENTS",
+      urlHashes: [HASH_A, HASH_B],
+      eventType: "cursor",
+      limit: 5000,
+    });
+
+    expect(reply).toEqual({ ok: true, events: [] });
+    const call = fetchMock.mock.calls.find(([input]) =>
+      String(input).startsWith(`${WORKER_URL}/events/recent`),
+    );
+    expect(call?.[0]).toBe(
+      `${WORKER_URL}/events/recent?type=cursor&limit=5000&urlHash=${HASH_A}%2C${HASH_B}`,
+    );
+    await expectSignedBy(call?.[1], identity, before);
+  });
+
+  it.each([
+    [{ domain: "example.com", urlHashes: [HASH_A] }],
+    [{}],
+    [{ urlHashes: [] }],
+    [{ urlHashes: ["https://example.com/a"] }],
+    [{ urlHashes: [HASH_A, HASH_A, HASH_A, HASH_A, HASH_B] }],
+    [{ url: "https://example.com/a" }],
+  ])("rejects a message whose scope is not exactly one domain or set of url hashes: %j", async (scope) => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL) => new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const send = await loadBackgroundListener();
+
+    const reply = await send({
+      type: "FETCH_SERVER_EVENTS",
+      ...scope,
+      eventType: "cursor",
+      limit: 10,
+    });
+
+    expect(reply).toEqual({
+      ok: false,
+      error: "Could not load shared trails: bad request",
     });
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes("/events/recent")),

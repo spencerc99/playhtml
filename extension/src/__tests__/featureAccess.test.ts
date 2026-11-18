@@ -1,7 +1,7 @@
 // ABOUTME: Tests parsing and persistence of extension feature access and local choices.
 // ABOUTME: Ensures malformed policy cannot grant unavailable experiments.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
 import {
   FEATURE_ACCESS_STORAGE_KEY,
@@ -15,8 +15,35 @@ import {
   refreshFeatureAccess,
   setFeatureOverride,
 } from "../features/featureAccess";
+import { ECDSA_SIGN_ALGORITHM, bytesToHex, hexToBytes } from "../utils/restoreRequest";
+import { featureAccessSigningMessage } from "../utils/featureAccessRequest";
 
 vi.mock("@movement/config", () => ({ WORKER_URL: "https://worker.example" }));
+
+const storedIdentity = vi.hoisted(() => ({
+  current: null as null | { public: { publicKey: string }; privateKey: JsonWebKey },
+}));
+vi.mock("../storage/playerIdentity", () => ({
+  getStoredPlayerIdentity: async () => storedIdentity.current,
+}));
+
+let PUBLIC_ID: string;
+let VERIFY_KEY: CryptoKey;
+
+beforeAll(async () => {
+  const keypair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const raw = new Uint8Array(await crypto.subtle.exportKey("raw", keypair.publicKey));
+  PUBLIC_ID = `pk_${bytesToHex(raw)}`;
+  VERIFY_KEY = keypair.publicKey;
+  storedIdentity.current = {
+    public: { publicKey: PUBLIC_ID },
+    privateKey: await crypto.subtle.exportKey("jwk", keypair.privateKey),
+  };
+});
 
 describe("parseFeatureOverrides", () => {
   it("keeps only known features with boolean values", () => {
@@ -67,9 +94,22 @@ describe("refreshFeatureAccess", () => {
       features: { COMMUTE: { stage: "beta", available: true } },
     }), { status: 200 })));
 
-    const access = await refreshFeatureAccess("pk_test");
+    const access = await refreshFeatureAccess(PUBLIC_ID);
     expect(access.features.COMMUTE).toEqual({ stage: "beta", available: true });
-    expect(fetch).toHaveBeenCalledWith("https://worker.example/feature-access/pk_test");
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`https://worker.example/feature-access/${PUBLIC_ID}`);
+    expect(init.cache).toBe("no-store");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-WWO-Signed-At"]).toBe("456");
+    const verified = await crypto.subtle.verify(
+      ECDSA_SIGN_ALGORITHM,
+      VERIFY_KEY,
+      hexToBytes(headers["X-WWO-Signature"]),
+      new TextEncoder().encode(
+        featureAccessSigningMessage({ publicId: PUBLIC_ID, signedAt: 456 }),
+      ),
+    );
+    expect(verified).toBe(true);
     expect(browser.storage.local.set).toHaveBeenCalledWith({
       [FEATURE_ACCESS_STORAGE_KEY]: expect.objectContaining({ checkedAt: 456 }),
     });
@@ -87,7 +127,7 @@ describe("refreshFeatureAccess", () => {
       },
     }), { status: 200 })));
 
-    await refreshFeatureAccess("pk_test");
+    await refreshFeatureAccess(PUBLIC_ID);
     expect(browser.storage.local.set).toHaveBeenCalledTimes(1);
     expect(vi.mocked(browser.storage.local.set).mock.calls[0][0]).not.toHaveProperty(
       "wwoFeatureOverrides",
@@ -109,26 +149,35 @@ describe("refreshFeatureAccess", () => {
     };
 
     serveAccess(true);
-    await refreshFeatureAccess("pk_test");
+    await refreshFeatureAccess(PUBLIC_ID);
     expect(await getFeatureState("COMMUTE")).toMatchObject({ enabled: true, source: "available" });
 
     await setFeatureOverride("COMMUTE", false);
     expect(await getFeatureState("COMMUTE")).toMatchObject({ enabled: false, source: "choice" });
 
     serveAccess(false);
-    await refreshFeatureAccess("pk_test");
+    await refreshFeatureAccess(PUBLIC_ID);
     expect(await getFeatureState("COMMUTE")).toMatchObject({ enabled: false, source: "unavailable" });
 
     serveAccess(true);
-    await refreshFeatureAccess("pk_test");
+    await refreshFeatureAccess(PUBLIC_ID);
     expect(await getFeatureOverrides()).toEqual({ COMMUTE: false });
     expect(await getFeatureState("COMMUTE")).toMatchObject({ enabled: false, source: "choice" });
+  });
+
+  it("refuses to ask about an id whose key is not stored here", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(refreshFeatureAccess(`pk_04${"b".repeat(128)}`)).rejects.toThrow(
+      "Feature access check is for a different identity than the stored one",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not overwrite the cache when the server check fails", async () => {
     vi.mocked(browser.storage.local.set).mockClear();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unavailable", { status: 503 })));
-    await expect(refreshFeatureAccess("pk_test")).rejects.toThrow(
+    await expect(refreshFeatureAccess(PUBLIC_ID)).rejects.toThrow(
       "Feature access check failed with 503",
     );
     expect(browser.storage.local.set).not.toHaveBeenCalled();

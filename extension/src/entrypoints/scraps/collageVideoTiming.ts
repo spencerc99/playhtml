@@ -7,9 +7,6 @@ export const COLLAGE_VIDEO_FPS = 30;
 /** Longest a collage video runs, however long its slowest animation loops. */
 export const COLLAGE_VIDEO_MAX_MS = 10_000;
 
-/** Pixel density the video aims for, matching the still export. */
-export const COLLAGE_VIDEO_SCALE = 2;
-
 /**
  * Longest side a collage video may have. H.264 encoders commonly stop at 4096
  * on a side, and a larger video is unwieldy to share anyway.

@@ -51,6 +51,87 @@ const items: ScrapItem[] = [
   scrap("d", "https://example.com/", "Garden shop", "button", 4),
 ];
 
+/**
+ * jsdom has no ResizeObserver. This one remembers what it watches, so a test
+ * can say a box changed size the way the browser would.
+ */
+class ResizeObserverStub {
+  static live = new Set<ResizeObserverStub>();
+  private watched = new Set<Element>();
+  constructor(private readonly callback: ResizeObserverCallback) {}
+  observe(target: Element) {
+    this.watched.add(target);
+    ResizeObserverStub.live.add(this);
+  }
+  unobserve(target: Element) {
+    this.watched.delete(target);
+  }
+  disconnect() {
+    this.watched.clear();
+    ResizeObserverStub.live.delete(this);
+  }
+  static resized(target: Element) {
+    for (const observer of ResizeObserverStub.live) {
+      if (observer.watched.has(target)) {
+        observer.callback([], observer as unknown as ResizeObserver);
+      }
+    }
+  }
+}
+
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  ResizeObserverStub.live.clear();
+});
+
+describe("ScrapTray rows as the drawer changes height", () => {
+  it("mounts more rows once the scroll box grows", () => {
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    const many = Array.from({ length: 300 }, (_, index) =>
+      scrap(`p${index}`, "https://are.na/garden", "Garden", "image", index),
+    );
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() =>
+      root.render(
+        <ScrapTray
+          items={many}
+          dock="side"
+          width={384}
+          collapsed={false}
+          onWidth={vi.fn()}
+          onCollapsed={vi.fn()}
+          onPlace={vi.fn()}
+          onDragStart={vi.fn()}
+        />,
+      ),
+    );
+    const slots = () => container.querySelectorAll(".collage-tray__slot").length;
+    const before = slots();
+    expect(before).toBeLessThan(many.length);
+
+    const box = container.querySelector<HTMLDivElement>(".collage-tray__scroll")!;
+    Object.defineProperty(box, "clientHeight", {
+      configurable: true,
+      value: 100_000,
+    });
+    act(() => ResizeObserverStub.resized(box));
+    expect(slots()).toBeGreaterThan(before);
+
+    act(() => root.unmount());
+    container.remove();
+    // Unmounting lets go of the box.
+    expect(ResizeObserverStub.live.size).toBe(0);
+  });
+});
+
 describe("ScrapTray filters", () => {
   let container: HTMLDivElement;
   let root: Root;

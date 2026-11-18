@@ -9,17 +9,53 @@ import {
   normalizeUrl,
   extractDomain,
   determineFilterScope,
+  stripFragment,
 } from "../utils/urlNormalization";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import { MissingIdentityError, signedReadHeaders } from "./signedRead";
+import {
+  MAX_PAGE_EVENT_URL_LENGTH,
+  formatUrlHashes,
+  pageEventUrlVariants,
+} from "../utils/pageEventUrls";
+import { md5Hex } from "../utils/md5";
 
 /** Background message that fetches one type of shared events from the Worker. */
 export const FETCH_SERVER_EVENTS_MESSAGE = 'FETCH_SERVER_EVENTS';
 
-export interface ServerEventsRequest {
-  domain: string;
+/**
+ * One type of shared events for a whole site (`domain`) or for one page
+ * (`urlHashes`: md5 hashes of the page's stored URL forms, which the Worker
+ * reads through its page index without ever seeing the URL).
+ */
+export type ServerEventsRequest = {
   type: CollectionEventType;
   limit: number;
+} & (
+  | { domain: string; urlHashes?: undefined }
+  | { urlHashes: string[]; domain?: undefined }
+);
+
+/**
+ * md5 hashes of the stored URL forms of `pageUrl` (see pageEventUrlVariants).
+ * A URL too long for a page lookup is looked up without its query string, so
+ * a page reached through a very long link still shows the trails left on its
+ * plain address. Throws for a page that is not http(s).
+ */
+export function pageUrlHashes(pageUrl: string): string[] {
+  let variants: string[];
+  try {
+    let url = stripFragment(pageUrl);
+    if (url.length > MAX_PAGE_EVENT_URL_LENGTH) {
+      const withoutQuery = new URL(url);
+      withoutQuery.search = "";
+      url = withoutQuery.toString();
+    }
+    variants = pageEventUrlVariants(url);
+  } catch {
+    throw new Error("Could not load shared trails for this page");
+  }
+  return variants.map(md5Hex);
 }
 
 export type ServerEventsResponse =
@@ -76,7 +112,7 @@ export async function loadHistoricalData(
   if (source === 'everyone') {
     const serverEvents = await fetchServerEvents(
       domain,
-      normalizedCurrentUrl,
+      currentUrl,
       actualMode,
       limit,
       types,
@@ -142,7 +178,7 @@ export async function loadHistoricalData(
   // presenting local events as if the backfill had succeeded.
   const serverEvents = await fetchServerEvents(
     domain,
-    normalizedCurrentUrl,
+    currentUrl,
     actualMode,
     limit,
     types,
@@ -163,7 +199,14 @@ export async function loadHistoricalData(
 
 /**
  * Fetch shared events from the Worker, one request per type.
- * Client-side filters by normalized URL if mode is 'url'.
+ *
+ * In 'url' mode only md5 hashes of this page's stored URL forms leave the
+ * browser (the page URL without its fragment, without its query string, and
+ * with the trailing slash toggled), and the Worker reads only events stored
+ * under them. The normalized-URL filter then drops anything that does not match
+ * the local definition of the page, including another page that shares an md5;
+ * the Worker never returns events for other query strings of the same path,
+ * which the normalized comparison would keep.
  *
  * On a web page the request goes through the background: a content script's
  * fetch carries the page's Origin, which the Worker's origin allowlist
@@ -172,16 +215,19 @@ export async function loadHistoricalData(
  */
 async function fetchServerEvents(
   domain: string,
-  normalizedUrl: string,
+  currentUrl: string,
   mode: 'domain' | 'url',
   limit: number,
   types: CollectionEventType[],
 ): Promise<CollectionEvent[]> {
   const viaBackground = !isExtensionPageUrl(window.location.href);
+  const normalizedUrl = normalizeUrl(currentUrl);
+  const urlHashes = mode === 'url' ? pageUrlHashes(currentUrl) : null;
   const allEvents: CollectionEvent[] = [];
 
   for (const type of types) {
-    const request: ServerEventsRequest = { domain, type, limit };
+    const request: ServerEventsRequest =
+      urlHashes !== null ? { urlHashes, type, limit } : { domain, type, limit };
     let events = viaBackground
       ? await requestServerEventsFromBackground(request)
       : await fetchRecentServerEvents(request);
@@ -213,7 +259,9 @@ async function requestServerEventsFromBackground(
 ): Promise<CollectionEvent[]> {
   const response = (await browser.runtime.sendMessage({
     type: FETCH_SERVER_EVENTS_MESSAGE,
-    domain: request.domain,
+    ...(request.urlHashes !== undefined
+      ? { urlHashes: request.urlHashes }
+      : { domain: request.domain }),
     eventType: request.type,
     limit: request.limit,
   })) as ServerEventsResponse | undefined;
@@ -225,22 +273,23 @@ async function requestServerEventsFromBackground(
 }
 
 /**
- * Read one type of recent shared events for a domain from the Worker's
- * `/events/recent`. The request is signed with the stored identity key,
- * because the background and extension pages send no Origin for the Worker
- * to check; without a stored identity nothing is sent. Throws with a message
- * fit for the overlay when the request cannot be made, fails, or the Worker
- * answers with an error status.
+ * Read one type of recent shared events for a domain or one page from the
+ * Worker's `/events/recent`. The request is signed with the stored identity
+ * key, because the background and extension pages send no Origin for the
+ * Worker to check; without a stored identity nothing is sent. Throws with a
+ * message fit for the overlay when the request cannot be made, fails, or the
+ * Worker answers with an error status.
  */
-export async function fetchRecentServerEvents({
-  domain,
-  type,
-  limit,
-}: ServerEventsRequest): Promise<CollectionEvent[]> {
+export async function fetchRecentServerEvents(
+  request: ServerEventsRequest,
+): Promise<CollectionEvent[]> {
+  const { type, limit } = request;
   const params = new URLSearchParams({
     type,
     limit: limit.toString(),
-    domain,
+    ...(request.urlHashes !== undefined
+      ? { urlHash: formatUrlHashes(request.urlHashes) }
+      : { domain: request.domain }),
   });
 
   let headers: Record<string, string>;

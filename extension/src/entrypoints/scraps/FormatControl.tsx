@@ -2,6 +2,7 @@
 // ABOUTME: Two small buttons in the bottom bar (size, paper) and the zoom, opening one popover.
 
 import React, { useEffect, useRef, useState } from "react";
+import { useMenuEscape } from "./useMenuEscape";
 import {
   COLLAGE_FORMATS,
   FORMAT_NAMES,
@@ -44,26 +45,18 @@ export function FormatControl({
 
   // Escape and a click outside both put the popover away, and escape hands
   // focus back to the button that opened it.
+  useMenuEscape(open, () => {
+    close();
+    buttonRef.current?.focus();
+  });
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      close();
-      buttonRef.current?.focus();
-    };
     const onPointerDown = (event: PointerEvent) => {
       const holder = holderRef.current;
       if (holder && !holder.contains(event.target as Node)) close();
     };
-    // Capturing beats the studio's own Escape handler to the event, so a
-    // press closes the popover rather than deselecting behind it.
-    window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("pointerdown", onPointerDown);
-    };
+    return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
   const choose = (next: CollageFormatName) => {

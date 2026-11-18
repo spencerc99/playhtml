@@ -25,13 +25,23 @@ export interface AutosaveState {
   standing: SaveStanding;
   /** Why the last bake could not be drawn, kept so it can be shown. */
   previewProblem: string | null;
+  /** Writes that have failed in a row, which sets how long the next retry waits. */
+  failedWrites: number;
 }
 
 export type AutosaveEvent =
   | { kind: "changed"; hasContent: boolean }
   | { kind: "arrangementSettled" }
   | { kind: "flush" }
-  | { kind: "writeSucceeded"; revision: number }
+  | {
+      kind: "writeSucceeded";
+      revision: number;
+      /**
+       * How the picture baked alongside this write went, for a write that
+       * baked one first. Omitted when the write carried the previous picture.
+       */
+      preview?: { drawn: true } | { drawn: false; reason: string };
+    }
   | { kind: "writeFailed"; reason: string }
   | { kind: "bakeSucceeded"; token: number }
   | { kind: "bakeFailed"; token: number; reason: string };
@@ -46,6 +56,19 @@ export interface AutosaveAction {
   scheduleSettle?: boolean;
   /** Stop the settle timer, because it has been overtaken. */
   cancelSettle?: boolean;
+  /** Try a failed write again after this long, on the settle timer. */
+  retryAfterMs?: number;
+}
+
+/**
+ * How long each retry of a failed write waits: quickly at first, in case the
+ * failure was a blip, then every 30 seconds for as long as the studio is open.
+ */
+export const RETRY_DELAYS_MS = [2000, 5000, 15000, 30000];
+
+export function retryDelayMs(failedWrites: number): number {
+  const index = Math.min(failedWrites, RETRY_DELAYS_MS.length) - 1;
+  return RETRY_DELAYS_MS[Math.max(index, 0)];
 }
 
 export function createAutosaveState(stored: boolean): AutosaveState {
@@ -58,6 +81,7 @@ export function createAutosaveState(stored: boolean): AutosaveState {
     storedRevision: stored ? 0 : null,
     standing: stored ? { kind: "saved" } : { kind: "untouched" },
     previewProblem: null,
+    failedWrites: 0,
   };
 }
 
@@ -92,6 +116,9 @@ export function stepAutosave(
           // A bake already running is now for an older arrangement.
           bakingToken: null,
           standing: { kind: "saving" },
+          // A fresh edit after a failure is retried on its own settle, not
+          // after the backoff the failures had built up.
+          failedWrites: 0,
         },
         action: { scheduleSettle: true },
       };
@@ -128,12 +155,35 @@ export function stepAutosave(
 
     case "writeSucceeded": {
       const caughtUp = event.revision === state.revision;
+      if (caughtUp && event.preview) {
+        // The picture was drawn for this very arrangement just before the
+        // write, so there is nothing to bake again.
+        const drawn = event.preview.drawn;
+        const problem = event.preview.drawn ? null : event.preview.reason;
+        return {
+          state: {
+            ...state,
+            writing: false,
+            storedRevision: event.revision,
+            failedWrites: 0,
+            bakingToken: null,
+            previewStale: !drawn,
+            previewProblem: problem,
+            standing:
+              problem === null
+                ? { kind: "saved" }
+                : { kind: "previewBehind", reason: problem },
+          },
+          action: {},
+        };
+      }
       const token = state.revision;
       return {
         state: {
           ...state,
           writing: false,
           storedRevision: event.revision,
+          failedWrites: 0,
           bakingToken: caughtUp ? token : state.bakingToken,
           standing: state.previewStale
             ? state.previewProblem
@@ -148,15 +198,21 @@ export function stepAutosave(
       };
     }
 
-    case "writeFailed":
+    case "writeFailed": {
+      const failedWrites = state.failedWrites + 1;
       return {
         state: {
           ...state,
           writing: false,
+          // The arrangement is still waiting to be written, so a retry, a
+          // flush or the next settle all write it again.
+          arrangementPending: true,
+          failedWrites,
           standing: { kind: "failed", reason: event.reason },
         },
-        action: {},
+        action: { retryAfterMs: retryDelayMs(failedWrites) },
       };
+    }
 
     case "bakeSucceeded": {
       // A bake for an arrangement that has since moved on is discarded rather
