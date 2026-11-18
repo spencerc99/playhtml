@@ -2,7 +2,7 @@
 // ABOUTME: Covers hydration, conversion, deduplication, presence, limits, and restart safety.
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ClientOperationMessage, RoomSnapshot } from "@playhtml/common";
+import type { ClientOperationMessage, PackedSnapshot } from "@playhtml/common";
 import { encodeDocToBase64, jsonToDoc } from "../docUtils";
 
 class FakeDurableObject {
@@ -223,9 +223,9 @@ async function closeRoom(
   await room.onClose(connection as never, 1000, "", true);
 }
 
-function persistedSnapshot(): RoomSnapshot {
+function persistedSnapshot(): PackedSnapshot {
   const documentJson = persistedRow?.document_json as {
-    snapshot: RoomSnapshot;
+    snapshot: PackedSnapshot;
   };
   return documentJson.snapshot;
 }
@@ -259,7 +259,7 @@ describe("PartyServerV2 protocol", () => {
       protocolVersion: 2,
       sequence: 0,
       generation: 0,
-      snapshot: { state: {}, arrays: [], lastMutationIds: {} },
+      snapshot: { state: {}, itemIds: [], lastMutationIds: {} },
     });
   });
 
@@ -483,7 +483,7 @@ describe("PartyServerV2 protocol", () => {
           generation: 0,
           snapshot: {
             state: { "can-toggle": { light: { on: true } } },
-            arrays: [],
+            itemIds: [],
             lastMutationIds: {},
           },
         },
@@ -545,7 +545,7 @@ describe("PartyServerV2 protocol", () => {
         generation: 0,
         snapshot: {
           state: { "can-play": { counter: { count: 1 } } },
-          arrays: [],
+          itemIds: [],
           lastMutationIds: { "client-1": 1 },
         },
         clientLastSeen: { "client-1": expect.any(Number) },
@@ -766,6 +766,132 @@ describe("PartyServerV2 play events", () => {
   });
 });
 
+/** Rebuilds every object with its keys in reverse order, as a jsonb column may. */
+function withReversedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withReversedKeys);
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .reverse()
+        .map((key) => [key, withReversedKeys(record[key])]),
+    );
+  }
+  return value;
+}
+
+describe("PartyServerV2 saved array identities", () => {
+  test("saves item IDs without addresses and still targets the same items after a reload", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(
+        operationMessage({
+          operation: {
+            type: "set",
+            capability: "can-play",
+            elementId: "board",
+            path: [],
+            value: {
+              notes: [
+                { text: "first", tags: ["a", "b"] },
+                { text: "second", tags: [] },
+              ],
+              archive: [],
+            },
+            arrays: [
+              { path: ["notes"], itemIds: ["note-1", "note-2"] },
+              {
+                path: ["notes", { itemId: "note-1" }, "tags"],
+                itemIds: ["tag-1", "tag-2"],
+              },
+              { path: ["notes", { itemId: "note-2" }, "tags"], itemIds: [] },
+              { path: ["archive"], itemIds: [] },
+            ],
+          },
+        }),
+      ),
+    );
+    await closeRoom(room, connections, connection);
+
+    const saved = persistedSnapshot() as unknown as Record<string, unknown>;
+    expect(Object.keys(saved).sort()).toEqual([
+      "itemIds",
+      "lastMutationIds",
+      "state",
+    ]);
+    expect([...persistedSnapshot().itemIds].sort()).toEqual([
+      "note-1",
+      "note-2",
+      "tag-1",
+      "tag-2",
+    ]);
+    persistedRow = withReversedKeys(persistedRow) as PersistedRow;
+
+    const reloaded = createRoom();
+    await startRoom(reloaded.room);
+    const reloadedConnection = await connectRoom(
+      reloaded.room,
+      reloaded.connections,
+    );
+    reloadedConnection.sent = [];
+    await reloaded.room.onMessage(
+      reloadedConnection as never,
+      JSON.stringify(
+        operationMessage({
+          mutationId: 2,
+          operation: {
+            type: "set",
+            capability: "can-play",
+            elementId: "board",
+            path: ["notes", { itemId: "note-2" }, "text"],
+            value: "edited",
+            arrays: [],
+          },
+        }),
+      ),
+    );
+    await reloaded.room.onMessage(
+      reloadedConnection as never,
+      JSON.stringify(
+        operationMessage({
+          mutationId: 3,
+          operation: {
+            type: "remove",
+            capability: "can-play",
+            elementId: "board",
+            path: ["notes", { itemId: "note-1" }, "tags"],
+            target: { kind: "array", itemId: "tag-1" },
+          },
+        }),
+      ),
+    );
+
+    expect(
+      parsedMessages(reloadedConnection).map((message) => message.type),
+    ).toEqual(["operation", "operation"]);
+    await closeRoom(reloaded.room, reloaded.connections, reloadedConnection);
+    expect(persistedSnapshot().state).toEqual({
+      "can-play": {
+        board: {
+          notes: [
+            { text: "first", tags: ["b"] },
+            { text: "edited", tags: [] },
+          ],
+          archive: [],
+        },
+      },
+    });
+    expect([...persistedSnapshot().itemIds].sort()).toEqual([
+      "note-1",
+      "note-2",
+      "tag-2",
+    ]);
+  });
+});
+
 describe("PartyServerV2 element deletion", () => {
   test("deletes an element with its array identities and reloads the saved room", async () => {
     const { room, connections } = createRoom();
@@ -814,7 +940,7 @@ describe("PartyServerV2 element deletion", () => {
     ]);
     await closeRoom(room, connections, connection);
     expect(persistedSnapshot().state).toEqual({});
-    expect(persistedSnapshot().arrays).toEqual([]);
+    expect(persistedSnapshot().itemIds).toEqual([]);
 
     const reloaded = createRoom();
     await startRoom(reloaded.room);
@@ -826,7 +952,7 @@ describe("PartyServerV2 element deletion", () => {
       expect.objectContaining({
         type: "snapshot",
         sequence: 2,
-        snapshot: expect.objectContaining({ state: {}, arrays: [] }),
+        snapshot: expect.objectContaining({ state: {}, itemIds: [] }),
       }),
     );
     await closeRoom(reloaded.room, reloaded.connections, reloadedConnection);
@@ -872,7 +998,7 @@ describe("PartyServerV2 forgotten clients", () => {
         generation: 0,
         snapshot: {
           state: { "can-play": { counter: { count: 1 } } },
-          arrays: [],
+          itemIds: [],
           lastMutationIds: { "old-client": 3 },
         },
         ...(clientLastSeen === undefined ? {} : { clientLastSeen }),

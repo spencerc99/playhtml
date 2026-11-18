@@ -9,17 +9,21 @@ import type {
   RoomSnapshot,
   ServerOperationMessage,
   ServerOperationRejectedMessage,
-  ServerSnapshotMessage,
   ServerToClientMessage,
 } from "@playhtml/common";
 import {
   PENDING_OPERATION_MAX_AGE_MS,
   PROTOCOL_VERSION,
 } from "@playhtml/common";
-import { applyOperation, checkSnapshotIntegrity } from "@playhtml/common";
+import {
+  applyOperation,
+  checkSnapshotIntegrity,
+  packSnapshot,
+} from "@playhtml/common";
 import { V2Store, type V2StoreTransport } from "../v2/store";
 import {
   V2Transport,
+  type ReceivedSnapshotMessage,
   type V2Socket,
   type V2SocketFactory,
 } from "../v2/transport";
@@ -56,7 +60,10 @@ class InProcessServer {
   }
 
   receive(message: ClientToServerMessage): ServerToClientMessage | undefined {
-    if (message.type === "snapshot-request") return this.snapshotMessage();
+    if (message.type === "snapshot-request") {
+      const received = this.snapshotMessage();
+      return { ...received, snapshot: packSnapshot(received.snapshot) };
+    }
     if (message.type === "play-event") return undefined;
     if (message.generation !== this.generation) {
       return {
@@ -128,7 +135,7 @@ class InProcessServer {
     return result;
   }
 
-  snapshotMessage(): ServerSnapshotMessage {
+  snapshotMessage(): ReceivedSnapshotMessage {
     return {
       type: "snapshot",
       protocolVersion: PROTOCOL_VERSION,

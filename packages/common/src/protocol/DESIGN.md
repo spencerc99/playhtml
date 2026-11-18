@@ -28,9 +28,21 @@ same target as the array moves.
 `RoomSnapshot.arrays` stores the item IDs for every array in the state. Each
 entry identifies an array by its capability, element ID, and stable path, then
 lists IDs in the same order as the visible array values. This sidecar keeps
-protocol metadata out of application data. The server must persist it with
-the state and return it in every full snapshot. Conversion can assign IDs to
-existing array values once, but later loads must retain those IDs.
+protocol metadata out of application data. The server must persist the item
+IDs with the state and return them in every full snapshot. Conversion can
+assign IDs to existing array values once, but later loads must retain those
+IDs.
+
+A saved room and a snapshot message carry a `PackedSnapshot` instead: the
+state, one flat `itemIds` list, and the last mutation IDs. An array's address
+is already implied by where the array sits in the state, so only the item IDs
+are written. `packSnapshot` walks the state in a fixed order (capabilities,
+element IDs and object keys sorted, an array before the arrays inside its
+items) and appends each array's item IDs. `unpackSnapshot` walks the same
+order, takes as many IDs as each array has items, and rebuilds
+`RoomSnapshot.arrays`. It throws when the IDs do not fit the arrays exactly.
+The walk sorts keys because the saved column is `jsonb`, which does not keep
+key order. Operations are unchanged and still carry addressed `arrays`.
 
 `set` and `insert` can introduce arrays anywhere inside their values. Their
 `arrays` field carries identities for every introduced array, using paths

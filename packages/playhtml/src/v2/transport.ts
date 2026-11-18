@@ -3,7 +3,6 @@
 
 import PartySocket, { type PartySocketOptions } from "partysocket";
 import type {
-  ArrayIdentity,
   ClientOperationMessage,
   ClientToServerMessage,
   JsonValue,
@@ -11,15 +10,17 @@ import type {
   OperationRejectionCode,
   RelayedPlayEvent,
   ProtocolPath,
+  PackedSnapshot,
   RoomSnapshot,
+  ServerOperationMessage,
   ServerOperationRejectedMessage,
-  ServerToClientMessage,
+  ServerSnapshotMessage,
 } from "@playhtml/common";
 import {
   PENDING_OPERATION_MAX_AGE_MS,
   PROTOCOL_VERSION,
+  unpackSnapshot,
 } from "@playhtml/common";
-import { checkSnapshotIntegrity } from "@playhtml/common";
 import { pickReconnectionDelay } from "../presence-transport";
 
 export type V2Socket = Pick<PartySocket, "readyState" | "send" | "close"> &
@@ -49,7 +50,18 @@ export type V2TransportStatusEvent =
       readonly rejection: ServerOperationRejectedMessage;
     };
 
-type MessageListener = (message: ServerToClientMessage) => void;
+/** A snapshot message whose array addresses have been rebuilt. */
+export type ReceivedSnapshotMessage = Omit<ServerSnapshotMessage, "snapshot"> & {
+  readonly snapshot: RoomSnapshot;
+};
+
+/** A valid server message, as handed to listeners. */
+export type ReceivedServerMessage =
+  | ServerOperationMessage
+  | ReceivedSnapshotMessage
+  | ServerOperationRejectedMessage;
+
+type MessageListener = (message: ReceivedServerMessage) => void;
 type StatusListener = (event: V2TransportStatusEvent) => void;
 type PlayEventListener = (event: RelayedPlayEvent) => void;
 
@@ -145,33 +157,17 @@ const isOperation = (value: unknown): value is Operation => {
   }
 };
 
-const isArrayIdentity = (value: unknown): value is ArrayIdentity =>
+const isPackedSnapshot = (value: unknown): value is PackedSnapshot =>
   isRecord(value) &&
-  hasAddress(value) &&
+  isRecord(value.state) &&
   Array.isArray(value.itemIds) &&
-  value.itemIds.every((itemId) => typeof itemId === "string");
-
-const isSnapshot = (value: unknown): value is RoomSnapshot => {
-  if (
-    !isRecord(value) ||
-    !isRecord(value.state) ||
-    !Array.isArray(value.arrays) ||
-    !value.arrays.every(isArrayIdentity) ||
-    !isRecord(value.lastMutationIds)
-  ) {
-    return false;
-  }
-  if (
-    !Object.values(value.state).every(
-      (elements) =>
-        isRecord(elements) && Object.values(elements).every(isJsonValue),
-    ) ||
-    !Object.values(value.lastMutationIds).every(isPositiveInteger)
-  ) {
-    return false;
-  }
-  return checkSnapshotIntegrity(value as unknown as RoomSnapshot).ok;
-};
+  value.itemIds.every((itemId) => typeof itemId === "string") &&
+  isRecord(value.lastMutationIds) &&
+  Object.values(value.state).every(
+    (elements) =>
+      isRecord(elements) && Object.values(elements).every(isJsonValue),
+  ) &&
+  Object.values(value.lastMutationIds).every(isPositiveInteger);
 
 const isPresenceMessage = (input: unknown): boolean => {
   if (typeof input !== "string") return false;
@@ -215,7 +211,7 @@ export const parsePlayEventMessage = (
 
 export const parseServerMessage = (
   input: unknown,
-): ServerToClientMessage | undefined => {
+): ReceivedServerMessage | undefined => {
   let value: unknown = input;
   if (typeof input === "string") {
     try {
@@ -244,18 +240,30 @@ export const parseServerMessage = (
     ) {
       return undefined;
     }
-    return value as ServerToClientMessage;
+    return value as ServerOperationMessage;
   }
 
   if (value.type === "snapshot") {
     if (
       !isNonNegativeInteger(value.sequence) ||
       !isNonNegativeInteger(value.generation) ||
-      !isSnapshot(value.snapshot)
+      !isPackedSnapshot(value.snapshot)
     ) {
       return undefined;
     }
-    return value as ServerToClientMessage;
+    let snapshot: RoomSnapshot;
+    try {
+      snapshot = unpackSnapshot(value.snapshot);
+    } catch {
+      return undefined;
+    }
+    return {
+      type: "snapshot",
+      protocolVersion: PROTOCOL_VERSION,
+      sequence: value.sequence,
+      generation: value.generation,
+      snapshot,
+    };
   }
 
   if (value.type === "operation-rejected") {
@@ -269,7 +277,7 @@ export const parseServerMessage = (
     ) {
       return undefined;
     }
-    return value as ServerToClientMessage;
+    return value as ServerOperationRejectedMessage;
   }
 
   return undefined;
@@ -429,7 +437,7 @@ export class V2Transport {
     this.pendingCreatedAt.set(message.mutationId, this.now());
   }
 
-  private reconcilePending(message: ServerToClientMessage): void {
+  private reconcilePending(message: ReceivedServerMessage): void {
     if (message.type === "operation") {
       if (message.payload.clientId === this.clientId) {
         this.dropPending(message.payload.mutationId);

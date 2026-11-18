@@ -2,7 +2,7 @@
 // ABOUTME: Verifies bounded snapshots, linear array storage, and live-room health.
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ClientOperationMessage, RoomSnapshot } from "@playhtml/common";
+import type { ClientOperationMessage, PackedSnapshot } from "@playhtml/common";
 
 class FakeDurableObject {
   constructor(
@@ -320,7 +320,7 @@ describe("PartyServerV2 persistence soak", () => {
       .sequence;
     const afterDocument = afterWrites.document_json as {
       sequence: number;
-      snapshot: RoomSnapshot;
+      snapshot: PackedSnapshot;
     };
     expect(afterDocument.sequence).toBeGreaterThan(beforeSequence);
     expect(Object.keys(afterDocument.snapshot.lastMutationIds)).toEqual([
@@ -434,7 +434,7 @@ describe("PartyServerV2 persistence soak", () => {
     const secondBytesPerItem = secondDelta / secondBurstCount;
     const finalDocument = finalRow.document_json as {
       sequence: number;
-      snapshot: RoomSnapshot;
+      snapshot: PackedSnapshot;
     };
 
     expect(firstDelta).toBeGreaterThan(0);

@@ -9,7 +9,11 @@ import type {
   ServerOperationMessage,
   ServerToClientMessage,
 } from "@playhtml/common";
-import { PROTOCOL_VERSION, applyOperation } from "@playhtml/common";
+import {
+  PROTOCOL_VERSION,
+  applyOperation,
+  packSnapshot,
+} from "@playhtml/common";
 import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 
 type TestSocket = {
@@ -86,7 +90,7 @@ class InProcessServer {
       protocolVersion: PROTOCOL_VERSION,
       sequence: this.sequence,
       generation: this.generation,
-      snapshot: structuredClone(this.snapshot),
+      snapshot: packSnapshot(structuredClone(this.snapshot)),
     };
   }
 }

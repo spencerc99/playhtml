@@ -18,7 +18,11 @@ import type {
   ServerOperationMessage,
   ServerToClientMessage,
 } from "@playhtml/common";
-import { PROTOCOL_VERSION, applyOperation } from "@playhtml/common";
+import {
+  PROTOCOL_VERSION,
+  applyOperation,
+  packSnapshot,
+} from "@playhtml/common";
 
 const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
 vi.spyOn(console, "log").mockImplementation(() => {});
@@ -158,7 +162,7 @@ class InProcessServer {
       protocolVersion: PROTOCOL_VERSION,
       sequence: this.sequence,
       generation: this.generation,
-      snapshot: structuredClone(this.snapshot),
+      snapshot: packSnapshot(structuredClone(this.snapshot)),
     };
   }
 }

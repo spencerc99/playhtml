@@ -400,7 +400,7 @@ describe("PartyServerV2 shared-element bridge", () => {
         generation: 0,
         snapshot: {
           state: { "can-play": { counter: { count: 1 } } },
-          arrays: [],
+          itemIds: [],
           lastMutationIds: {},
         },
       },

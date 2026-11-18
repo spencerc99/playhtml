@@ -12,6 +12,7 @@ import {
   type RelayedPlayEvent,
   type Operation,
   type OperationRejectionCode,
+  type PackedSnapshot,
   type RoomSnapshot,
   type SequencedOperation,
   type ServerOperationMessage,
@@ -19,10 +20,11 @@ import {
   type ServerPlayEventMessage,
   type ServerSnapshotMessage,
 } from "@playhtml/common";
+import { applyOperationInPlace } from "../packages/common/src/protocol/engine";
 import {
-  applyOperationInPlace,
-  checkSnapshotIntegrity,
-} from "../packages/common/src/protocol/engine";
+  packSnapshot,
+  unpackSnapshot,
+} from "../packages/common/src/protocol/packed";
 import { supabase } from "./db";
 import { convertDocumentToSnapshot } from "./convert";
 import {
@@ -67,12 +69,17 @@ import {
   parseSharedReferencesFromUrl,
 } from "./sharing";
 
-type PersistedRoomDocument = {
+type RoomDocument = {
   snapshot: RoomSnapshot;
   sequence: number;
   generation: number;
   // Absent on rooms saved before last-seen times were tracked.
   clientLastSeen?: ClientLastSeen;
+};
+
+/** A room as saved in the `document_json` column. */
+type PersistedRoomDocument = Omit<RoomDocument, "snapshot"> & {
+  snapshot: PackedSnapshot;
 };
 
 // Connection state key holding the client id a connection writes as, so the
@@ -143,7 +150,7 @@ function isOperationMessage(value: unknown): value is ClientOperationMessage {
   );
 }
 
-function parsePersistedDocument(value: unknown): PersistedRoomDocument {
+function parsePersistedDocument(value: unknown): RoomDocument {
   if (!isRecord(value))
     throw new Error("Persisted v2 document must be an object");
   if (
@@ -154,11 +161,16 @@ function parsePersistedDocument(value: unknown): PersistedRoomDocument {
     throw new Error("Persisted v2 document metadata is invalid");
   }
 
-  const snapshot = value.snapshot as RoomSnapshot;
-  const integrity = checkSnapshotIntegrity(snapshot);
-  if (!integrity.ok) {
-    throw new Error(`Persisted v2 snapshot is invalid: ${integrity.message}`);
+  const packed = value.snapshot;
+  if (
+    !isRecord(packed.state) ||
+    !Object.values(packed.state).every(isRecord) ||
+    !Array.isArray(packed.itemIds) ||
+    !packed.itemIds.every((itemId) => typeof itemId === "string")
+  ) {
+    throw new Error("Persisted v2 snapshot is invalid");
   }
+  const snapshot = unpackSnapshot(packed as unknown as PackedSnapshot);
   if (!isRecord(snapshot.lastMutationIds)) {
     throw new Error("Persisted v2 mutation metadata is invalid");
   }
@@ -1193,7 +1205,7 @@ export class PartyServerV2 extends PresenceServer {
       protocolVersion: PROTOCOL_VERSION,
       sequence: this.sequence,
       generation: this.generation,
-      snapshot: this.snapshot,
+      snapshot: packSnapshot(this.snapshot),
     };
   }
 
@@ -1251,9 +1263,6 @@ export class PartyServerV2 extends PresenceServer {
 
     this.dirty = false;
     this.firstDirtyAt = null;
-    // Sized here, once per save, rather than on every operation: the check
-    // serializes the whole document.
-    this.warnIfDocumentLarge();
     this.savePromise = this.persistDocument();
     try {
       await this.savePromise;
@@ -1277,11 +1286,14 @@ export class PartyServerV2 extends PresenceServer {
       retentionMs: LAST_MUTATION_RETENTION_MS,
     });
     const documentJson: PersistedRoomDocument = {
-      snapshot: this.snapshot,
+      snapshot: packSnapshot(this.snapshot),
       sequence: this.sequence,
       generation: this.generation,
       clientLastSeen: this.clientLastSeen,
     };
+    // Sized here, once per save, rather than on every operation: the check
+    // serializes the whole document.
+    this.warnIfDocumentLarge(documentJson);
     // The v1 `document` column is deliberately absent: the upsert leaves it
     // untouched for rollback, and resending it would re-upload the whole
     // legacy Yjs snapshot on every save.
@@ -1298,12 +1310,12 @@ export class PartyServerV2 extends PresenceServer {
     if (error) throw new Error(error.message);
   }
 
-  private warnIfDocumentLarge(): void {
+  private warnIfDocumentLarge(document: PersistedRoomDocument): void {
     const documentBytes = new TextEncoder().encode(
       JSON.stringify({
-        snapshot: this.snapshot,
-        sequence: this.sequence,
-        generation: this.generation,
+        snapshot: document.snapshot,
+        sequence: document.sequence,
+        generation: document.generation,
       }),
     ).byteLength;
     if (

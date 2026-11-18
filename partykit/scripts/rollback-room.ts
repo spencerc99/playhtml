@@ -4,7 +4,11 @@
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
-import type { RoomSnapshot } from "@playhtml/common";
+import {
+  unpackSnapshot,
+  type PackedSnapshot,
+  type RoomSnapshot,
+} from "@playhtml/common";
 import {
   convertDocumentToSnapshot,
   convertSnapshotToDocument,
@@ -45,12 +49,18 @@ function readPersistedV2Document(value: unknown): PersistedV2Document {
   if (
     snapshot === null ||
     typeof snapshot !== "object" ||
-    typeof (snapshot as RoomSnapshot).state !== "object" ||
-    (snapshot as RoomSnapshot).state === null
+    typeof (snapshot as PackedSnapshot).state !== "object" ||
+    (snapshot as PackedSnapshot).state === null
   ) {
     throw new Error("document_json.snapshot.state is missing.");
   }
-  return { snapshot: snapshot as RoomSnapshot, sequence: sequence as number };
+  if (!Array.isArray((snapshot as PackedSnapshot).itemIds)) {
+    throw new Error("document_json.snapshot.itemIds is missing.");
+  }
+  return {
+    snapshot: unpackSnapshot(snapshot as PackedSnapshot),
+    sequence: sequence as number,
+  };
 }
 
 /**

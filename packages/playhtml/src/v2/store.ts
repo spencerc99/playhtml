@@ -8,7 +8,6 @@ import type {
   RoomSnapshot,
   SequencedOperation,
   ServerOperationRejectedMessage,
-  ServerSnapshotMessage,
 } from "@playhtml/common";
 import {
   PENDING_OPERATION_MAX_AGE_MS,
@@ -23,6 +22,7 @@ import {
   recordMutation,
   type MutationCallback,
 } from "@playhtml/common";
+import type { ReceivedSnapshotMessage } from "./transport";
 
 export type V2StoreTransport = {
   send(message: ClientOperationMessage): void;
@@ -283,7 +283,7 @@ export class V2Store {
     this.notifyChanges(this.view, this.view, new Set([key]), previousValues);
   }
 
-  applyServerSnapshot(message: ServerSnapshotMessage): void {
+  applyServerSnapshot(message: ReceivedSnapshotMessage): void {
     const previous = this.view;
     const generationChanged = message.generation !== this.generation;
     this.authoritative = structuredClone(message.snapshot);

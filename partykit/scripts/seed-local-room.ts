@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import { createReadStream } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
+import { packSnapshot } from "@playhtml/common";
 import { convertDocumentToSnapshot } from "../convert";
 
 export type SeedLocalRoomOptions = {
@@ -77,7 +78,7 @@ export async function seedLocalRoom({
       name: targetRoom,
       document,
       document_json: {
-        snapshot: conversion.snapshot,
+        snapshot: packSnapshot(conversion.snapshot),
         sequence: 0,
         generation: 0,
       },

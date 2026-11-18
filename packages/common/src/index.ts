@@ -7,6 +7,7 @@ export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
 export * from "./presence-protocol";
 export * from "./protocol";
 export * from "./protocol/engine";
+export * from "./protocol/packed";
 export * from "./protocol/record";
 export * from "./protocol/randomId";
 

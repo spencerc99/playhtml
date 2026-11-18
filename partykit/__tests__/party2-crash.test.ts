@@ -3,7 +3,7 @@
 
 import fc from "fast-check";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ClientOperationMessage, RoomSnapshot } from "@playhtml/common";
+import type { ClientOperationMessage, PackedSnapshot } from "@playhtml/common";
 
 class FakeDurableObject {
   constructor(
@@ -215,8 +215,8 @@ function copyPersistedRow(): PersistedRow {
   return structuredClone(persistedRow);
 }
 
-function persistedSnapshot(): RoomSnapshot {
-  return (copyPersistedRow().document_json as { snapshot: RoomSnapshot })
+function persistedSnapshot(): PackedSnapshot {
+  return (copyPersistedRow().document_json as { snapshot: PackedSnapshot })
     .snapshot;
 }
 
@@ -354,7 +354,7 @@ describe("PartyServerV2 crash recovery", () => {
           const finalSnapshot = parsedMessages(recoveredConnection).at(
             -1,
           ) as {
-            snapshot: RoomSnapshot;
+            snapshot: PackedSnapshot;
             sequence: number;
           };
           expect(finalSnapshot.snapshot).toEqual({
@@ -363,7 +363,7 @@ describe("PartyServerV2 crash recovery", () => {
                 counter: { text: acceptedValues[acceptedValues.length - 1] },
               },
             },
-            arrays: [],
+            itemIds: [],
             lastMutationIds: { writer: acceptedValues.length + 1 },
           });
           expect(finalSnapshot.sequence).toBe(acceptedValues.length + 1);

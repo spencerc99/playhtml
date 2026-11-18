@@ -185,6 +185,17 @@ export type RoomSnapshot = {
   readonly lastMutationIds: LastMutationIds;
 };
 
+/**
+ * A room snapshot as it is saved and sent to clients: array addresses are
+ * left out and `itemIds` holds the item IDs of every array in `state`, in the
+ * order `packSnapshot` visits them. `unpackSnapshot` rebuilds the addresses.
+ */
+export type PackedSnapshot = {
+  readonly state: RoomState;
+  readonly itemIds: readonly string[];
+  readonly lastMutationIds: LastMutationIds;
+};
+
 /** A client request to submit one operation to the room server. */
 export type ClientOperationMessage = {
   readonly type: "operation";
@@ -247,7 +258,7 @@ export type ServerSnapshotMessage = {
   readonly protocolVersion: ProtocolVersion;
   readonly sequence: ServerSequence;
   readonly generation: RoomGeneration;
-  readonly snapshot: RoomSnapshot;
+  readonly snapshot: PackedSnapshot;
 };
 
 /** A stable machine-readable reason for rejecting a client operation. */
