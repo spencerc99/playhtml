@@ -3,7 +3,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  IMAGE_DOWNLOAD_LIMIT_MS,
   IMAGE_LOAD_LIMIT_MS,
+  IMAGE_SIZE_LIMIT_BYTES,
   fetchImageBlob,
   loadImage,
   loadRemoteImage,
@@ -43,13 +45,15 @@ function answeringHost(): typeof fetch {
 function trickleHost(gapMs: number, pieces: number, finishes: boolean): typeof fetch {
   return (async (_input: RequestInfo | URL, init?: RequestInit) => {
     let sent = 0;
+    let calledOff = false;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        init?.signal?.addEventListener("abort", () =>
+        init?.signal?.addEventListener("abort", () => {
+          calledOff = true;
           controller.error(
             new DOMException("The operation was aborted.", "AbortError"),
-          ),
-        );
+          );
+        });
       },
       pull(controller) {
         return new Promise<void>((resolve) => {
@@ -60,7 +64,7 @@ function trickleHost(gapMs: number, pieces: number, finishes: boolean): typeof f
           }
           setTimeout(() => {
             sent += 1;
-            controller.enqueue(new Uint8Array([sent]));
+            if (!calledOff) controller.enqueue(new Uint8Array([sent % 256]));
             resolve();
           }, gapMs);
         });
@@ -188,6 +192,34 @@ describe("an image that arrives slowly", () => {
 
     expect(outcome.done).toBe(true);
     expect(String(outcome.error)).toMatch(/stopped arriving within 15 seconds/);
+  });
+});
+
+describe("an image with no end", () => {
+  it("fails once it has run past the longest a download may take", async () => {
+    vi.stubGlobal("fetch", trickleHost(1_000, 1_000_000, true));
+    const outcome = outcomeOf(fetchImageBlob("https://slow.example/endless.png"));
+
+    await vi.advanceTimersByTimeAsync(IMAGE_DOWNLOAD_LIMIT_MS - 1);
+    expect(outcome.done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(outcome.done).toBe(true);
+    expect(String(outcome.error)).toMatch(/did not finish arriving within 120 seconds/);
+  });
+
+  it("refuses an image that says it is larger than the limit", async () => {
+    vi.stubGlobal("fetch", (async () =>
+      new Response(new Uint8Array([1]), {
+        status: 200,
+        headers: { "content-length": String(IMAGE_SIZE_LIMIT_BYTES + 1) },
+      })) as typeof fetch);
+    const outcome = outcomeOf(fetchImageBlob("https://slow.example/huge.png"));
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(outcome.done).toBe(true);
+    expect(String(outcome.error)).toMatch(/larger than 50 MB/);
   });
 });
 

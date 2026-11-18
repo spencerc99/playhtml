@@ -7,6 +7,12 @@
  */
 export const IMAGE_LOAD_LIMIT_MS = 15_000;
 
+/** The longest one image download may run, however steadily it arrives. */
+export const IMAGE_DOWNLOAD_LIMIT_MS = 120_000;
+
+/** The largest image a collage will download. */
+export const IMAGE_SIZE_LIMIT_BYTES = 50 * 1024 * 1024;
+
 function tooSlow(what: string, limitMs: number): Error {
   return new Error(`${what} within ${Math.round(limitMs / 1000)} seconds`);
 }
@@ -48,6 +54,15 @@ export async function fetchImageBlob(
 ): Promise<Blob> {
   const controller = new AbortController();
   let timer = setTimeout(() => controller.abort(), limitMs);
+  let overall = false;
+  const overallTimer = setTimeout(() => {
+    overall = true;
+    controller.abort();
+  }, IMAGE_DOWNLOAD_LIMIT_MS);
+  const tooLarge = () =>
+    new Error(
+      `the image is larger than ${IMAGE_SIZE_LIMIT_BYTES / (1024 * 1024)} MB`,
+    );
   const heard = () => {
     clearTimeout(timer);
     timer = setTimeout(() => controller.abort(), limitMs);
@@ -58,12 +73,22 @@ export async function fetchImageBlob(
       throw new Error(`fetch returned ${response.status}`);
     }
     heard();
+    if (Number(response.headers.get("content-length")) > IMAGE_SIZE_LIMIT_BYTES) {
+      controller.abort();
+      throw tooLarge();
+    }
     if (!response.body) return await response.blob();
     const reader = response.body.getReader();
     const parts: BlobPart[] = [];
+    let received = 0;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      received += value.byteLength;
+      if (received > IMAGE_SIZE_LIMIT_BYTES) {
+        controller.abort();
+        throw tooLarge();
+      }
       parts.push(value);
       heard();
     }
@@ -71,12 +96,19 @@ export async function fetchImageBlob(
       type: response.headers.get("content-type") ?? "",
     });
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith("the image is larger")) {
+      throw error;
+    }
+    if (overall) {
+      throw tooSlow("the image did not finish arriving", IMAGE_DOWNLOAD_LIMIT_MS);
+    }
     if (controller.signal.aborted) {
       throw tooSlow("the image stopped arriving", limitMs);
     }
     throw error;
   } finally {
     clearTimeout(timer);
+    clearTimeout(overallTimer);
   }
 }
 
