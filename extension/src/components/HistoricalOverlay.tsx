@@ -94,6 +94,16 @@ type OverlayLoadState = "loading" | "ready" | "empty" | "error";
 /** Shown in place of the trails when a load fails; the dev bar has the details. */
 export const LOAD_FAILED_TEXT = "couldn't load trails";
 
+/**
+ * Cmd+Shift+9 (Mac) or Ctrl+Shift+9 toggles forced server backfill. Shift turns
+ * the "9" key into "(" on US layouts, so this matches the physical key.
+ */
+export function isServerBackfillShortcut(
+  event: Pick<KeyboardEvent, "code" | "metaKey" | "ctrlKey" | "shiftKey">,
+): boolean {
+  return (event.metaKey || event.ctrlKey) && event.shiftKey && event.code === "Digit9";
+}
+
 export function HistoricalOverlay({
   visible,
   currentUrl,
@@ -331,8 +341,7 @@ export function HistoricalOverlay({
     if (!visible) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const modifierPressed = (e.metaKey || e.ctrlKey) && e.shiftKey;
-      if (modifierPressed && e.key === "9") {
+      if (isServerBackfillShortcut(e)) {
         e.preventDefault();
         setForceServerBackfill((prev) => {
           const newState = !prev;
