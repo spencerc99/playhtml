@@ -23,3 +23,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Saving a collage's file from your list of collages (the one you can open again later) now works in Safari. Saving pictures of a collage already did.
 - Trails now follow you to the next page on sites like YouTube that switch pages without reloading (Chrome and Firefox).
 - Beta: Slow Mode is now called scenic route, and its popup controls take up much less space. Board the commute from the small train button next to it.
+- The popup is taller, so everything fits without scrolling, and it no longer lists collectors on a site you've turned off.
