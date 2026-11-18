@@ -11,6 +11,7 @@ import React, {
 import ReactDOM from "react-dom/client";
 import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
 import { mountExperimentBadge } from "../../components/experimentBadge";
+import { collapseHandHolds, type HandHold } from "./handHolds";
 
 interface Star {
   id: string;
@@ -21,16 +22,6 @@ interface Star {
   meetingAngle: number;
   createdAt: number;
   lastInteraction: number;
-}
-
-interface HandHold {
-  id: string;
-  user1: any;
-  user2: any;
-  position1: { x: number; y: number };
-  position2: { x: number; y: number };
-  angle: number;
-  startedAt: number;
 }
 
 interface StellarData {
@@ -516,13 +507,21 @@ const Main = withSharedState(
       ));
     }, [data.stars]);
 
+    // Both people in a pair publish the same hold; keep one per pair.
+    const handHolds = useMemo(
+      () =>
+        collapseHandHolds(
+          everyone.flatMap((person) => {
+            const handHold = person.presence?.activeHandHold;
+            return handHold ? [{ publisherPid: person.pid, handHold }] : [];
+          })
+        ),
+      [everyone]
+    );
+
     // Render hand holds from everyone's presence
     const renderHandHolds = useMemo(() => {
-      const allHandHolds = everyone
-        .map((person) => person.presence?.activeHandHold)
-        .filter((handHold): handHold is HandHold => handHold !== undefined);
-
-      return allHandHolds.map((handHold) => {
+      return handHolds.map(({ key, handHold }) => {
         const user1Color = handHold.user1.playerStyle.colorPalette[0];
         const user2Color = handHold.user2.playerStyle.colorPalette[0];
 
@@ -532,7 +531,7 @@ const Main = withSharedState(
         const handOffset = 8; // Reduced distance for overlapping hands
 
         return (
-          <React.Fragment key={handHold.id}>
+          <React.Fragment key={key}>
             <HandSVG
               color={user1Color}
               isLeft={false}
@@ -554,7 +553,7 @@ const Main = withSharedState(
           </React.Fragment>
         );
       });
-    }, [everyone]);
+    }, [handHolds]);
 
     // Render star creation animations
     const renderStarAnimations = useMemo(() => {
@@ -682,9 +681,7 @@ const Main = withSharedState(
           </div>
           <div className="stat">
             <span className="label">holding hands:</span>
-            <span className="value">
-              {everyone.filter((person) => person.presence?.activeHandHold).length}
-            </span>
+            <span className="value">{handHolds.length}</span>
           </div>
         </div>
       </div>
