@@ -55,6 +55,7 @@ import {
   findSharedElementsOnPage,
   findSharedReferencesOnPage,
   isSharedReadOnly,
+  parseSharedPermission,
   setSharedPermission,
 } from "./sharing";
 import { parseDataSource, normalizeHost } from "@playhtml/common";
@@ -396,15 +397,7 @@ function handleNewSharedElement(element: HTMLElement): void {
   if (!element.id) return;
 
   const elementId = element.id;
-  const permissions = element.getAttribute("shared");
-  let permissionMode: "read-only" | "read-write" = "read-write";
-
-  if (permissions && permissions !== "") {
-    const val = permissions.toLowerCase();
-    if (val.includes("read-only") || val === "ro") {
-      permissionMode = "read-only";
-    }
-  }
+  const permissionMode = parseSharedPermission(element.getAttribute("shared"));
 
   // Update local permissions
   setSharedPermission(elementId, permissionMode);
@@ -686,7 +679,7 @@ function deliverPlayEvent(type: string, eventPayload: unknown): void {
   const handlers = eventHandlers.get(type);
   if (!handlers) return;
   for (const handler of handlers) {
-    handler.onEvent(eventPayload);
+    safeInvoke(() => handler.onEvent(eventPayload), `"${type}" event listener`);
   }
 }
 
@@ -2459,7 +2452,6 @@ function getCustomElementProps(element: HTMLElement) {
     "onClick",
     "onMount",
     "resetShortcut",
-    "debounceMs",
     "isValidElementForTag",
   ];
   for (const key of keys) {
@@ -2501,7 +2493,14 @@ function getElementInitializerInfoForElement(
   }
 
   const customProps = getCustomElementProps(element);
-  // Merge: built-in defaults overridden by any custom properties on the element
+  // Merge: built-in defaults overridden by any custom properties on the element.
+  // `update` and `updateElement` are two names for the same callback, so a
+  // custom one under either name replaces the built-in one under both.
+  if (customProps.update !== undefined || customProps.updateElement !== undefined) {
+    const { update: _update, updateElement: _updateElement, ...builtInRest } =
+      builtIn;
+    return { ...builtInRest, ...customProps };
+  }
   return { ...builtIn, ...customProps };
 }
 
@@ -2800,6 +2799,7 @@ export async function resetPlayHTML(): Promise<void> {
     map.clear();
   }
   elementHandlers.clear();
+  eventHandlers.clear();
   pageDataRefCounts.clear();
   pageDataListeners.clear();
   v2PageDataChannels.clear();
@@ -4031,13 +4031,18 @@ function deleteElementData(tag: string, elementId: string): void {
     }
   }
 
-  // 4. Remove element handler
+  // 4. Tear down and remove the element handler. Runs onMount cleanup (rAF
+  // loops, timers, listeners) and disconnects the descendant observer so
+  // nothing keeps writing to the deleted record.
   const tagElementHandlers = elementHandlers.get(tag);
-  if (tagElementHandlers) {
-    tagElementHandlers.delete(elementId);
+  const handler = tagElementHandlers?.get(elementId);
+  if (handler) {
+    handler.destroy?.();
+    elementAwarenessClient?.removeLocalAwareness(tag, elementId);
+    tagElementHandlers!.delete(elementId);
   }
 
-  // 6. Clean up shared reference tracking
+  // 5. Clean up shared reference tracking
   sharedUpdateSeen.delete(key);
   const timerId = sharedHydrationTimers.get(key);
   if (timerId !== undefined) {
@@ -4092,9 +4097,13 @@ function removePlayEventListener(type: string, id: string) {
     return;
   }
 
-  handlers.splice(index, 1);
-  if (handlers.length === 0) {
+  // Replace the array rather than splicing it, so a dispatch already iterating
+  // the previous array (a listener removing itself) still reaches the rest.
+  const remaining = handlers.filter((handler) => handler.id !== id);
+  if (remaining.length === 0) {
     eventHandlers.delete(type);
+  } else {
+    eventHandlers.set(type, remaining);
   }
 }
 

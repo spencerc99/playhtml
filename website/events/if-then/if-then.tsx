@@ -5,7 +5,6 @@ import { PlayProvider } from "@playhtml/react";
 import { playhtml } from "playhtml";
 import { useStickyState } from "../../hooks/useStickyState";
 import { Cursors, PlayhtmlToolBox, Guestbook } from "../events";
-import React from "react";
 
 function Main() {
   const [name, setName] = useStickyState<string | null>(
@@ -20,10 +19,10 @@ function Main() {
       });
     },
   );
-  const [from, setFrom] = useStickyState<string | null>("from", null);
+  const [from] = useStickyState<string | null>("from", null);
 
   return (
-    <PlayProvider>
+    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <Cursors />
       <div id="workshopContent">
         <PlayhtmlToolBox />

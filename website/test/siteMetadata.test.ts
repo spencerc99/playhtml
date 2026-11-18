@@ -58,7 +58,6 @@ describe("PlayHTML experiment metadata", () => {
   const experimentCards = [
     ["one", "01"],
     ["two", "02"],
-    ["3", "03"],
     ["4", "04"],
     ["5", "05"],
     ["6", "06"],

@@ -165,7 +165,7 @@ mountExperimentBadge({ experiment: "EX-01" });
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider>
+  <PlayProvider initOptions={{ cursors: { enabled: true } }}>
     <ColorController></ColorController>
   </PlayProvider>
 );

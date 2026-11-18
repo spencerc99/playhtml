@@ -34,6 +34,7 @@ const quarantineKvStub = {
 };
 
 const TEST_ADMIN_TOKEN = "test-admin-token";
+const ADMIN_AUTH_HEADERS = { Authorization: `Bearer ${TEST_ADMIN_TOKEN}` };
 
 mock.module("cloudflare:workers", () => ({
   env: {
@@ -277,8 +278,8 @@ describe("alarm entry point", () => {
 
     await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
     documentReadCount = 0;
@@ -354,8 +355,8 @@ describe("persistence recovery admission", () => {
 
     await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
 
@@ -373,8 +374,8 @@ describe("persistence recovery admission", () => {
 
     await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
 
@@ -551,8 +552,8 @@ describe("fetch entry point", () => {
 
     const response = await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
 
@@ -569,16 +570,16 @@ describe("fetch entry point", () => {
 
     await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
     (server as any).circuitBreaker.setLoadDeferredUntil(Date.now() - 1);
 
     const response = await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
 
@@ -599,16 +600,17 @@ describe("fetch entry point", () => {
 
     await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
     expect(server.circuitBreaker.isLoadDeferred()).toBe(true);
 
     const response = await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-set?token=${TEST_ADMIN_TOKEN}`,
+        `https://example.com/parties/main/example-room/admin/quarantine-set`,
         {
+          headers: ADMIN_AUTH_HEADERS,
           method: "POST",
           body: JSON.stringify({ reason: "operator stop" }),
         }
@@ -628,8 +630,8 @@ describe("fetch entry point", () => {
 
     await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
     expect(documentReadCount).toBe(0);
@@ -637,8 +639,8 @@ describe("fetch entry point", () => {
 
     const cleared = await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-clear?token=${TEST_ADMIN_TOKEN}`,
-        { method: "POST" }
+        `https://example.com/parties/main/example-room/admin/quarantine-clear`,
+        { headers: ADMIN_AUTH_HEADERS, method: "POST" }
       )
     );
 
@@ -649,8 +651,8 @@ describe("fetch entry point", () => {
 
     const status = await server.fetch(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
     expect(status.status).toBe(200);
@@ -682,7 +684,9 @@ describe("global quarantine admin endpoint", () => {
     kvStore.set("quarantine:a-room", "operator stop");
 
     const response = await worker.fetch(
-      new Request("https://api.playhtml.fun/admin/quarantines?token=secret"),
+      new Request("https://api.playhtml.fun/admin/quarantines", {
+        headers: { Authorization: "Bearer secret" },
+      }),
       workerEnv
     );
 

@@ -28,4 +28,15 @@ describe("JSONViewer", () => {
       stats: { count: 7, active: false },
     });
   });
+
+  test("shows an empty object as {}", () => {
+    const { container } = render(
+      <JSONViewer data={{ settings: {} }} onDataChange={vi.fn()} />,
+    );
+
+    const brackets = Array.from(
+      container.querySelectorAll(".json-bracket"),
+    ).map((element) => element.textContent);
+    expect(brackets).toContain("{}");
+  });
 });

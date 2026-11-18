@@ -4,16 +4,16 @@ import { PlayProvider, usePeople, withSharedState } from "@playhtml/react";
 import { playhtml } from "playhtml";
 import { useStickyState } from "../../hooks/useStickyState";
 import "./walking-together.scss";
+import {
+  activitySecondsLeft,
+  shouldWriteActivityAdvance,
+} from "./activityAdvance";
 
 interface SharedURL {
   url: string;
   userName: string;
   userColor: string;
   timestamp: number;
-}
-
-function shuffleArray<T>(array: T[]): T[] {
-  return array.sort(() => Math.random() - 0.5);
 }
 
 const CURSOR_INSTRUCTIONS = [
@@ -25,6 +25,10 @@ const CURSOR_INSTRUCTIONS = [
   "Split into your preferred corner",
   "Imagine your cursor as a falling rain drop",
 ];
+
+function isGatheringAdmin(name: string) {
+  return name === "Kristoffer" || name === "spencer";
+}
 
 // URL validation helper
 function isValidUrl(url: string) {
@@ -150,7 +154,9 @@ export const URLChat = withSharedState(
         timestamp: Date.now(),
       };
 
-      setData({ urls: [...data.urls, newUrl] });
+      setData((draft) => {
+        draft.urls.push(newUrl);
+      });
       setInputUrl("");
     };
 
@@ -235,28 +241,53 @@ export const GroupActivityDisplay = withSharedState(
   },
   ({ data, setData }) => {
     const [timeLeft, setTimeLeft] = React.useState(30); // 30 seconds
+    const { me } = usePeople();
+    const isAdmin = isGatheringAdmin(me.name);
+
+    // Everyone counts down locally from the shared lastChangeTime. Only an
+    // admin writes the advance when it reaches zero, so open tabs do not all
+    // advance at once and skip activities. With no admin on the page the
+    // activity stays put at 0:00 until an admin arrives or presses SKIP.
+    const dataRef = React.useRef(data);
+    dataRef.current = data;
+    // The lastChangeTime this tab already advanced from, so it does not write
+    // again before its own advance syncs back into data.
+    const advancedFromRef = React.useRef<number | null>(null);
+    const isAdminRef = React.useRef(isAdmin);
+    isAdminRef.current = isAdmin;
 
     React.useEffect(() => {
-      const interval = setInterval(() => {
+      const tick = () => {
+        const d = dataRef.current;
         const now = Date.now();
-        const elapsed = Math.floor((now - data.lastChangeTime) / 1000);
-        const remaining = 30 - elapsed;
+        const remaining = activitySecondsLeft(d.lastChangeTime, now);
 
-        if (remaining <= 0) {
-          // Update to next instruction
+        if (remaining > 0) {
+          setTimeLeft(remaining);
+          return;
+        }
+
+        setTimeLeft(0);
+        if (
+          shouldWriteActivityAdvance({
+            lastChangeTime: d.lastChangeTime,
+            now,
+            isAdmin: isAdminRef.current,
+            advancedFrom: advancedFromRef.current,
+          })
+        ) {
+          advancedFromRef.current = d.lastChangeTime;
           setData({
             currentInstructionIndex:
-              (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
-            lastChangeTime: now,
+              (d.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+            lastChangeTime: Date.now(),
           });
-          setTimeLeft(30);
-        } else {
-          setTimeLeft(remaining);
         }
-      }, 1000);
-
+      };
+      tick();
+      const interval = setInterval(tick, 1000);
       return () => clearInterval(interval);
-    }, [data.lastChangeTime, data.currentInstructionIndex, setData]);
+    }, [setData]);
 
     const minutes = Math.floor(timeLeft / 60);
     const seconds = timeLeft % 60;
@@ -269,9 +300,6 @@ export const GroupActivityDisplay = withSharedState(
       });
       setTimeLeft(30);
     };
-
-    const { me } = usePeople();
-    const isAdmin = me.name === "Kristoffer" || me.name === "spencer";
 
     return (
       <div className="group-activity" id="group-activity">
@@ -314,7 +342,7 @@ export const GroupActivityDisplay = withSharedState(
 
 function Main() {
   return (
-    <PlayProvider>
+    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <div className="walking-together">
         <UserSetup />
         <URLChat />

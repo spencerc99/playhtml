@@ -10,39 +10,45 @@ import {
 const SECRET = "test-bridge-secret";
 
 describe("bridge request authentication", () => {
-  it("fails closed when the deployment secret is unavailable", () => {
+  it("fails closed when the deployment secret is unavailable", async () => {
     const request = new Request("http://internal/apply", {
       headers: { [BRIDGE_SECRET_HEADER]: SECRET },
     });
 
-    expect(getBridgeAuthFailure(request, undefined)?.status).toBe(503);
+    expect((await getBridgeAuthFailure(request, undefined))?.status).toBe(503);
+    expect((await getBridgeAuthFailure(request, ""))?.status).toBe(503);
     expect(() => createBridgeRequest("/apply", {}, undefined)).toThrow(
-      "PARTYKIT_BRIDGE_SECRET is not configured"
+      "PARTYKIT_BRIDGE_SECRET is not configured",
     );
   });
 
-  it("rejects missing and incorrect credentials", () => {
+  it("rejects missing and incorrect credentials", async () => {
     expect(
-      getBridgeAuthFailure(new Request("http://internal/apply"), SECRET)?.status
+      (await getBridgeAuthFailure(new Request("http://internal/apply"), SECRET))
+        ?.status,
     ).toBe(401);
-    expect(
-      getBridgeAuthFailure(
-        new Request("http://internal/apply", {
-          headers: { [BRIDGE_SECRET_HEADER]: "wrong" },
-        }),
-        SECRET
-      )?.status
-    ).toBe(403);
+    for (const credential of ["wrong", "", SECRET.slice(0, -1), `${SECRET}x`]) {
+      expect(
+        (
+          await getBridgeAuthFailure(
+            new Request("http://internal/apply", {
+              headers: { [BRIDGE_SECRET_HEADER]: credential },
+            }),
+            SECRET,
+          )
+        )?.status,
+      ).toBe(403);
+    }
   });
 
-  it("attaches the configured credential to outbound requests", () => {
+  it("attaches the configured credential to outbound requests", async () => {
     const request = createBridgeRequest(
       "/subscribe",
       { action: "subscribe" },
-      SECRET
+      SECRET,
     );
 
     expect(request.headers.get(BRIDGE_SECRET_HEADER)).toBe(SECRET);
-    expect(getBridgeAuthFailure(request, SECRET)).toBeNull();
+    expect(await getBridgeAuthFailure(request, SECRET)).toBeNull();
   });
 });

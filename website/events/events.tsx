@@ -1,8 +1,15 @@
 import { usePeople, withSharedState } from "@playhtml/react";
 import { playhtml } from "playhtml";
 import randomColor from "randomcolor";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import "./events.scss";
+import {
+  formatTime,
+  isTimerRunning,
+  timerElapsedMs,
+  type TimerData,
+} from "./eventTimer";
+import { newestFirst } from "./guestbookOrder";
 
 const NumCursors = 50;
 
@@ -25,14 +32,16 @@ export function Cursors() {
           <img
             key={i}
             className="cursor"
-            style={{
-              "--bg-color": color,
-              "--starting-x": `${Math.random() * 100}vw`,
-              "--starting-y": `${Math.random() * 100}vh`,
-              "--distance-x": `${distanceX}px`,
-              "--distance-y": `${distanceY}px`,
-              "--duration": `${duration}s`,
-            }}
+            style={
+              {
+                "--bg-color": color,
+                "--starting-x": `${Math.random() * 100}vw`,
+                "--starting-y": `${Math.random() * 100}vh`,
+                "--distance-x": `${distanceX}px`,
+                "--distance-y": `${distanceY}px`,
+                "--duration": `${duration}s`,
+              } as React.CSSProperties
+            }
             src={`data:image/svg+xml,%3Csvg version='1.1' id='Layer_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 28 28' enable-background='new 0 0 28 28' xml:space='preserve'%3E%3Cpolygon fill='${encodeURIComponent(
               color,
             )}' points='8.2,20.9 8.2,4.9 19.8,16.5 13,16.5 12.6,16.6 '/%3E%3Cpolygon fill='${encodeURIComponent(
@@ -49,43 +58,52 @@ export function Cursors() {
   );
 }
 
+// Shared stopwatch. The room stores when the current run started and how much
+// time came before it; each visitor ticks the display locally. Shared data is
+// written only from the Start/Pause and Reset buttons.
 export const Timer = withSharedState(
   {
-    defaultData: { time: 0, isRunning: false },
+    defaultData: { time: 0, isRunning: false } as TimerData,
   },
   ({ data, setData }) => {
-    const { time, isRunning } = data;
+    const [now, setNow] = useState(() => Date.now());
+    const isRunning = isTimerRunning(data);
 
     useEffect(() => {
-      let interval;
-      if (isRunning) {
-        interval = setInterval(() => {
-          setData({ time: time + 1, isRunning });
-        }, 1000);
-      } else if (!isRunning && time !== 0) {
-        clearInterval(interval);
-      }
+      if (!isRunning) return;
+      const interval = setInterval(() => setNow(Date.now()), 250);
       return () => clearInterval(interval);
-    }, [isRunning, time, setData]);
+    }, [isRunning]);
+
+    const elapsedSeconds = Math.floor(timerElapsedMs(data, now) / 1000);
 
     const handleStartPause = () => {
-      setData({ time, isRunning: !isRunning });
+      const clickedAt = Date.now();
+      const elapsedMs = timerElapsedMs(data, clickedAt);
+      if (isRunning) {
+        setData({
+          time: Math.floor(elapsedMs / 1000),
+          isRunning: false,
+          pausedElapsedMs: elapsedMs,
+        });
+      } else {
+        setNow(clickedAt);
+        setData({
+          time: Math.floor(elapsedMs / 1000),
+          isRunning: true,
+          startedAt: clickedAt,
+          pausedElapsedMs: elapsedMs,
+        });
+      }
     };
 
     const handleReset = () => {
-      setData({ time: 0, isRunning: false });
-    };
-
-    const formatTime = (time) => {
-      const hours = String(Math.floor(time / 3600)).padStart(2, "0");
-      const minutes = String(Math.floor((time % 3600) / 60)).padStart(2, "0");
-      const seconds = String(time % 60).padStart(2, "0");
-      return `${hours}:${minutes}:${seconds}`;
+      setData({ time: 0, isRunning: false, pausedElapsedMs: 0 });
     };
 
     return (
       <div id="timer" className="retro-timer">
-        <h2>{formatTime(time)}</h2>
+        <h2>{formatTime(elapsedSeconds)}</h2>
         <div className="buttons">
           <button onClick={handleStartPause}>
             {isRunning ? "Pause" : "Start"}
@@ -110,13 +128,6 @@ export function PlayhtmlToolBox() {
         }}
       >
         <Timer />
-        {/* <div id="scratchpad" style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "1em",
-        }}>
-
-        </div> */}
       </div>
     </div>
   );
@@ -189,7 +200,7 @@ export const Guestbook = withSharedState(
           </button>
         </div>
         <hr />
-        {data.reverse().map((entry, i) => (
+        {newestFirst(data).map((entry, i) => (
           <div
             key={i}
             className="guestbook-entry"
@@ -249,6 +260,7 @@ export const URLChat = withSharedState(
     }, [data.urls]);
 
     const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
       const newUrl: SharedURL = {
         url: inputUrl,
         userName: playhtml.people.me.name || "Anonymous",
@@ -256,7 +268,9 @@ export const URLChat = withSharedState(
         timestamp: Date.now(),
       };
 
-      setData({ urls: [...data.urls, newUrl] });
+      setData((draft) => {
+        draft.urls.push(newUrl);
+      });
       setInputUrl("");
     };
 

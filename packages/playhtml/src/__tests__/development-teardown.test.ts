@@ -1,0 +1,87 @@
+// ABOUTME: Verifies the dev tools panel cleans up page state on teardown.
+// ABOUTME: Covers the injected stylesheet and the page body margins.
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setupDevUI, teardownDevUI } from "../development";
+import type { ElementHandler } from "../elements";
+
+function setupWithHandler(
+  tagType: string,
+  elementId: string,
+  handler: Record<string, unknown>,
+) {
+  setupDevUI(
+    {} as any,
+    new Map([[tagType, new Map([[elementId, handler]])]]) as unknown as Map<
+      string,
+      Map<string, ElementHandler>
+    >,
+  );
+}
+
+function devStyleCount(): number {
+  return Array.from(document.head.querySelectorAll("style")).filter((style) =>
+    style.textContent?.includes("#playhtml-dev-root"),
+  ).length;
+}
+
+describe("dev tools teardown", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    document.body.removeAttribute("style");
+  });
+
+  afterEach(() => {
+    teardownDevUI();
+  });
+
+  it("keeps one dev stylesheet across repeated setup and removes it on teardown", () => {
+    const element = document.createElement("div");
+    element.id = "toggle";
+    document.body.appendChild(element);
+    const handler = { element, data: {}, defaultData: {} };
+
+    setupWithHandler("can-toggle", "toggle", handler);
+    setupWithHandler("can-toggle", "toggle", handler);
+    expect(devStyleCount()).toBe(1);
+
+    teardownDevUI();
+    expect(devStyleCount()).toBe(0);
+  });
+
+  it("restores the body margin when torn down with the panel open", () => {
+    document.body.style.marginRight = "3px";
+    const element = document.createElement("div");
+    element.id = "toggle";
+    document.body.appendChild(element);
+    setupWithHandler("can-toggle", "toggle", {
+      element,
+      data: {},
+      defaultData: {},
+    });
+
+    document.querySelector<HTMLElement>(".ph-trigger")!.click();
+    expect(document.body.style.marginRight).not.toBe("3px");
+
+    teardownDevUI();
+    expect(document.body.style.marginRight).toBe("3px");
+  });
+
+  it("leaves the body margin alone when torn down with the panel closed", () => {
+    document.body.style.marginRight = "3px";
+    const element = document.createElement("div");
+    element.id = "toggle";
+    document.body.appendChild(element);
+    setupWithHandler("can-toggle", "toggle", {
+      element,
+      data: {},
+      defaultData: {},
+    });
+    expect(document.querySelector(".ph-open")).toBeNull();
+
+    // The page changes its own margin while the panel stays closed.
+    document.body.style.marginRight = "7px";
+
+    teardownDevUI();
+    expect(document.body.style.marginRight).toBe("7px");
+  });
+});

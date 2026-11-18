@@ -342,7 +342,14 @@ let cachedPlayerIdentity: PlayerIdentity | null = null;
 export function generatePersistentPlayerIdentity(): PlayerIdentity {
   if (cachedPlayerIdentity) return cachedPlayerIdentity;
 
-  const stored = localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY);
+  // Reading throws where storage is blocked (sandboxed iframes, some private
+  // modes). Treat that like no stored identity; saving fails the same way.
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY);
+  } catch (e) {
+    console.warn("Failed to read player identity from localStorage:", e);
+  }
   if (stored) {
     try {
       const parsed = JSON.parse(stored);

@@ -311,7 +311,7 @@ export class PartyServerV2 extends PresenceServer {
     }
     // Every v2 room HTTP endpoint is a room-to-room bridge call, and the
     // Worker routes /parties/v2/<room> publicly, so authenticate before parsing.
-    const bridgeAuthFailure = getBridgeAuthFailure(
+    const bridgeAuthFailure = await getBridgeAuthFailure(
       request,
       env.PARTYKIT_BRIDGE_SECRET,
     );
