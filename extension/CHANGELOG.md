@@ -2,16 +2,11 @@
 
 ## 0.1.31 (2026-11-18)
 
-- Turn we were online off on any site from the popup, or keep what it collects there just for you. Sites you turned off are listed in Settings, where you can also add one. (#666)
-- Beta: search your scraps by what's in the pictures, like "eye" or "shoe". Turn it on from the scraps page search; it downloads a picture-reading model once and runs entirely on your computer.
-- Delete everything collected on a site you turned off, on your computer and the shared copy, from the site's menu in Settings.
-- Number keys no longer set off emotes while you are typing.
-- Collages keep the last thing you changed when you leave the studio, and saving tries again on its own if it fails.
-- Saving a collage's file from your list of collages (the one you can open again later) now works in Safari. Saving pictures of a collage already did.
+- Privacy toggles: Turn we were online off on any site from the popup, or keep what it collects there just for you. Sites you turned off are listed in Settings, where you can also add one. You can also delete data collected from a site you turned off, on your computer and the shared copy.
+- Collage saving fixes
 - Trails now follow you to the next page on sites like YouTube that switch pages without reloading (Chrome and Firefox).
-- Beta: Slow Mode is now called scenic route, and its popup controls take up much less space. Board the commute from the small train button next to it.
-- The popup is taller, so everything fits without scrolling, and it no longer lists collectors on a site you've turned off.
-
+- More compact popup design
+- Beta: search your scraps by what's in the pictures, like "eye" or "shoe". Turn it on from the scraps page search; it downloads a picture-reading model once and runs entirely on your computer.
 
 ## 0.1.30 (2026-11-10)
 
