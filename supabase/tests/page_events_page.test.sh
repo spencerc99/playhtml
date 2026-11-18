@@ -71,6 +71,8 @@ run_sql "create table public.collection_events (id text primary key, type text n
 # The older production page index (20260710201355_production_schema.sql). It is still
 # there when this ships and is dropped by hand later; the function must not need it.
 run_sql "create index idx_events_urlhash_ts on public.collection_events using btree (md5(url), ts desc)" >/dev/null
+# The other production indexes the planner could pick instead.
+run_sql "create index idx_events_ts on public.collection_events using btree (ts desc); create index idx_events_type_ts_desc on public.collection_events using btree (type, ts desc)" >/dev/null
 
 cat_url="https://en.wikipedia.org/wiki/Cat"
 slash_url="https://en.wikipedia.org/wiki/Cat/"
@@ -141,7 +143,22 @@ if ! grep -q "idx_events_urlhash_type_ts exists but is INVALID" <<<"$invalid_out
   exit 1
 fi
 run_sql "update pg_index set indisvalid = true where indexrelid = 'public.idx_events_urlhash_type_ts'::regclass" >/dev/null
-echo "index migration: absent -> built holding $absent_locks lock(s); valid -> 0 locks; invalid -> refused"
+# With the index missing on a large table, it stops instead of building the index
+# while holding a lock that blocks every insert.
+real_tuples="$(run_sql "select reltuples from pg_class where oid = 'public.collection_events'::regclass")"
+run_sql "drop index public.idx_events_urlhash_type_ts; update pg_class set reltuples = 300000000 where oid = 'public.collection_events'::regclass" >/dev/null
+if large_output="$(apply_index_migration 2>&1)"; then
+  echo "The index migration built the index inline on a large table" >&2
+  exit 1
+fi
+if ! grep -q "idx_events_urlhash_type_ts is missing on a large table" <<<"$large_output"; then
+  echo "The index migration failed for another reason:" >&2
+  echo "$large_output" >&2
+  exit 1
+fi
+run_sql "update pg_class set reltuples = $real_tuples where oid = 'public.collection_events'::regclass" >/dev/null
+apply_index_migration >/dev/null
+echo "index migration: absent -> built holding $absent_locks lock(s); valid -> 0 locks; invalid -> refused; missing on a large table -> refused"
 
 # An earlier definition of the function, with a default for p_type, may already exist;
 # the migration has to replace it.
