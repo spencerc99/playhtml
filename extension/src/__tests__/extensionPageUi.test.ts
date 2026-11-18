@@ -1,5 +1,5 @@
 // ABOUTME: Verifies recognition of the extension's injected page UI and typing detection.
-// ABOUTME: Covers shortcuts typed into shadow-root inputs.
+// ABOUTME: Covers bottle layout mutation filtering and shortcuts typed into shadow-root inputs.
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -7,6 +7,18 @@ import {
   isTypingEvent,
   registerExtensionShadowRoot,
 } from "../features/extensionPageUi";
+import { movesPageLayout } from "../components/BottleOverlay";
+
+async function collectMutations(change: () => void): Promise<MutationRecord[]> {
+  const records: MutationRecord[] = [];
+  const observer = new MutationObserver((batch) => records.push(...batch));
+  observer.observe(document.body, { childList: true, subtree: true });
+  change();
+  await Promise.resolve();
+  records.push(...observer.takeRecords());
+  observer.disconnect();
+  return records;
+}
 
 /** Dispatches a keydown from `target` and reads it at the window, mid-dispatch. */
 function keydownAtWindow(target: HTMLElement): {
@@ -44,6 +56,35 @@ describe("isExtensionPageUi", () => {
     expect(isExtensionPageUi(host)).toBe(true);
     expect(isExtensionPageUi(label)).toBe(true);
     expect(isExtensionPageUi(article)).toBe(false);
+  });
+});
+
+describe("movesPageLayout", () => {
+  it("ignores mutations inside peer cursors and extension hosts", async () => {
+    const cursor = document.createElement("div");
+    cursor.className = "playhtml-cursor-other";
+    document.body.append(cursor);
+
+    const records = await collectMutations(() => {
+      cursor.append(document.createElement("span"));
+      const host = document.createElement("div");
+      host.id = "wewere-chat-panel-host";
+      document.body.append(host);
+    });
+
+    expect(records.length).toBeGreaterThan(0);
+    expect(records.some(movesPageLayout)).toBe(false);
+  });
+
+  it("counts mutations to the page's own content", async () => {
+    const article = document.createElement("article");
+    document.body.append(article);
+
+    const records = await collectMutations(() => {
+      article.append(document.createElement("p"));
+    });
+
+    expect(records.some(movesPageLayout)).toBe(true);
   });
 });
 
