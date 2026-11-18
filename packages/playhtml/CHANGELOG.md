@@ -1,5 +1,32 @@
 # Change Log
 
+## 2.17.0
+
+### Minor Changes
+
+- aaba74d: Removed the `debounceMs` element option and `setDataDebounced`, which never had any effect; delete them from your code if TypeScript flags them.
+
+### Patch Changes
+
+- cc47b96: `can-mirror` elements now share presence only while someone is hovering or focusing them, instead of publishing an idle `{ hover: false, focus: false }` for every element on load. Pages with hundreds of mirrored elements no longer hit the element presence limit, so hover and focus sync on every element again, and the "Element awareness exceeded 8 shards" console error is logged once instead of on every hover.
+- 433b275: Each playhtml element's random `--jiggle-delay` animation offset is now a valid value, so the staggered jiggle actually applies in browsers. `can-mirror` treats it as local to each visitor: it isn't shared or saved, and applying someone else's styles keeps your own offset.
+- 0158f72: `can-mirror` sends and computes much less. Typing in an input inside a mirrored element now syncs only that input's value, instead of re-sending the whole element on every keystroke (about 38KB per key with 200 siblings, now a few dozen bytes). Adding or removing a child syncs only the children that changed, instead of the whole list, and adding many children at once no longer freezes the page (200 appends went from about 1s to about 40ms).
+- 597445b: When a `can-mirror` element contains other playhtml elements, updates to the outer element no longer rebuild every inner element's handler. Inner elements that are still bound just re-apply their own shared data, which cuts the work done on each update of the outer element by about a third on a page with 200 nested elements.
+- ca14850: Cursor and cursor chat fixes: typing in a page's own fields no longer opens cursor chat, chat shows `<` and `&` as typed, cursors no longer flicker on scrolled pages or ignore a zone's own cursor styles, and teardown removes the `window.cursors` it installed and restores the page cursor.
+- 9c31f89: playhtml now ships a single-file browser build (`dist/playhtml.browser.js`) and points the package's `jsdelivr` and `unpkg` fields at it, so `import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js"` works directly in a `<script type="module">`. The default stylesheet also loads from jsDelivr instead of unpkg. Bundlers and npm installs keep using the existing code-split build.
+- 1879b6e: When someone changes their color, everyone else now sees their cursor redrawn in the new color right away.
+- a8fb827: Fix a room reset (an admin hard reset or compaction) getting undone right away. When the server reset a room, the old connection could reconnect on its own with the page's pre-reset copy of the room before playhtml swapped in a fresh one, which merged all the deleted history back into the room and stopped it from saving. playhtml now drops the old connection before it records the new reset.
+- 1ee1b8b: Setup and dev tools fixes: playhtml starts when `localStorage` is blocked, a built-in capability given its own update callback now sets up (which fixes `<CanHoverElement>` in `@playhtml/react`), dev mode cleans up on teardown, and `listSharedElements()` reports `shared="ro"` as read-only.
+- 10044b9: In `developmentMode`, playhtml now warns once for each element that has no `id` or `selector-id`. Those elements get an id from a hash of their HTML, so any change to their markup loses their saved data, and the warning names the element so you can add an `id`. playhtml also does less work per update: reading shared element and page data no longer throws and catches an error internally on every remote change, and each cursor frame now checks only the people it came from for expired presence, leaving everyone else to the once-a-second check.
+- aaba74d: Teardown and listener fixes: `deleteElementData` and `resetPlayHTML()` now fully tear down elements and play event listeners, `element.reset()` restores the default data, `can-mirror` and `can-hover` remove their listeners, `can-grow` shows the not-allowed cursor at its maximum size, and a throwing listener no longer stops the others.
+- Updated dependencies [cc47b96]
+- Updated dependencies [433b275]
+- Updated dependencies [0158f72]
+- Updated dependencies [aaba74d]
+- Updated dependencies [1ee1b8b]
+- Updated dependencies [aaba74d]
+  - @playhtml/common@0.12.0
+
 ## 2.16.0
 
 ### Minor Changes

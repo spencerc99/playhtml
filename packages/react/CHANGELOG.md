@@ -1,5 +1,28 @@
 # Change Log
 
+## 3.2.0
+
+### Minor Changes
+
+- aaba74d: Removed the `debounceMs` element option and `setDataDebounced`, which never had any effect; delete them from your code if TypeScript flags them.
+
+### Patch Changes
+
+- 721e38a: Installing `@playhtml/react` no longer pulls in its own copy of React. It uses the `react` and `react-dom` already in your app, so you no longer risk two copies of React and "Invalid hook call" errors. The supported range is now React 18.2 and up (including React 19), which matches what the package already needed: it uses `useId`, which React 16 and 17 do not have.
+- Updated dependencies [cc47b96]
+- Updated dependencies [433b275]
+- Updated dependencies [0158f72]
+- Updated dependencies [597445b]
+- Updated dependencies [ca14850]
+- Updated dependencies [9c31f89]
+- Updated dependencies [1879b6e]
+- Updated dependencies [aaba74d]
+- Updated dependencies [a8fb827]
+- Updated dependencies [1ee1b8b]
+- Updated dependencies [10044b9]
+- Updated dependencies [aaba74d]
+  - playhtml@2.17.0
+
 ## 3.1.0
 
 ### Minor Changes
