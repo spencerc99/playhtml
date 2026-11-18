@@ -192,7 +192,7 @@ export function InternetPortraitHome({
   };
 
   const portraitPreview = (
-    <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <section className="portrait-home__preview">
       <div
         role="button"
         tabIndex={0}

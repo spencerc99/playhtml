@@ -40,9 +40,41 @@
     flex-shrink: 0;
   }
 
+  // On desktop the portrait is the one block that gives up height: it shows
+  // at full size when the popup has room and shrinks before anything scrolls.
   &__main {
     flex: 1;
+    min-height: 0;
     overflow: auto;
+    display: flex;
+    flex-direction: column;
+
+    > * {
+      flex-shrink: 0;
+    }
+  }
+
+  &__preview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &:not(&--phone) &__preview {
+    flex-shrink: 1;
+    min-height: 0;
+
+    .preview-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .preview-card__body {
+      flex: 0 1 180px;
+      height: auto;
+      min-height: 126px;
+    }
   }
 
   &__nav-link {
@@ -811,7 +843,7 @@
 
   &__body {
     position: relative;
-    height: 152px;
+    height: 180px;
   }
 
   // Sits over the portrait's top-right corner, clear of its stats row.
