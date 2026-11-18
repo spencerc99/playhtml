@@ -5,7 +5,7 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-migration_path="$script_dir/../migrations/20261116210000_extension_page_events.sql"
+migration_path="$script_dir/../migrations/20261118010100_extension_page_events.sql"
 container="page-events-page-test-$$"
 ids_file="$(mktemp)"
 
