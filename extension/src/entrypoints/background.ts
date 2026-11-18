@@ -1,6 +1,7 @@
 // ABOUTME: Background service worker — holds the extension-origin event store and
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
+import type { Alarms } from 'webextension-polyfill'
 import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
 import type { ScrapSource } from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
@@ -444,6 +445,22 @@ async function runLocalRetention(
 
 let identityInitialization: Promise<void> | null = null
 
+// Creating an alarm replaces any alarm with the same name and restarts its
+// schedule. The service worker starts often, so alarms are created only when
+// missing or when their period changed; otherwise long-period alarms would be
+// pushed back on every start and rarely fire.
+function ensureAlarm(name: string, info: Alarms.CreateAlarmInfoType): void {
+  browser.alarms
+    .get(name)
+    .then((existing) => {
+      if (existing && existing.periodInMinutes === info.periodInMinutes) return
+      browser.alarms.create(name, info)
+    })
+    .catch((e) => {
+      console.error(`[Background] failed to schedule alarm ${name}:`, e)
+    })
+}
+
 export default defineBackground(() => {
   // Storage durability is provided by the `unlimitedStorage` permission
   // declared in wxt.config.ts — Chromium's quota manager exempts extensions
@@ -514,18 +531,18 @@ export default defineBackground(() => {
   // Set up 5-minute milestone check alarm (backstop for non-navigation
   // milestones like cursor distance and screen time). Domain milestones
   // additionally fire on navigation — see scheduleMilestoneCheck.
-  browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
-  browser.alarms.create(FEATURE_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
+  ensureAlarm('checkMilestones', { periodInMinutes: 5 })
+  ensureAlarm(FEATURE_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
   // Copies images for scraps collected before local copies existed. The pass
   // finishes once; later alarms only read that it is done.
-  browser.alarms.create(IMAGE_COPY_BACKFILL_ALARM, {
+  ensureAlarm(IMAGE_COPY_BACKFILL_ALARM, {
     delayInMinutes: 1,
     periodInMinutes: 10,
   })
   sharedContainer()
     .then(async (shared) => {
       if (!shared) return
-      browser.alarms.create(DEVICE_SYNC_ALARM, {
+      ensureAlarm(DEVICE_SYNC_ALARM, {
         delayInMinutes: 1,
         periodInMinutes: DEVICE_SYNC_PERIOD_MINUTES,
       })
@@ -536,7 +553,7 @@ export default defineBackground(() => {
     })
     .catch((e) => console.warn('[Background] device sync startup error:', e))
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
-    browser.alarms.create(LOCAL_RETENTION_ALARM, {
+    ensureAlarm(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
     })
   }
