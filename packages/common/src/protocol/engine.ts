@@ -196,14 +196,22 @@ const getMutableArrayIdentity = (
   return mutable;
 };
 
-const collectArrayPaths = (
+const addressKey = (address: OperationAddress): string =>
+  JSON.stringify([address.capability, address.elementId, address.path]);
+
+/**
+ * Walks a value and reports the address of every array in it, checking each
+ * against its identity list on the way.
+ */
+const collectArrayAddresses = (
   value: JsonValue,
-  arrays: readonly ArrayIdentity[] | readonly MutableArrayIdentity[],
+  identities: ReadonlyMap<string, ArrayIdentity | MutableArrayIdentity>,
   address: OperationAddress,
-  found: ProtocolPath[],
+  found: Set<string>,
 ): void => {
   if (Array.isArray(value)) {
-    const identity = findArrayIdentity(arrays, address);
+    const key = addressKey(address);
+    const identity = identities.get(key);
     if (!identity) {
       throw new OperationError(
         `Array identity is missing at ${formatPath(address.path)}`,
@@ -219,11 +227,11 @@ const collectArrayPaths = (
         `Array item IDs are not unique at ${formatPath(address.path)}`,
       );
     }
-    found.push(address.path);
+    found.add(key);
     value.forEach((item, index) => {
-      collectArrayPaths(
+      collectArrayAddresses(
         item,
-        arrays,
+        identities,
         {
           ...address,
           path: [...address.path, { itemId: identity.itemIds[index] }],
@@ -236,9 +244,9 @@ const collectArrayPaths = (
 
   if (isObject(value)) {
     for (const [key, child] of Object.entries(value)) {
-      collectArrayPaths(
+      collectArrayAddresses(
         child,
-        arrays,
+        identities,
         { ...address, path: [...address.path, key] },
         found,
       );
@@ -251,43 +259,26 @@ export const checkSnapshotIntegrity = (
   snapshot: RoomSnapshot,
 ): SnapshotIntegrityResult => {
   try {
-    const found: ArrayIdentity[] = [];
-    const foundPaths: Array<{
-      capability: string;
-      elementId: string;
-      path: ProtocolPath;
-    }> = [];
+    const identities = new Map<string, ArrayIdentity>();
+    for (const identity of snapshot.arrays) {
+      identities.set(addressKey(identity), identity);
+    }
+    const found = new Set<string>();
 
     for (const [capability, elements] of Object.entries(snapshot.state)) {
       for (const [elementId, value] of Object.entries(elements)) {
-        const paths: ProtocolPath[] = [];
-        collectArrayPaths(
+        collectArrayAddresses(
           value,
-          snapshot.arrays,
+          identities,
           { capability, elementId, path: [] },
-          paths,
+          found,
         );
-        for (const path of paths) {
-          foundPaths.push({ capability, elementId, path });
-          const identity = findArrayIdentity(snapshot.arrays, {
-            capability,
-            elementId,
-            path,
-          });
-          if (identity) found.push(identity as ArrayIdentity);
-        }
       }
     }
 
-    if (found.length !== snapshot.arrays.length) {
+    if (found.size !== snapshot.arrays.length) {
       const extra = snapshot.arrays.find(
-        (identity) =>
-          !foundPaths.some(
-            (path) =>
-              path.capability === identity.capability &&
-              path.elementId === identity.elementId &&
-              pathsEqual(path.path, identity.path),
-          ),
+        (identity) => !found.has(addressKey(identity)),
       );
       throw new OperationError(
         extra

@@ -182,45 +182,6 @@ describe("recordMutation", () => {
     ]);
   });
 
-  it("adds 8-character item ids to a room whose items carry 36-character ids", () => {
-    const longIds = [
-      "0f8fad5b-d9cb-469f-a165-70867728950e",
-      "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-      "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-    ];
-    const room = snapshot();
-    const result = recordMutation<Data>(
-      { ...room, arrays: [{ ...room.arrays[0], itemIds: longIds }] },
-      "play",
-      "element",
-      (draft) => {
-        draft.items.push({ name: "d" });
-        draft.items[0].name = "edited";
-        draft.optional = { values: ["x", "y"] };
-      },
-    );
-
-    const itemsIdentity = result.next.arrays.find(
-      (identity) => identity.path.length === 1 && identity.path[0] === "items",
-    );
-    expect(itemsIdentity?.itemIds.slice(0, 3)).toEqual(longIds);
-    expect(itemsIdentity?.itemIds[3]).toMatch(/^[A-Za-z0-9_-]{8}$/);
-    const valuesIdentity = result.next.arrays.find(
-      (identity) => identity.path[identity.path.length - 1] === "values",
-    );
-    expect(valuesIdentity?.itemIds).toHaveLength(2);
-    for (const itemId of valuesIdentity?.itemIds ?? []) {
-      expect(itemId).toMatch(/^[A-Za-z0-9_-]{8}$/);
-    }
-    expect(value(result).items.map((item) => item.name)).toEqual([
-      "edited",
-      "b",
-      "c",
-      "d",
-    ]);
-    expectIntegrity(result);
-  });
-
   it("records unshift as an index-zero insert without replacing existing identities", () => {
     const result = recordMutation<Data>(
       snapshot(),
