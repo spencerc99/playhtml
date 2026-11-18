@@ -12,6 +12,21 @@ SET LOCAL lock_timeout = '5s';
 
 DO $$
 BEGIN
+  -- An interrupted concurrent build leaves the name behind as an INVALID index.
+  -- CREATE INDEX IF NOT EXISTS would skip it and report success with no usable
+  -- index, so stop instead: it has to be dropped and rebuilt concurrently by hand.
+  IF EXISTS (
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indexrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = 'idx_events_domain_type_ts'
+      AND NOT i.indisvalid
+  ) THEN
+    RAISE EXCEPTION 'idx_events_domain_type_ts exists but is INVALID: drop it and rebuild it with CREATE INDEX CONCURRENTLY, then rerun this migration';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM pg_index i
