@@ -271,7 +271,10 @@ The list of clone ids is stored on the trigger element, keyed by the trigger's i
 ```js
 document.querySelectorAll("[id^='bunny-template-']").forEach((el) => el.remove());
 playhtml.deleteElementData("can-duplicate", "clone-btn");
+playhtml.setupPlayElement(document.getElementById("clone-btn"));
 ```
+
+`deleteElementData` also detaches the trigger, so the last line sets it up again to keep cloning.
 
 ### Reset
 
