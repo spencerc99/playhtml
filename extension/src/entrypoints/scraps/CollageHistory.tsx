@@ -75,6 +75,8 @@ export function CollageHistory({
   const [error, setError] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const filePicker = useRef<HTMLInputElement>(null);
+  /** The page's notices, one to a line; each is shown, under any problem of the list's own. */
+  const notices = notice ? notice.split("\n") : [];
   /** Collages being copied or deleted, so a second press while one waits does nothing. */
   const busyIds = useRef(new Set<string>());
 
@@ -328,11 +330,16 @@ export function CollageHistory({
         </div>
       </header>
 
-      {(error ?? notice) && (
+      {error && (
         <p className="collage-notice" role="status">
-          {error ?? notice}
+          {error}
         </p>
       )}
+      {notices.map((each) => (
+        <p key={each} className="collage-notice" role="status">
+          {each}
+        </p>
+      ))}
       {!entries && !error && (
         <p className="collage-studio__label">opening the drawer...</p>
       )}

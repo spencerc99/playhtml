@@ -100,6 +100,7 @@ async function settle(): Promise<void> {
 async function mount(
   onEdit = vi.fn(),
   settling: () => Promise<void> = async () => {},
+  notice: string | null = null,
 ) {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -111,6 +112,7 @@ async function mount(
         onEdit={onEdit}
         onStartNew={() => {}}
         settling={settling}
+        notice={notice}
       />,
     );
   });
@@ -345,6 +347,25 @@ describe("a collage store that fails", () => {
     expect(view.querySelector(".collage-notice")?.textContent).toBe(
       "could not open that collage — the drawer is stuck",
     );
+  });
+
+  it("keeps the page's notices on screen beside a problem of its own", async () => {
+    await saveCollage(record());
+    const { view } = await mount(
+      vi.fn(),
+      async () => {},
+      "could not open that collage — it is gone\ncould not save the last change to a walk",
+    );
+    breakStore();
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await settle();
+    expect(
+      [...view.querySelectorAll(".collage-notice")].map((each) => each.textContent),
+    ).toEqual([
+      "could not copy that collage — the drawer is stuck",
+      "could not open that collage — it is gone",
+      "could not save the last change to a walk",
+    ]);
   });
 
   it("says so when a collage cannot be copied", async () => {

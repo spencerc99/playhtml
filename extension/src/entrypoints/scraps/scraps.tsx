@@ -191,10 +191,8 @@ export function ScrapsPage() {
   const listShowing =
     mode === "create" && ready && Boolean(createMode) && !resuming && !studioOpen;
   useEffect(() => {
-    if (unsavedNotice && listShowing && !listNotice) {
-      unsavedNoticeShownRef.current = true;
-    }
-  }, [unsavedNotice, listShowing, listNotice]);
+    if (unsavedNotice && listShowing) unsavedNoticeShownRef.current = true;
+  }, [unsavedNotice, listShowing]);
 
   const openStudio = (record: CollageRecord | null) => {
     placeGenerationRef.current += 1;
@@ -684,7 +682,9 @@ export function ScrapsPage() {
               `could not save the last change to ${title || "untitled"}`,
             );
           }}
-          notice={listNotice ?? unsavedNotice}
+          notice={
+            [listNotice, unsavedNotice].filter(Boolean).join("\n") || null
+          }
         />
       )}
       {mode === "create" && ready && (!createMode || resuming) && (
