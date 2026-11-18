@@ -40,9 +40,41 @@
     flex-shrink: 0;
   }
 
+  // On desktop the portrait is the one block that gives up height: it shows
+  // at full size when the popup has room and shrinks before anything scrolls.
   &__main {
     flex: 1;
+    min-height: 0;
     overflow: auto;
+    display: flex;
+    flex-direction: column;
+
+    > * {
+      flex-shrink: 0;
+    }
+  }
+
+  &__preview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &:not(&--phone) &__preview {
+    flex-shrink: 1;
+    min-height: 0;
+
+    .preview-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .preview-card__body {
+      flex: 0 1 180px;
+      height: auto;
+      min-height: 126px;
+    }
   }
 
   &__nav-link {
@@ -145,13 +177,12 @@
 }
 
 .scenic-route__panel {
-  padding: 9px 12px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 7px;
-  border: 1px solid rgba($accent-blue, 0.34);
+  border: 1px solid $border;
   border-radius: 10px;
-  background: $surface;
 }
 
 .scenic-route__row {
@@ -595,8 +626,9 @@
 
   &__grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 4px;
     margin-top: 8px;
   }
 
@@ -753,9 +785,10 @@
 .collector-pill {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  padding: 6px 8px;
+  justify-content: center;
+  gap: 5px;
+  font-size: 10px;
+  padding: 5px 4px;
   border: 1px solid $border;
   border-radius: 6px;
 
@@ -773,12 +806,14 @@
     flex-shrink: 0;
   }
 
+  // One row of chips: the icon stands in for the name, which stays for screen readers.
   &__name {
-    text-transform: capitalize;
-    color: $text;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    position: absolute;
+    width: 1px;
+    height: 1px;
     overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   &__state {
@@ -806,45 +841,22 @@
   background: $bg;
   margin-bottom: 8px;
 
-  &__chrome {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 26px;
-    padding: 4px 4px 4px 8px;
-    box-sizing: border-box;
-    background: $surface-hover;
-  }
-
-  &__dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 9999px;
-    display: inline-block;
-
-    &--close {
-      background: $accent-rust;
-    }
-    &--min {
-      background: $accent-gold;
-    }
-    &--expand {
-      background: $accent-teal;
-    }
-  }
-
   &__body {
     position: relative;
     height: 180px;
   }
 
+  // Sits over the portrait's top-right corner, clear of its stats row.
   &__label {
-    margin-left: auto;
-    padding: 3px 8px;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    padding: 2px 7px;
     background: rgba(61, 56, 51, 0.8);
     color: white;
-    border-radius: 6px;
-    font-size: 12px;
+    border-radius: 5px;
+    font-size: 11px;
     font-weight: 700;
     font-family: $font-heading;
   }

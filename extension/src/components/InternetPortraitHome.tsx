@@ -192,7 +192,7 @@ export function InternetPortraitHome({
   };
 
   const portraitPreview = (
-    <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <section className="portrait-home__preview">
       <div
         role="button"
         tabIndex={0}
@@ -202,13 +202,8 @@ export function InternetPortraitHome({
         }}
         className="preview-card"
       >
-        <div className="preview-card__chrome">
-          <span className="preview-card__dot preview-card__dot--close" />
-          <span className="preview-card__dot preview-card__dot--min" />
-          <span className="preview-card__dot preview-card__dot--expand" />
-          <div className="preview-card__label">Open Portrait Overlay</div>
-        </div>
         <div className="preview-card__body">
+          <div className="preview-card__label">Open Portrait Overlay</div>
           <TinyMovementPreview />
           {portraitStats ? (
             <PortraitCard
@@ -300,10 +295,10 @@ export function InternetPortraitHome({
                     .join(" · ") || "nothing right now"}
             </p>
           )}
-          {collectors && !phone && (
+          {collectors && !phone && !siteOff && (
             <div className="collection-status__grid">
               {collectors.map((c) => (
-                <div key={c.type} className="collector-pill">
+                <div key={c.type} className="collector-pill" title={c.type}>
                   <div className="collector-pill__name-row">
                     <span aria-hidden className="collector-pill__icon">
                       <CollectorIcon type={c.type} />
