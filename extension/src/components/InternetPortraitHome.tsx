@@ -206,6 +206,7 @@ export function InternetPortraitHome({
           <span className="preview-card__dot preview-card__dot--close" />
           <span className="preview-card__dot preview-card__dot--min" />
           <span className="preview-card__dot preview-card__dot--expand" />
+          <div className="preview-card__label">Open Portrait Overlay</div>
         </div>
         <div className="preview-card__body">
           <TinyMovementPreview />
@@ -225,7 +226,6 @@ export function InternetPortraitHome({
                 : "Your portrait is loading..."}
             </p>
           )}
-          <div className="preview-card__label">Open Portrait Overlay</div>
         </div>
       </div>
     </section>
@@ -271,14 +271,6 @@ export function InternetPortraitHome({
             commuteIsOpen={commuteIsOpen}
           />
         )}
-        <FeatureGate feature="COMMUTE">
-          {onViewCommute && (
-            <SlowModeSettings
-              onBoard={phone ? undefined : onViewCommute}
-              commuteIsOpen={commuteIsOpen}
-            />
-          )}
-        </FeatureGate>
         {!phone && portraitPreview}
 
         <section
@@ -327,17 +319,15 @@ export function InternetPortraitHome({
               ))}
             </div>
           )}
-          <div className="collection-status__footer-row">
-            <span>Your settings for every site</span>
-            <button
-              onClick={onOpenSettings}
-              title="Data settings"
-              className="collection-status__settings-link"
-            >
-              Settings →
-            </button>
-          </div>
         </section>
+        <FeatureGate feature="COMMUTE">
+          {onViewCommute && (
+            <SlowModeSettings
+              onBoard={phone ? undefined : onViewCommute}
+              commuteIsOpen={commuteIsOpen}
+            />
+          )}
+        </FeatureGate>
         <DebugModesSettings />
       </main>
 

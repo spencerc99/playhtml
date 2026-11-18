@@ -1,12 +1,12 @@
 // ABOUTME: Styles for the popup's page navigation
-// ABOUTME: Bare mono links with an external-tab arrow, sized for the header row
+// ABOUTME: Bare text links with an external-tab arrow, quieter than the wordmark above them
 
 @use "../styles/variables" as *;
 
 .popup-nav {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
 
   &__item {
     display: flex;
@@ -15,10 +15,10 @@
     padding: 0;
     background: none;
     border: none;
-    font-family: $font-mono;
-    font-size: 12px;
+    font-family: $font-body;
+    font-size: 11px;
     text-transform: lowercase;
-    color: $text;
+    color: #6f6860;
     cursor: pointer;
     transition: color 0.12s;
 
@@ -37,7 +37,7 @@
   }
 
   &__arrow {
-    font-size: 10px;
+    font-size: 9px;
     color: $text-muted;
     transition: color 0.12s;
   }

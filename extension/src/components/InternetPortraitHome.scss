@@ -100,9 +100,9 @@
     background: none;
     border: none;
     padding: 0;
-    font-family: $font-mono;
+    font-family: $font-body;
     font-size: 10px;
-    color: $text-faint;
+    color: #6f6860;
     cursor: pointer;
     transition: color 0.12s;
 
@@ -229,7 +229,7 @@
 
     strong {
       font-family: $font-heading;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 600;
       line-height: 1.2;
     }
@@ -238,7 +238,7 @@
   &__eyebrow {
     color: #4f7da6;
     font-family: $font-mono;
-    font-size: 8px;
+    font-size: 9px;
     letter-spacing: 0.1em;
   }
 
@@ -709,7 +709,7 @@
 .collection-status {
   border: 1px solid $border;
   border-radius: 10px;
-  padding: 12px;
+  padding: 10px 12px;
   margin-bottom: 12px;
 
   &__header-row {
@@ -719,23 +719,13 @@
 
     h3 {
       @include heading;
-      font-size: 14px;
+      font-size: 13px;
     }
-  }
-
-  &__settings-link {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: $accent-blue;
-    font-size: 12px;
-    font-family: $font-body;
-    padding: 0;
   }
 
   &__error {
     margin: 8px 0 0;
-    font-size: 12px;
+    font-size: 11px;
     color: $text-faint;
   }
 
@@ -744,15 +734,6 @@
     grid-template-columns: 1fr 1fr;
     gap: 6px;
     margin-top: 8px;
-  }
-
-  &__footer-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 8px;
-    font-size: 11px;
-    color: $text-muted;
   }
 
   &--site-off {
@@ -794,13 +775,14 @@
   }
 
   &__label {
-    font-size: 12px;
-    color: $text-muted;
+    font-size: 11px;
+    color: #6f6860;
   }
 
   &__host {
-    font-size: 17px;
-    font-weight: 700;
+    font-family: $font-heading;
+    font-size: 13px;
+    font-weight: 600;
     color: $text;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -828,8 +810,8 @@
   }
 
   &__seen-by-label {
-    font-size: 12px;
-    color: $text-muted;
+    font-size: 11px;
+    color: #6f6860;
   }
 
   &__choices {
@@ -842,14 +824,14 @@
 
   &__choice {
     position: relative;
-    min-height: 30px;
+    min-height: 26px;
     padding: 0 10px;
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: $text-muted;
+    color: #6f6860;
     font-family: $font-body;
-    font-size: 12px;
+    font-size: 11px;
     cursor: pointer;
 
     &--selected {
@@ -874,9 +856,9 @@
     background: $text;
     color: $bg;
     font-family: $font-mono;
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 400;
-    line-height: 12px;
+    line-height: 13px;
     pointer-events: none;
   }
 
@@ -962,8 +944,11 @@
 
   &__chrome {
     display: flex;
+    align-items: center;
     gap: 6px;
-    padding: 8px;
+    min-height: 26px;
+    padding: 4px 4px 4px 8px;
+    box-sizing: border-box;
     background: $surface-hover;
   }
 
@@ -990,10 +975,8 @@
   }
 
   &__label {
-    position: absolute;
-    bottom: 12px;
-    left: 12px;
-    padding: 8px 10px;
+    margin-left: auto;
+    padding: 3px 8px;
     background: rgba(61, 56, 51, 0.8);
     color: white;
     border-radius: 6px;
