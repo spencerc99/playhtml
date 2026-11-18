@@ -1,5 +1,5 @@
-// ABOUTME: Collapses the hand holds people publish in experiment 7 into one per pair.
-// ABOUTME: Both people in a pair publish the same hold, so the page draws each pair once.
+// ABOUTME: Collapses the hand holds people publish in experiment 7 into one per pair,
+// ABOUTME: and picks which in-reach hold a person publishes when several people are near.
 
 export interface HandHoldPerson {
   publicKey?: string;
@@ -54,6 +54,24 @@ export function collapseHandHolds(
   return [...chosen.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, entry]) => ({ key, handHold: entry.handHold }));
+}
+
+/**
+ * The hold someone publishes while their hand is in reach of one or more
+ * people, keyed by partner pid: the most recent one, or none when nobody is
+ * in reach. Presence holds a single hold per person, so leaving one partner
+ * falls back to a hold that is still in reach rather than clearing it.
+ */
+export function holdToPublish(
+  holdsByPartnerPid: ReadonlyMap<string, HandHold>,
+): HandHold | undefined {
+  let newest: HandHold | undefined;
+  for (const handHold of holdsByPartnerPid.values()) {
+    if (!newest || handHold.startedAt >= newest.startedAt) {
+      newest = handHold;
+    }
+  }
+  return newest;
 }
 
 function isPreferred(candidate: PublishedHandHold, current: PublishedHandHold) {

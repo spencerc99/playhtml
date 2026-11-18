@@ -11,7 +11,8 @@ import React, {
 import ReactDOM from "react-dom/client";
 import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
 import { mountExperimentBadge } from "../../components/experimentBadge";
-import { collapseHandHolds, type HandHold } from "./handHolds";
+import type { User } from "@playhtml/common";
+import { collapseHandHolds, holdToPublish, type HandHold } from "./handHolds";
 
 interface Star {
   id: string;
@@ -301,12 +302,14 @@ const Main = withSharedState(
   },
   ({ data, setData, everyone, me, setMyPresence }) => {
     const { isLoading, configureCursors, cursors } = usePlayContext();
-    const [proximityUsers, setProximityUsers] = useState<Set<string>>(
-      new Set()
-    );
-    const [activeHandHolds, setActiveHandHolds] = useState<
-      Map<string, HandHold>
+    // The holds I am in, keyed by partner pid: one entry per person in reach.
+    // The proximity callbacks update the ref; the state copy drives rendering.
+    const handHoldsByPidRef = useRef<Map<string, HandHold>>(new Map());
+    const [handHoldsByPid, setHandHoldsByPid] = useState<
+      ReadonlyMap<string, HandHold>
     >(new Map());
+    const configureCursorsRef = useRef(configureCursors);
+    configureCursorsRef.current = configureCursors;
     const mainRef = useRef<HTMLDivElement>(null);
     const [starAnimations, setStarAnimations] = useState<
       Array<{
@@ -374,12 +377,10 @@ const Main = withSharedState(
           ours: { x: number; y: number };
           theirs: { x: number; y: number };
         },
-        angle?: number
+        angle?: number,
+        user?: User
       ) => {
-        if (!otherPlayer) return;
-
-        const connectionId = otherPlayer.connectionId || "unknown";
-        setProximityUsers((prev) => new Set([...prev, connectionId]));
+        if (!otherPlayer || !user) return;
 
         // Use actual cursor positions if available, otherwise fallback to center
         const ourPos = positions?.ours || {
@@ -405,9 +406,10 @@ const Main = withSharedState(
           startedAt: Date.now(),
         };
 
-        // Store locally for cursor hiding
-        setActiveHandHolds((prev) => new Map(prev.set(connectionId, handHold)));
-        setMyPresence({ activeHandHold: handHold });
+        const holds = handHoldsByPidRef.current;
+        holds.set(user.pid, handHold);
+        setHandHoldsByPid(new Map(holds));
+        setMyPresence({ activeHandHold: holdToPublish(holds) });
 
         // Create or brighten star
         if (!isLoading) {
@@ -452,37 +454,14 @@ const Main = withSharedState(
     );
 
     const handleProximityLeft = useCallback(
-      (connectionId: string) => {
-        setProximityUsers((prev) => {
-          const next = new Set(prev);
-          next.delete(connectionId);
-          return next;
-        });
-
-        // Remove from local state
-        setActiveHandHolds((prev) => {
-          const next = new Map(prev);
-          next.delete(connectionId);
-          return next;
-        });
-
-        // Remove hand hold from presence
-        setMyPresence({ activeHandHold: undefined });
+      (pid: string) => {
+        const holds = handHoldsByPidRef.current;
+        if (!holds.delete(pid)) return;
+        setHandHoldsByPid(new Map(holds));
+        // Keep publishing a hold with anyone still in reach.
+        setMyPresence({ activeHandHold: holdToPublish(holds) });
       },
       [setMyPresence]
-    );
-
-    // Custom cursor renderer to hide cursors that are hand-holding
-    const customCursorRenderer = useCallback(
-      (connectionId: string, element: HTMLElement) => {
-        // If this cursor is part of an active hand hold, hide it
-        if (activeHandHolds.has(connectionId)) {
-          element.style.display = "none";
-          return element;
-        }
-        return null; // Use default rendering
-      },
-      [activeHandHolds]
     );
 
     // Configure cursor proximity handlers
@@ -490,14 +469,20 @@ const Main = withSharedState(
       configureCursors({
         onProximityEntered: handleProximityEntered,
         onProximityLeft: handleProximityLeft,
-        onCustomCursorRender: customCursorRenderer,
       });
-    }, [
-      handleProximityEntered,
-      handleProximityLeft,
-      customCursorRenderer,
-      configureCursors,
-    ]);
+    }, [handleProximityEntered, handleProximityLeft, configureCursors]);
+
+    // The drawn hands stand in for a partner's cursor, so hide the cursor of
+    // anyone I am holding hands with and show it again when they leave reach.
+    // Runs only when the set of partners changes.
+    useEffect(() => {
+      configureCursorsRef.current({
+        shouldRenderCursor: (presence) => {
+          const pid = presence.playerIdentity?.publicKey;
+          return pid === undefined || !handHoldsByPid.has(pid);
+        },
+      });
+    }, [handHoldsByPid]);
 
 
     // Render stars
@@ -673,7 +658,7 @@ const Main = withSharedState(
         <div className="info-panel">
           <div className="stat">
             <span className="label">nearby:</span>
-            <span className="value">{proximityUsers.size}</span>
+            <span className="value">{handHoldsByPid.size}</span>
           </div>
           <div className="stat">
             <span className="label">stars:</span>

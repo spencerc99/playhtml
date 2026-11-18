@@ -1,8 +1,9 @@
 // ABOUTME: Tests that experiment 7 draws one hand hold per pair of people.
-// ABOUTME: Covers both sides publishing, one side publishing, and several pairs.
+// ABOUTME: Also covers which hold a person publishes when several people are in reach.
 import { describe, expect, test } from "bun:test";
 import {
   collapseHandHolds,
+  holdToPublish,
   type HandHold,
   type PublishedHandHold,
 } from "../experiments/7/handHolds";
@@ -112,5 +113,34 @@ describe("collapseHandHolds", () => {
 
   test("nobody holding hands gives no holds", () => {
     expect(collapseHandHolds([])).toEqual([]);
+  });
+});
+
+describe("holdToPublish", () => {
+  test("nobody in reach publishes no hold", () => {
+    expect(holdToPublish(new Map())).toBeUndefined();
+  });
+
+  test("the newest hold in reach is published", () => {
+    const withB = publish("a", "b", 10).handHold;
+    const withC = publish("a", "c", 20).handHold;
+    const holds = new Map([
+      ["b", withB],
+      ["c", withC],
+    ]);
+    expect(holdToPublish(holds)).toBe(withC);
+  });
+
+  test("leaving one partner keeps the hold with the other", () => {
+    const withB = publish("a", "b", 10).handHold;
+    const withC = publish("a", "c", 20).handHold;
+    const holds = new Map([
+      ["b", withB],
+      ["c", withC],
+    ]);
+    holds.delete("c");
+    expect(holdToPublish(holds)).toBe(withB);
+    holds.delete("b");
+    expect(holdToPublish(holds)).toBeUndefined();
   });
 });
