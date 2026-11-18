@@ -431,28 +431,24 @@ export class PartyServer extends YServer {
   // Applies a change to the stored permissions map. The cache is read after
   // the await, with no await before the write, so a connect and a register
   // that overlap each apply to the other's result instead of a stale copy.
-  private async updateSharedPermissions(
-    update: (
-      existing: SharedElementPermissionMap,
-      maxEntries: number
-    ) => SharedPermissionsUpdate
-  ): Promise<void> {
+  private async updateSharedPermissions<T extends SharedPermissionsUpdate>(
+    update: (existing: SharedElementPermissionMap, maxEntries: number) => T
+  ): Promise<T> {
     await this.getSharedPermissions();
     const existing = this.cachedSharedPerms ?? {};
     const maxEntries = readPositiveNumberEnv(
       "MAX_SHARED_PERMISSION_ENTRIES",
       DEFAULT_MAX_SHARED_PERMISSION_ENTRIES
     );
-    const { permissions, changed, ignoredForCap } = update(
-      existing,
-      maxEntries
-    );
+    const result = update(existing, maxEntries);
+    const { permissions, changed, ignoredForCap } = result;
     if (ignoredForCap > 0) {
       console.warn(
         `[Bridge] Ignoring ${ignoredForCap} shared element id(s) for room ${this.name}: the room already stores the maximum of ${maxEntries} shared-element permissions.`
       );
     }
     if (changed) await this.setSharedPermissions(permissions);
+    return result;
   }
 
   private getOpenConnectionCount(): number {
@@ -1780,9 +1776,13 @@ export class PartyServer extends YServer {
   ): Promise<void> {
     if (!element || !element.elementId) return;
 
-    await this.updateSharedPermissions((existing, maxEntries) =>
-      setSharedElementPermission(existing, element, maxEntries)
+    const { accepted } = await this.updateSharedPermissions(
+      (existing, maxEntries) =>
+        setSharedElementPermission(existing, element, maxEntries)
     );
+    // A refused registration stores no permission, so consumers could not
+    // write it; fanning it out would hand them state that never updates.
+    if (!accepted) return;
 
     // If new shared element just registered, proactively fanout to subscribers who requested it
     try {

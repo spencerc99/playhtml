@@ -102,29 +102,52 @@ export function replaceSharedElementPermissions(
   };
 }
 
+export type SharedElementRegistration = SharedPermissionsUpdate & {
+  // True when the element's permission is stored after the update, so the
+  // element may be fanned out to subscribers.
+  accepted: boolean;
+};
+
 // Sets one runtime-registered element's permission on a copy of the stored
-// map. A new id is ignored once the map holds `maxEntries` entries.
+// map. A malformed declaration is refused, and so is a new id once the map
+// holds `maxEntries` entries.
 export function setSharedElementPermission(
   existing: SharedElementPermissionMap,
   declared: unknown,
   maxEntries: number
-): SharedPermissionsUpdate {
+): SharedElementRegistration {
   const declaration = readDeclaration(declared);
   if (!declaration) {
-    return { permissions: existing, changed: false, ignoredForCap: 0 };
+    return {
+      permissions: existing,
+      changed: false,
+      ignoredForCap: 0,
+      accepted: false,
+    };
   }
   const { elementId, permission } = declaration;
   const current = getSharedElementPermission(existing, elementId);
   if (current === permission) {
-    return { permissions: existing, changed: false, ignoredForCap: 0 };
+    return {
+      permissions: existing,
+      changed: false,
+      ignoredForCap: 0,
+      accepted: true,
+    };
   }
   if (current === undefined && Object.keys(existing).length >= maxEntries) {
-    return { permissions: existing, changed: false, ignoredForCap: 1 };
+    return {
+      permissions: existing,
+      changed: false,
+      ignoredForCap: 1,
+      accepted: false,
+    };
   }
   return {
     permissions: { ...existing, [elementId]: permission },
     changed: true,
     ignoredForCap: 0,
+    accepted: true,
   };
 }
 

@@ -69,6 +69,9 @@ async function createSourceRoom(storedPermissions?: PermissionMap) {
     },
   }) as any;
   document.awareness = new awarenessProtocol.Awareness(document);
+  // Consumer rooms the source tried to send a bridge apply to. Declining the
+  // send keeps the real sendBridgeApply from reaching for a peer room.
+  const bridgeSends: string[] = [];
   const room = Object.create(PartyServer.prototype, {
     ctx: { value: { storage }, writable: true },
     name: { value: "source-room" },
@@ -90,7 +93,16 @@ async function createSourceRoom(storedPermissions?: PermissionMap) {
       },
       writable: true,
     },
-    bridgeHealth: { value: { reset() {} }, writable: true },
+    bridgeHealth: {
+      value: {
+        reset() {},
+        shouldSend(peerRoomId: string) {
+          bridgeSends.push(peerRoomId);
+          return false;
+        },
+      },
+      writable: true,
+    },
     getConnections: { value: () => [], writable: true },
     getResetEpoch: { value: async () => null, writable: true },
     clearEmptyRoomCompactAfter: { value: async () => {}, writable: true },
@@ -113,6 +125,7 @@ async function createSourceRoom(storedPermissions?: PermissionMap) {
     room,
     storage,
     document,
+    bridgeSends,
     storedPermissions: () =>
       storage.values.get("sharedPermissions") as PermissionMap | undefined,
     destroy: () => document.awareness.destroy(),
@@ -474,5 +487,33 @@ describe("shared element permissions on the source room", () => {
       "[Bridge] Ignoring 1 shared element id(s) for room source-room: the room already stores the maximum of 500 shared-element permissions.",
     ]);
     source.destroy();
+  });
+
+  it("fans out a registered element only when its permission was stored", async () => {
+    const underCap = await createSourceRoom({ open: "read-write" });
+    await registerSharedElement(underCap.room, {
+      elementId: "locked",
+      permissions: "read-write",
+    });
+    expect(underCap.bridgeSends).toEqual(["consumer-room"]);
+    underCap.destroy();
+
+    const full: PermissionMap = {};
+    for (let index = 0; index < 500; index += 1) {
+      full[`element-${index}`] = "read-write";
+    }
+    const atCap = await createSourceRoom(full);
+    const register = await captureWarnings(() =>
+      registerSharedElement(atCap.room, {
+        elementId: "locked",
+        permissions: "read-write",
+      })
+    );
+    expect(register.warnings).toEqual([
+      "[Bridge] Ignoring 1 shared element id(s) for room source-room: the room already stores the maximum of 500 shared-element permissions.",
+    ]);
+    expect(atCap.storedPermissions()).not.toHaveProperty("locked");
+    expect(atCap.bridgeSends).toEqual([]);
+    atCap.destroy();
   });
 });
