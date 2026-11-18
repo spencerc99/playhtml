@@ -1,298 +1,131 @@
-<!DOCTYPE html>
+<!doctype html>
 <!-- ABOUTME: Provides the vanilla HTML starter and collaborative capability examples. -->
-<!-- ABOUTME: Initializes shared elements and page data through the vanilla API. -->
+<!-- ABOUTME: One file, the same code as the playground at playhtml.fun/docs/play. -->
 <html lang="en">
-  <head>
-    <!-- 
-      This is an HTML comment
-      You can write text in a comment and the content won't be visible in the page
-    -->
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>playhtml starter</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #69f7be; margin: 0; padding: 2rem 1rem; text-align: center; }
+    h1, h2 { color: #2800ff; }
+    h1 { font-size: 64px; margin: 0; }
+    section { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center; justify-content: center; margin: 2rem 0; }
+    img { width: 200px; }
+    button, input { font: inherit; background: white; border: 1px solid black; padding: 0.5rem 1rem; }
+    ul { list-style: none; padding: 0; }
 
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    /* Each capability adds a class or style you can hook into. */
+    #lamp.toggled { filter: brightness(1.2) drop-shadow(0 0 50px rgb(247 220 156)); }
+    #catOrDog.toggled { content: url("images/dog.png"); }
+    #hoverBox { width: 100px; height: 100px; background: red; }
+    #hoverBox[data-playhtml-hover] { background: blue; }
+    #shootingStar { position: fixed; top: -36px; left: -36px; font-size: 36px; color: gold; }
+    .reacted { background: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <h1>Hello World!</h1>
+  <p>Everything below is shared with everyone on this page.</p>
 
-    <!--
-      This is the page head - it contains info the browser uses
-      Like the title, which appears on the browser tab but not inside the page
-      Further down you'll see the content that displays in the page
-    -->
-    <title>playhtml starter</title>
+  <!-- Built-in capabilities: add one attribute and an id. -->
+  <section>
+    <img id="illustration" can-spin src="images/illustration.svg" alt="Spin me" />
+    <img id="openSign" can-move src="images/open-sign.gif" alt="Drag me" style="width: auto" />
+    <img id="lamp" can-toggle src="images/lamp.png" alt="Toggle me" />
+    <img id="catOrDog" can-toggle src="images/cat.jpg" alt="Toggle me" />
+    <img id="plant" can-grow src="images/plant.png" alt="Grow me" />
+    <div id="hoverBox" can-hover></div>
+    <span id="star" style="font-size: 32px">★</span>
+    <button id="duplicateBtn" can-duplicate="star">add a star</button>
+  </section>
 
-    <!-- The website stylesheet -->
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <!--
-      The body includes the content you see in the page
-      Each element is defined using tags, like this <div></div>
-      The attributes like class="wrapper" let us style elements in the CSS
-    -->
-    <div class="wrapper">
-      <div class="content" role="main">
-        <h1 class="title" id="title">Hello World!</h1>
-        <img
-          src="images/illustration.svg"
-          class="illustration"
-          alt="Editor illustration"
-          title="Click the image!"
-             id="illustration"
-             can-spin
-        />
-        
-        <div class="instructions">
-          
-          
-          <img
-            src="images/open-sign.gif"
-            can-move
-               id="openSign"
-          />
-          <img src="images/lamp.png"
-               style="width: 200px; position: absolute; top:0; right: -16px"
-               id="lamp" can-toggle />
-          
-          <div style="margin-bottom: 2em; gap: 2em; display: flex; flex-wrap: wrap; align-items: center;">
-            <img id="catOrDog" src="images/cat.jpg" can-toggle/>
-            <img id="plant" can-grow src="images/plant.png"/>
-            <div id="hoverBox" can-hover style="width: 100px; height: 100px; background: red; border-radius: 8px;"></div>
-            <button id="duplicateBtn" can-duplicate style="font-size: 24px; padding: 10px 20px;">🌟 Click to clone me!</button>
-          </div>
-                
+  <!-- can-mirror: changes to the element are shared, here its color. -->
+  <section>
+    <input id="colorBox" can-mirror />
+    <button id="colorBtn">change color</button>
+  </section>
+  <script type="module">
+    document.getElementById("colorBtn").addEventListener("click", () => {
+      const box = document.getElementById("colorBox");
+      box.style.backgroundColor = box.style.backgroundColor === "red" ? "green" : "red";
+    });
+  </script>
 
-          
+  <!-- can-mirror on a list: appended items appear for everyone. -->
+  <h2>guestbook</h2>
+  <section>
+    <input id="guestbookInput" placeholder="say hi..." />
+    <button id="guestbookBtn">say hi</button>
+  </section>
+  <ul id="guestbook" can-mirror></ul>
+  <script type="module">
+    document.getElementById("guestbookBtn").addEventListener("click", () => {
+      const input = document.getElementById("guestbookInput");
+      if (!input.value) return;
+      const entry = document.createElement("li");
+      entry.textContent = input.value;
+      document.getElementById("guestbook").appendChild(entry);
+      input.value = "";
+    });
+  </script>
 
-          <input id="colorBox" can-mirror/>
-          <button id="btn" can-mirror>
-            CHANGE COLOR
-          </button>
-          <script>
-          function changeColor() {
-            const colorBox = document.getElementById('colorBox')
-            if (colorBox.style.backgroundColor === 'red') 
-              colorBox.style.backgroundColor = 'green';
-            else
-              colorBox.style.backgroundColor = 'red';
-          }
-          document.getElementById('btn').addEventListener('click', changeColor)
-          </script>
-          
-          
-            <h2>playhtml getting started</h2>
-          <p>
-            This is the playhtml starter. You can
-            use it to build your own tiny social network. Check out the code and
-            hover over the capabilities below to see which of these things are collaborative elements.
-          </p>
-          <section>
-            <h2>people here</h2>
-            <p id="peopleHereCount">0 people here</p>
-            <ul id="peopleHere"></ul>
-          </section>
-            <script>
-          function highlightElements(capability) {
-            document.querySelectorAll(`[${capability}]`).forEach((ele) => {
-              ele.classList.add("highlighted");
-            });
-          }
+  <!-- Events: a one-off moment everyone sees, nothing saved. -->
+  <h2>events</h2>
+  <button id="starBtn">shooting star!</button>
+  <div id="shootingStar">★</div>
+  <script type="module">
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
-          function unhighlightElements(capability) {
-            document.querySelectorAll(`[${capability}]`).forEach((ele) => {
-              ele.classList.remove("highlighted");
-            });
-          }
-              
-        </script>
-
-        <ol class="capabilities">
-          <!-- TODO: move this into React to dynamically update -->
-          <li
-            onmouseenter="highlightElements('can-play')"
-            onmouseleave="unhighlightElements('can-play')"
-          >
-            can-play (custom capabilities
-            <a href="https://github.com/spencerc99/playhtml#can-play"
-              >with your code</a
-            >!)
-            
-          </li>
-          <!-- TODO: spotlight elements on the page that match these on hover -->
-          <li
-            onmouseenter="highlightElements('can-move')"
-            onmouseleave="unhighlightElements('can-move')"
-          >
-            can-move
-          
-          </li>
-            <li
-            onmouseenter="highlightElements('can-mirror')"
-            onmouseleave="unhighlightElements('can-mirror')"
-          >
-            can-mirror
-          </li>
-         
-          <li
-            onmouseenter="highlightElements('can-toggle')"
-            onmouseleave="unhighlightElements('can-toggle')"
-          >
-            can-toggle 
-          </li>
-          <li>can-duplicate</li>
-          <li
-            onmouseenter="highlightElements('can-spin')"
-            onmouseleave="unhighlightElements('can-spin')"
-          >
-            can-spin 
-          </li>
-          <li
-            onmouseenter="highlightElements('can-grow')"
-            onmouseleave="unhighlightElements('can-grow')"
-          >
-            can-grow
-          </li>
-          <li
-            onmouseenter="highlightElements('can-duplicate')"
-            onmouseleave="unhighlightElements('can-duplicate')"
-          >
-            can-duplicate
-          </li>
-          <li
-            onmouseenter="highlightElements('can-hover')"
-            onmouseleave="unhighlightElements('can-hover')"
-          >
-            can-hover
-          </li>
-        </ol>
-
-          <p>
-            For all the details about these capabilities and more, see the <a href="https://github.com/spencerc99/playhtml#plug-and-play-capabilities">playhtml docs</a>
-          </p>
-        </div>
-      </div>
-      <div id="shootingStar">
-        💫
-      </div>
-      <br/>
-      <div>
-        Here's a playhtml event. it triggers a shooting star for everyone
-        <button onclick="shootStar()">
-        shooting star!
-      </button>
-      </div>
-      <br/>
-        <div>
-          here's a custom guestbook made with `can-mirror`.
-        </div>
-        <div >
-        <input id="guestbookValue" placeholder="i love you..."/>
-        <button onclick="addGuestbook()">
-           say hi
-        </button>
-        </div>
-        <ul id="guestbook">
-        </ul>
-        <br/>
-        <div>
-          here's a reaction button! everyone can see how many people have reacted
-        </div>
-        <!-- Empty mount point — the reaction button below is rendered by its
-             `view` (registered in the script). -->
-        <div id="reactionBtn" can-play data-initial-count="0"></div>
-        <div>
-          <p>Here's a page-level visit counter!</p>
-          <button id="visitCounter">0 visits</button>
-        </div>
-    </div>
-
-        <!-- Option 1 (simplest, no customization) -->
-    <script type="module">
-      import { playhtml, html } from "https://unpkg.com/playhtml@latest";
-
-      // Initialize with cursor tracking
-      playhtml.init({
-        cursors: {
-          enabled: true,
-          room: "page"
-        }
-      });
-
-      const peopleHere = document.getElementById("peopleHere");
-      const peopleHereCount = document.getElementById("peopleHereCount");
-
-      function renderPeople(everyone) {
-        peopleHereCount.textContent =
-          everyone.length === 1 ? "1 person here" : `${everyone.length} people here`;
-        peopleHere.replaceChildren(
-          ...everyone.map((person) => {
-            const item = document.createElement("li");
-            item.textContent = person.name ?? "anonymous";
-            item.style.color = person.color;
-            return item;
-          })
+    playhtml.registerPlayEventListener("shootingStar", {
+      onEvent: () => {
+        document.getElementById("shootingStar").animate(
+          [
+            { transform: "translate(100vw, 100vh) rotate(0deg)" },
+            { transform: "translate(-10vw, -10vh) rotate(360deg)" },
+          ],
+          { duration: 2000 },
         );
-      }
+      },
+    });
+    document.getElementById("starBtn").addEventListener("click", () => {
+      playhtml.dispatchPlayEvent({ type: "shootingStar" });
+    });
+  </script>
 
-      // Calls back now, then whenever someone joins, leaves, or changes
-      // their name or color. playhtml.people is ready once init() resolves.
-      playhtml.ready.then(() => playhtml.people.onChange(renderPeople));
+  <!-- can-play: your own shared element with custom data. -->
+  <h2>custom elements</h2>
+  <div id="reactionBtn" can-play></div>
+  <script type="module">
+    import { playhtml, html } from "https://unpkg.com/playhtml@latest";
 
-      // Reaction button — a custom collaborative element built with the `view`
-      // API: register a render function and playhtml re-renders it whenever the
-      // shared `count` changes (locally or from another tab). Writes are driven
-      // from the @click handler in the template. `register` works before or
-      // after init(), and accepts an element or its id. The view renderer is
-      // experimental; registration is a supported API for both view and
-      // imperative update renderers.
-      playhtml.register("reactionBtn", {
-        defaultData: (element) => {
-          const initialCount = element.dataset.initialCount;
-          if (initialCount === undefined) {
-            throw new Error("The reaction button requires data-initial-count");
-          }
-          return { count: Number(initialCount) };
-        },
-        defaultPresence: { hovering: false },
-        view: ({ data, everyone, setData, setMyPresence }) => {
-          const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-          const peopleHovering = everyone.filter((person) => person.presence.hovering).length;
-          const react = () => {
-            if (localStorage.getItem("reacted-reaction")) {
-              setData((d) => { d.count -= 1; });
-              localStorage.removeItem("reacted-reaction");
-            } else {
-              setData((d) => { d.count += 1; });
-              localStorage.setItem("reacted-reaction", "true");
-            }
-          };
-          return html`
-            <button
-              class="reaction ${hasReacted ? "reacted" : ""}"
-              style="font-size: 24px; padding: 10px 20px; margin: 10px 0;"
-              @click=${react}
-              @pointerenter=${() => setMyPresence({ hovering: true })}
-              @pointerleave=${() => setMyPresence({ hovering: false })}
-            >
-              💖 ${data.count} · ${peopleHovering} here
-            </button>
-          `;
-        },
-      });
+    // A reaction button with a shared count. The view renders from `data`
+    // and re-renders whenever anyone changes it.
+    playhtml.register("reactionBtn", {
+      defaultData: { count: 0 },
+      view: ({ data, setData }) => {
+        const hasReacted = Boolean(localStorage.getItem("reacted"));
+        const react = () => {
+          setData((d) => { d.count += hasReacted ? -1 : 1; });
+          hasReacted ? localStorage.removeItem("reacted") : localStorage.setItem("reacted", "1");
+        };
+        return html`
+          <button class=${hasReacted ? "reacted" : ""} @click=${react}>
+            react ${data.count}
+          </button>
+        `;
+      },
+    });
+  </script>
 
-      await playhtml.ready;
-      const visitCounter = playhtml.createPageData("visit-count", 0);
-      const visitButton = document.getElementById("visitCounter");
-      const renderVisitCount = (value) => {
-        visitButton.textContent = `${value} visits`;
-      };
-      renderVisitCount(visitCounter.getData());
-      visitCounter.onUpdate(renderVisitCount);
-      visitButton.addEventListener("click", () => {
-        visitCounter.setData((value) => value + 1);
-      });
+  <!-- Start playhtml once, after every element above is set up. -->
+  <script type="module">
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
-      // Make playhtml available globally for script.js
-      window.playhtml = playhtml;
-    </script>
-    <!-- The website JavaScript file -->
-    <script src="script.js" defer></script>
-  </body>
+    await playhtml.init({
+      developmentMode: true,
+      cursors: { enabled: true, room: "page" },
+    });
+  </script>
+</body>
 </html>
