@@ -1434,7 +1434,8 @@ export class CursorClientAwareness {
       this.cursors.set(stableId, cursorElement);
       this.getContainer().appendChild(cursorElement);
     } else if (cursorElement) {
-      // Update existing cursor with new message and name
+      // Update existing cursor with new color, message and name
+      this.updateCursorColor(cursorElement, identity, cursor.pointer);
       this.updateCursorMessage(cursorElement, identity, cursorData.message);
       this.updateCursorName(cursorElement, identity);
     }
@@ -1582,21 +1583,8 @@ export class CursorClientAwareness {
     }
 
     const color = getSvgPaint(getPrimaryColor(playerIdentity));
-
-    // Render different cursor based on pointer type
-    switch (pointer) {
-      case "mouse":
-        element.innerHTML = this.getMouseCursorSVG(color);
-        break;
-      case "touch":
-        element.innerHTML = this.getTouchCursorSVG(color);
-        break;
-      default:
-        element.innerHTML = isSafeCursorImageUrl(pointer)
-          ? this.getCustomCursorSVG(color, pointer)
-          : this.getMouseCursorSVG(color);
-        break;
-    }
+    element.innerHTML = this.getCursorSVG(color, pointer);
+    element.dataset.color = color;
 
     if (this.options.cursorStyle) {
       element.style.cssText += this.options.cursorStyle;
@@ -1607,6 +1595,36 @@ export class CursorClientAwareness {
     this.updateCursorName(element, playerIdentity);
 
     return element;
+  }
+
+  // Render different cursor based on pointer type
+  private getCursorSVG(fill: string, pointer: string): string {
+    switch (pointer) {
+      case "mouse":
+        return this.getMouseCursorSVG(fill);
+      case "touch":
+        return this.getTouchCursorSVG(fill);
+      default:
+        return isSafeCursorImageUrl(pointer)
+          ? this.getCustomCursorSVG(fill, pointer)
+          : this.getMouseCursorSVG(fill);
+    }
+  }
+
+  // Repaint a drawn cursor when its person's color changes. Cursors from
+  // onCustomCursorRender have no data-color and are left to the page.
+  private updateCursorColor(
+    element: HTMLElement,
+    playerIdentity: PlayerIdentity,
+    pointer: string,
+  ): void {
+    const drawnColor = element.dataset.color;
+    if (drawnColor === undefined) return;
+    const color = getSvgPaint(getPrimaryColor(playerIdentity));
+    if (color === drawnColor) return;
+    element.querySelector(":scope > svg")?.remove();
+    element.insertAdjacentHTML("afterbegin", this.getCursorSVG(color, pointer));
+    element.dataset.color = color;
   }
 
   private getMouseCursorSVG(fill: string): string {
