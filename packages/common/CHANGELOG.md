@@ -1,5 +1,19 @@
 # @playhtml/common
 
+## 0.12.0
+
+### Minor Changes
+
+- aaba74d: Removed the `debounceMs` element option and `setDataDebounced`, which never had any effect; delete them from your code if TypeScript flags them.
+
+### Patch Changes
+
+- cc47b96: `can-mirror` elements now share presence only while someone is hovering or focusing them, instead of publishing an idle `{ hover: false, focus: false }` for every element on load. Pages with hundreds of mirrored elements no longer hit the element presence limit, so hover and focus sync on every element again, and the "Element awareness exceeded 8 shards" console error is logged once instead of on every hover.
+- 433b275: Each playhtml element's random `--jiggle-delay` animation offset is now a valid value, so the staggered jiggle actually applies in browsers. `can-mirror` treats it as local to each visitor: it isn't shared or saved, and applying someone else's styles keeps your own offset.
+- 0158f72: `can-mirror` sends and computes much less. Typing in an input inside a mirrored element now syncs only that input's value, instead of re-sending the whole element on every keystroke (about 38KB per key with 200 siblings, now a few dozen bytes). Adding or removing a child syncs only the children that changed, instead of the whole list, and adding many children at once no longer freezes the page (200 appends went from about 1s to about 40ms).
+- 1ee1b8b: Setup and dev tools fixes: playhtml starts when `localStorage` is blocked, a built-in capability given its own update callback now sets up (which fixes `<CanHoverElement>` in `@playhtml/react`), dev mode cleans up on teardown, and `listSharedElements()` reports `shared="ro"` as read-only.
+- aaba74d: Teardown and listener fixes: `deleteElementData` and `resetPlayHTML()` now fully tear down elements and play event listeners, `element.reset()` restores the default data, `can-mirror` and `can-hover` remove their listeners, `can-grow` shows the not-allowed cursor at its maximum size, and a throwing listener no longer stops the others.
+
 ## 0.11.0
 
 ### Minor Changes
