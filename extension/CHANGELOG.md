@@ -1,5 +1,13 @@
 # @playhtml/extension
 
+## 0.1.31 (2026-11-18)
+
+- Privacy toggles: Turn we were online off on any site from the popup, or keep what it collects there just for you. Sites you turned off are listed in Settings, where you can also add one. You can also delete data collected from a site you turned off, on your computer and the shared copy.
+- Collage saving fixes
+- Trails now follow you to the next page on sites like YouTube that switch pages without reloading (Chrome and Firefox).
+- More compact popup design
+- Beta: search your scraps by what's in the pictures, like "eye" or "shoe". Turn it on from the scraps page search; it downloads a picture-reading model once and runs entirely on your computer.
+
 ## 0.1.30 (2026-11-10)
 
 - Collage exports are much smaller: front and back pictures now save as high-quality JPEGs around 1-2MB instead of 7-13MB PNGs, and the "moving pieces" video now sits in the same frame and caption as the pictures. (#684)
