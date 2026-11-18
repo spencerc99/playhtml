@@ -215,3 +215,17 @@ export function getStandingPosition(seat: CommuteSeatGeometry): CommutePoint {
     y: seat.y + (seat.row === "top" ? 62 : -14),
   };
 }
+
+/**
+ * Who takes a rider leaving the train to the stop's page. An exit handler
+ * (Slow Mode) navigates on its own, so the car must not navigate again.
+ */
+export type CommuteStopExitNavigation = "handler" | "current-tab" | "new-tab";
+
+export function getCommuteStopExitNavigation(
+  navigateCurrentTab: boolean,
+  hasExitHandler: boolean,
+): CommuteStopExitNavigation {
+  if (hasExitHandler) return "handler";
+  return navigateCurrentTab ? "current-tab" : "new-tab";
+}
