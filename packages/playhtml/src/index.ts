@@ -685,7 +685,7 @@ function onMessage(data: string) {
   }
 
   for (const handler of maybeHandlers) {
-    handler.onEvent(eventPayload);
+    safeInvoke(() => handler.onEvent(eventPayload), `"${type}" event listener`);
   }
 }
 
@@ -2174,7 +2174,6 @@ function getCustomElementProps(element: HTMLElement) {
     "onClick",
     "onMount",
     "resetShortcut",
-    "debounceMs",
     "isValidElementForTag",
   ];
   for (const key of keys) {
@@ -2505,6 +2504,7 @@ export async function resetPlayHTML(): Promise<void> {
     map.clear();
   }
   elementHandlers.clear();
+  eventHandlers.clear();
   pageDataRefCounts.clear();
   pageDataListeners.clear();
   mainProviderSyncWaiters.clear();
@@ -3641,13 +3641,18 @@ function deleteElementData(tag: string, elementId: string): void {
     }
   }
 
-  // 4. Remove element handler
+  // 4. Tear down and remove the element handler. Runs onMount cleanup (rAF
+  // loops, timers, listeners) and disconnects the descendant observer so
+  // nothing keeps writing to the deleted record.
   const tagElementHandlers = elementHandlers.get(tag);
-  if (tagElementHandlers) {
-    tagElementHandlers.delete(elementId);
+  const handler = tagElementHandlers?.get(elementId);
+  if (handler) {
+    handler.destroy?.();
+    elementAwarenessClient?.removeLocalAwareness(tag, elementId);
+    tagElementHandlers!.delete(elementId);
   }
 
-  // 6. Clean up shared reference tracking
+  // 5. Clean up shared reference tracking
   sharedUpdateSeen.delete(key);
   const timerId = sharedHydrationTimers.get(key);
   if (timerId !== undefined) {
@@ -3702,9 +3707,13 @@ function removePlayEventListener(type: string, id: string) {
     return;
   }
 
-  handlers.splice(index, 1);
-  if (handlers.length === 0) {
+  // Replace the array rather than splicing it, so a dispatch already iterating
+  // the previous array (a listener removing itself) still reaches the rest.
+  const remaining = handlers.filter((handler) => handler.id !== id);
+  if (remaining.length === 0) {
     eventHandlers.delete(type);
+  } else {
+    eventHandlers.set(type, remaining);
   }
 }
 

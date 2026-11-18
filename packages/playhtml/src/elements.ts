@@ -15,15 +15,6 @@ import {
   observeElementChanges,
 } from "@playhtml/common";
 
-// @ts-ignore
-const debounce = (fn: Function, ms = 300) => {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  return function (this: any, ...args: any[]) {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn.apply(this, args), ms);
-  };
-};
-
 type ElementDataWrite<T> = T | ((draft: T) => void);
 
 interface ElementHandlerOptions<V> {
@@ -50,7 +41,6 @@ export class ElementHandler<T = any, U = any, V = any> {
   _data: T;
   onChange: (data: T) => void;
   onAwarenessChange: (data: V) => void;
-  debouncedOnChange: (data: T) => void;
   resetShortcut?: ModifierKey;
   // TODO: change this to receive the delta instead of the whole data object so you don't have to maintain
   // internal state for expressing the delta.
@@ -120,7 +110,6 @@ export class ElementHandler<T = any, U = any, V = any> {
       view,
       updateElementAwareness,
       onMount,
-      debounceMs,
       triggerAwarenessUpdate,
       devMode,
     } = elementData;
@@ -139,7 +128,6 @@ export class ElementHandler<T = any, U = any, V = any> {
         : (defaultLocalData as U);
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
-    this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
     this.update = update ?? updateElement;
     this.updateElementAwareness = updateElementAwareness;
@@ -219,13 +207,11 @@ export class ElementHandler<T = any, U = any, V = any> {
     onDrag,
     onDragStart,
     resetShortcut,
-    debounceMs,
     triggerAwarenessUpdate,
     devMode,
   }: ElementData<T, U, V>) {
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
-    this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
     this.update = update ?? updateElement;
     this.view = view;
@@ -262,7 +248,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     // Handle advanced settings
     if (resetShortcut && !this.resetShortcutListener) {
       // @ts-ignore
-      element.reset = this.reset;
+      element.reset = this.reset.bind(this);
 
       this.resetShortcutListener = (e) => {
         switch (this.resetShortcut) {
@@ -660,10 +646,6 @@ export class ElementHandler<T = any, U = any, V = any> {
   /** @deprecated Use `setMyPresence`. */
   setMyAwareness(data: V): void {
     this.replaceMyPresence(data, "setMyAwareness");
-  }
-
-  setDataDebounced(data: T) {
-    this.debouncedOnChange(data);
   }
 
   /**

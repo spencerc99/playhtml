@@ -364,6 +364,8 @@ import { CanHoverElement } from "@playhtml/react";
   document.getElementById("clear-btn").addEventListener("click", () => {
     document.querySelectorAll("[id^='bunny-template-']").forEach((el) => el.remove());
     playhtml.deleteElementData("can-duplicate", "clone-btn");
+    // deleteElementData also detaches the button, so set it up again to keep cloning.
+    playhtml.setupPlayElement(document.getElementById("clone-btn"));
   });
 </script>
 ```
