@@ -6,11 +6,22 @@ import { File as NodeFile } from "node:buffer";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  IDBDatabase as fakeIDBDatabase,
   IDBKeyRange as fakeIDBKeyRange,
+  IDBObjectStore as fakeIDBObjectStore,
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
 import { CollageHistory } from "../entrypoints/scraps/CollageHistory";
-import { listCollages, saveCollage } from "../entrypoints/scraps/collageStore";
+import {
+  listCollages,
+  loadCollage,
+  saveCollage,
+  saveCollagePreview,
+} from "../entrypoints/scraps/collageStore";
+import {
+  useCollageAutosave,
+  type AutosaveTimers,
+} from "../entrypoints/scraps/useCollageAutosave";
 import type { CollageRecord } from "../entrypoints/scraps/collageRecord";
 import { readCollageFile } from "../entrypoints/scraps/collageFile";
 
@@ -86,13 +97,23 @@ async function settle(): Promise<void> {
   }
 }
 
-async function mount(onEdit = vi.fn()) {
+async function mount(
+  onEdit = vi.fn(),
+  settling: () => Promise<void> = async () => {},
+  notice: string | null = null,
+) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
     root?.render(
-      <CollageHistory revision={0} onEdit={onEdit} onStartNew={() => {}} />,
+      <CollageHistory
+        revision={0}
+        onEdit={onEdit}
+        onStartNew={() => {}}
+        settling={settling}
+        notice={notice}
+      />,
     );
   });
   await settle();
@@ -277,6 +298,177 @@ describe("a collage card", () => {
     expect(saved.id).toBe("collage_1");
     expect(saved.title).toBe("a walk");
   });
+
+  it("keeps the saved file's address alive after the click, for Safari", async () => {
+    await saveCollage(record());
+    const { view } = await mount();
+    const revoked: string[] = [];
+    Object.defineProperty(URL, "createObjectURL", {
+      value: () => "blob:test/saved",
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: (url: string) => revoked.push(url),
+      configurable: true,
+    });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    try {
+      await act(async () => buttonNamed(view, "Save a walk as a file").click());
+      await settle();
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(revoked).toEqual([]);
+    } finally {
+      click.mockRestore();
+      delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+    }
+  });
+});
+
+describe("a collage store that fails", () => {
+  /** Makes every later collage store call fail, as a broken IndexedDB would. */
+  function breakStore() {
+    (globalThis as unknown as { indexedDB: unknown }).indexedDB = {
+      open: () => {
+        throw new Error("the drawer is stuck");
+      },
+    };
+  }
+
+  it("says so when a collage cannot be opened", async () => {
+    await saveCollage(record());
+    const { onEdit, view } = await mount();
+    breakStore();
+    await act(async () => buttonNamed(view, "Open a walk").click());
+    await settle();
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(view.querySelector(".collage-notice")?.textContent).toBe(
+      "could not open that collage — the drawer is stuck",
+    );
+  });
+
+  it("keeps the page's notices on screen beside a problem of its own", async () => {
+    await saveCollage(record());
+    const { view } = await mount(
+      vi.fn(),
+      async () => {},
+      "could not open that collage — it is gone\ncould not save the last change to a walk",
+    );
+    breakStore();
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await settle();
+    expect(
+      [...view.querySelectorAll(".collage-notice")].map((each) => each.textContent),
+    ).toEqual([
+      "could not copy that collage — the drawer is stuck",
+      "could not open that collage — it is gone",
+      "could not save the last change to a walk",
+    ]);
+  });
+
+  it("says so when a collage cannot be copied", async () => {
+    await saveCollage(record());
+    const { view } = await mount();
+    breakStore();
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await settle();
+    expect(view.querySelector(".collage-notice")?.textContent).toBe(
+      "could not copy that collage — the drawer is stuck",
+    );
+    expect(view.querySelectorAll(".collage-card")).toHaveLength(1);
+  });
+
+  it("keeps a collage it cannot load, so its shared link is not stranded", async () => {
+    await saveCollage(
+      record({
+        publication: {
+          id: "pub_1",
+          url: "https://wewere.online/c/pub_1",
+          deleteToken: "token",
+          sharedAt: 1,
+        },
+      }),
+    );
+    const { view } = await mount();
+    // Reading fails while deleting would still work, as when the drawer is
+    // busy with something else for a moment.
+    const transaction = fakeIDBDatabase.prototype.transaction;
+    const reads = vi
+      .spyOn(fakeIDBDatabase.prototype, "transaction")
+      .mockImplementation(function (
+        this: IDBDatabase,
+        ...args: Parameters<IDBDatabase["transaction"]>
+      ) {
+        if (args[1] !== "readwrite") throw new Error("the drawer is stuck");
+        return transaction.apply(this, args);
+      });
+    try {
+      await act(async () => buttonNamed(view, "Delete a walk").click());
+      await act(async () => buttonNamed(view, "delete for good").click());
+      await settle();
+    } finally {
+      reads.mockRestore();
+    }
+    expect(view.querySelector(".collage-notice")?.textContent).toBe(
+      "could not delete that collage — the drawer is stuck",
+    );
+    expect(view.querySelectorAll(".collage-card")).toHaveLength(1);
+    expect(await listCollages()).toHaveLength(1);
+  });
+
+  it("keeps the card and says so when a collage cannot be deleted", async () => {
+    await saveCollage(record());
+    const { view } = await mount();
+    // Loading the collage to find its shared link still works; only the
+    // delete itself fails.
+    const deletes = vi
+      .spyOn(fakeIDBObjectStore.prototype, "delete")
+      .mockImplementation(() => {
+        throw new Error("the drawer is stuck");
+      });
+    try {
+      await act(async () => buttonNamed(view, "Delete a walk").click());
+      await act(async () => buttonNamed(view, "delete for good").click());
+      await settle();
+      expect(deletes).toHaveBeenCalledWith("collage_1");
+    } finally {
+      deletes.mockRestore();
+    }
+    expect(view.querySelector(".collage-notice")?.textContent).toBe(
+      "could not delete that collage — the drawer is stuck",
+    );
+    expect(view.querySelectorAll(".collage-card")).toHaveLength(1);
+    expect(await listCollages()).toHaveLength(1);
+  });
+});
+
+describe("a collage that cannot be read", () => {
+  it("is listed and can be deleted without being opened first", async () => {
+    await saveCollage(record());
+    // A row whose pieces were lost, so it can be listed but never loaded.
+    await saveCollage({
+      ...record({ id: "collage_torn", title: "a torn one" }),
+      pieces: "torn" as never,
+    });
+    const { view } = await mount();
+    const card = view.querySelector(".collage-card--unreadable");
+    if (!(card instanceof HTMLElement)) throw new Error("no unreadable card");
+    expect(card.querySelector(".collage-card__title")?.textContent).toBe(
+      "a torn one",
+    );
+
+    await act(async () => buttonNamed(card, "delete").click());
+    await act(async () => buttonNamed(card, "delete for good").click());
+    await settle();
+
+    expect(view.querySelector(".collage-notice")).toBeNull();
+    expect(view.querySelector(".collage-card--unreadable")).toBeNull();
+    expect((await listCollages()).map((entry) => entry.id)).toEqual([
+      "collage_1",
+    ]);
+  });
 });
 
 describe("the history heading", () => {
@@ -321,5 +513,127 @@ describe("the history heading", () => {
     const stored = await listCollages();
     expect(stored).toHaveLength(2);
     expect(stored.some((row) => row.id === "collage_away")).toBe(false);
+  });
+});
+
+/**
+ * A studio left with its last write still on its way into the drawer: the
+ * real autosave over the real store, holding that write until `land` is
+ * called. Hands back the promise the page waits on while it settles.
+ */
+async function leaveMidWrite(
+  edited: CollageRecord,
+): Promise<{ closing: Promise<void>; land: () => void }> {
+  let land!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    land = resolve;
+  });
+  const timers: AutosaveTimers = {
+    setTimer: () => 0,
+    clearTimer: () => {},
+  };
+  let closing: Promise<void> | null = null;
+  let noteChange: (() => void) | null = null;
+  function Studio() {
+    const autosave = useCollageAutosave({
+      draft: () => ({ record: edited, hasContent: true }),
+      bake: async () => {
+        throw new Error("not drawn in a test");
+      },
+      store: async (stored) => {
+        await gate;
+        await saveCollage(stored);
+      },
+      storePreview: saveCollagePreview,
+      onStored: () => {},
+      startsStored: true,
+      reopening: { ...edited, title: "before the edit" },
+      timers,
+      onClosed: (stored) => {
+        closing = stored;
+      },
+    });
+    noteChange = autosave.noteChange;
+    return null;
+  }
+  const studioRoot = createRoot(document.createElement("div"));
+  await act(async () => studioRoot.render(<Studio />));
+  act(() => noteChange!());
+  await act(async () => studioRoot.unmount());
+  if (!closing) throw new Error("the studio did not say it was closing");
+  return { closing, land };
+}
+
+describe("a collage whose studio is still saving as it is left", () => {
+  it("stays deleted when the studio's last write lands after the delete", async () => {
+    await saveCollage(record());
+    const studio = await leaveMidWrite(record({ title: "a walk, edited" }));
+    const { view } = await mount(vi.fn(), () => studio.closing);
+
+    await act(async () => buttonNamed(view, "Delete a walk").click());
+    await act(async () => buttonNamed(view, "delete for good").click());
+    await settle();
+    studio.land();
+    await settle();
+
+    expect(await listCollages()).toHaveLength(0);
+    expect(view.querySelectorAll(".collage-card")).toHaveLength(0);
+  });
+
+  it("copies the collage as that last write left it", async () => {
+    await saveCollage(record());
+    const studio = await leaveMidWrite(record({ title: "a walk, edited" }));
+    const { view } = await mount(vi.fn(), () => studio.closing);
+
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await settle();
+    studio.land();
+    await settle();
+
+    const titles = (await listCollages()).map((entry) => entry.title).sort();
+    expect(titles).toEqual(["a walk, edited", "a walk, edited copy"]);
+    expect((await loadCollage("collage_1"))?.title).toBe("a walk, edited");
+  });
+
+  it("makes one copy when duplicate is pressed again while it waits", async () => {
+    await saveCollage(record());
+    const studio = await leaveMidWrite(record({ title: "a walk, edited" }));
+    const { view } = await mount(vi.fn(), () => studio.closing);
+
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await settle();
+    studio.land();
+    await settle();
+
+    expect(await listCollages()).toHaveLength(2);
+  });
+
+  it("takes the shared link down once when delete is pressed again while it waits", async () => {
+    const publication = {
+      id: "pub_1",
+      url: "https://wewere.online/c/pub_1",
+      deleteToken: "token",
+      sharedAt: 1,
+    };
+    await saveCollage(record({ publication }));
+    const studio = await leaveMidWrite(record({ publication }));
+    const takedowns = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", takedowns);
+    try {
+      const { view } = await mount(vi.fn(), () => studio.closing);
+
+      await act(async () => buttonNamed(view, "Delete a walk").click());
+      await act(async () => buttonNamed(view, "delete for good").click());
+      await act(async () => buttonNamed(view, "delete for good").click());
+      await settle();
+      studio.land();
+      await settle();
+
+      expect(takedowns).toHaveBeenCalledTimes(1);
+      expect(await listCollages()).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

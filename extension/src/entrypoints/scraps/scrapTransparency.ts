@@ -116,8 +116,3 @@ export async function readTransparency(src: string): Promise<boolean> {
     bitmap.close();
   }
 }
-
-/** Forgets every sampled answer. Only a test has a reason to do this. */
-export function forgetTransparency(): void {
-  known.clear();
-}

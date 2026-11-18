@@ -4,7 +4,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   RESERVED_ACCELERATORS,
-  acceleratorName,
   isTypingTarget,
   releaseTypingFocus,
   studioCommandFor,
@@ -277,6 +276,80 @@ describe("ordering", () => {
   });
 });
 
+/**
+ * A press as a US keyboard reports it: shift changes the printed character of
+ * a digit or a bracket, while the physical key stays the same.
+ */
+function physicalPress(
+  base: string,
+  overrides: Partial<KeyEventShape> = {},
+): KeyEventShape {
+  const shifted: Record<string, string> = {
+    "1": "!", "2": "@", "3": "#", "4": "$", "5": "%",
+    "6": "^", "7": "&", "8": "*", "9": "(", "[": "{", "]": "}",
+  };
+  const codes: Record<string, string> = {
+    "[": "BracketLeft",
+    "]": "BracketRight",
+    Tab: "Tab",
+    PageUp: "PageUp",
+    PageDown: "PageDown",
+  };
+  const code = /^[0-9]$/.test(base)
+    ? `Digit${base}`
+    : /^[a-z]$/.test(base)
+      ? `Key${base.toUpperCase()}`
+      : codes[base];
+  const key = overrides.shiftKey
+    ? (shifted[base] ?? (base.length === 1 ? base.toUpperCase() : base))
+    : base;
+  return press(key, { code, ...overrides });
+}
+
+/**
+ * Every accelerator an event names, in the form the reserved list uses, or an
+ * empty list when the event is a bare key the browser does not claim. "accel"
+ * is cmd on a Mac and ctrl elsewhere, so a press with ctrl held names both its
+ * "accel" form and its "ctrl" form, the latter for shortcuts such as ctrl+tab
+ * that use ctrl on every platform.
+ */
+function acceleratorNames(event: KeyEventShape): string[] {
+  if (!event.metaKey && !event.ctrlKey) return [];
+  const rest: string[] = [];
+  if (event.shiftKey) rest.push("shift");
+  if (event.altKey) rest.push("alt");
+  rest.push(acceleratorKey(event));
+  const names = [["accel", ...rest].join("+")];
+  if (event.ctrlKey) names.push(["ctrl", ...rest].join("+"));
+  return names;
+}
+
+/**
+ * The physical keys the reserved list names by their unshifted character.
+ * Shift turns `[` into `{` and `1` into `!`, so these are read from the key's
+ * position; letters are read from the printed character, so they follow the
+ * keyboard layout the way the browser's own shortcuts do.
+ */
+const CODE_KEYS: Record<string, string> = {
+  BracketLeft: "[",
+  BracketRight: "]",
+  ...Object.fromEntries(
+    Array.from({ length: 10 }, (_, digit) => [`Digit${digit}`, String(digit)]),
+  ),
+};
+
+function acceleratorKey(event: KeyEventShape): string {
+  const fromCode = event.code ? CODE_KEYS[event.code] : undefined;
+  return fromCode ?? event.key.toLowerCase();
+}
+
+/** Whether an event is one of the accelerators the browser keeps for itself. */
+function isReservedAccelerator(event: KeyEventShape): boolean {
+  return acceleratorNames(event).some((name) =>
+    RESERVED_ACCELERATORS.includes(name),
+  );
+}
+
 describe("reserved accelerators", () => {
   /** Every accelerator the studio could plausibly be asked about. */
   const letters = "abcdefghijklmnopqrstuvwxyz".split("");
@@ -288,29 +361,37 @@ describe("reserved accelerators", () => {
       { ...IDLE, hasClipboard: true },
       { ...IDLE, hasSelection: false },
     ];
-    for (const key of [...letters, ...digits, "[", "]", "Tab"]) {
+    const checked = new Set<string>();
+    const keys = [...letters, ...digits, "[", "]", "Tab", "PageUp", "PageDown"];
+    for (const key of keys) {
       for (const shiftKey of [false, true]) {
         for (const held of [{ metaKey: true }, { ctrlKey: true }]) {
-          const event = press(key, { ...held, shiftKey });
-          const name = acceleratorName(event);
-          if (!name || !RESERVED_ACCELERATORS.includes(name)) continue;
+          const event = physicalPress(key, { ...held, shiftKey });
+          if (!isReservedAccelerator(event)) continue;
+          for (const name of acceleratorNames(event)) checked.add(name);
           for (const context of contexts) {
             expect(
               studioCommandFor(event, context),
-              `${name} is reserved by the browser and must not be bound`,
+              `${acceleratorNames(event).join(" / ")} is reserved by the browser and must not be bound`,
             ).toBeNull();
           }
         }
       }
     }
+    // Every reserved accelerator is actually reached by a press above.
+    for (const reserved of RESERVED_ACCELERATORS) {
+      expect(checked, `${reserved} was never exercised`).toContain(reserved);
+    }
   });
 
   it("names an accelerator the way the reserved list spells it", () => {
-    expect(acceleratorName(press("w", { metaKey: true }))).toBe("accel+w");
+    expect(acceleratorNames(press("w", { metaKey: true }))).toEqual([
+      "accel+w",
+    ]);
     expect(
-      acceleratorName(press("t", { ctrlKey: true, shiftKey: true })),
-    ).toBe("accel+shift+t");
-    expect(acceleratorName(press("r"))).toBeNull();
+      acceleratorNames(press("t", { ctrlKey: true, shiftKey: true })),
+    ).toEqual(["accel+shift+t", "ctrl+shift+t"]);
+    expect(acceleratorNames(press("r"))).toEqual([]);
   });
 
   it("lists the combinations that cannot be intercepted at all", () => {
