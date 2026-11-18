@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # ABOUTME: Verifies page_events_page, which pages one page's events by md5(url) hash, against real PostgreSQL.
-# ABOUTME: Checks paging across URL forms, hash dedupe, the four-hash cap, the keyset edge, the limit clamp, index use, and grants.
+# ABOUTME: Checks the index migration's locking, paging, hash dedupe, the four-hash cap, the keyset edge, the limit clamp, index use, and grants.
 
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+index_migration_path="$script_dir/../migrations/20261118010000_extension_events_urlhash_type_ts_index.sql"
 migration_path="$script_dir/../migrations/20261118010100_extension_page_events.sql"
 container="page-events-page-test-$$"
 ids_file="$(mktemp)"
@@ -17,6 +18,39 @@ trap cleanup EXIT
 
 run_sql() {
   docker exec "$container" psql -X -v ON_ERROR_STOP=1 -At -U postgres -d playhtml -c "$1"
+}
+
+# Applies the index migration in one transaction, as the Supabase tooling does, and prints
+# how many locks the session holds on the table or the index just before it commits.
+apply_index_migration() {
+  docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -At -U postgres -d playhtml <<'SQL'
+begin;
+\i /urlhash_type_ts_index.sql
+select count(*) from pg_locks
+  where pid = pg_backend_pid()
+    and locktype = 'relation'
+    and relation in (select oid from pg_class where relname in ('collection_events', 'idx_events_urlhash_type_ts'));
+commit;
+SQL
+}
+
+# Runs a statement with auto_explain logging the plans of the statements inside
+# page_events_page as they actually ran, and prints them.
+function_plan() {
+  docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -At -U postgres -d playhtml 2>&1 >/dev/null <<SQL
+load 'auto_explain';
+set auto_explain.log_min_duration = 0;
+set auto_explain.log_analyze = on;
+set auto_explain.log_buffers = on;
+set auto_explain.log_nested_statements = on;
+set client_min_messages = log;
+$1;
+SQL
+}
+
+# The "rows=N" of the plan line that reads through idx_events_urlhash_type_ts.
+index_scan_rows() {
+  grep "Index Scan using idx_events_urlhash_type_ts" <<<"$1" | sed -E 's/.*actual time=[^ ]+ rows=([0-9]+) .*/\1/'
 }
 
 assert_equals() {
@@ -34,7 +68,8 @@ done
 
 run_sql "create role anon nologin; create role authenticated nologin; create role service_role nologin" >/dev/null
 run_sql "create table public.collection_events (id text primary key, type text not null, ts timestamptz not null, participant_id text not null, session_id text not null, url text, viewport_width integer, viewport_height integer, timezone text, data jsonb not null)" >/dev/null
-# The production index the function reads through (20260710201355_production_schema.sql).
+# The older production page index (20260710201355_production_schema.sql). It is still
+# there when this ships and is dropped by hand later; the function must not need it.
 run_sql "create index idx_events_urlhash_ts on public.collection_events using btree (md5(url), ts desc)" >/dev/null
 
 cat_url="https://en.wikipedia.org/wiki/Cat"
@@ -70,6 +105,42 @@ run_sql "insert into public.collection_events (id, type, ts, participant_id, ses
   select 'cap-' || i || '-' || j, 'cursor', timestamptz '2026-05-01' + (i * 10 + j) * interval '1 second', 'p', 's',
          'https://cap.example/' || i, '{}'::jsonb
   from generate_series(1, 5) i, generate_series(1, 3) j" >/dev/null
+
+# A busy page: 200,000 cursor events and 50 keyboard events, newest keyboard events oldest
+# of all, so reading the page newest first would pass every cursor row before finding them.
+busy_url="https://busy.example/"
+run_sql "insert into public.collection_events (id, type, ts, participant_id, session_id, url, data)
+  select 'busy-' || n, 'cursor', timestamptz '2026-07-01' + n * interval '1 second', 'p', 's', '$busy_url', '{}'::jsonb
+  from generate_series(1, 200000) n" >/dev/null
+run_sql "insert into public.collection_events (id, type, ts, participant_id, session_id, url, data)
+  select 'busykey-' || n, 'keyboard', timestamptz '2026-06-15' + n * interval '1 second', 'p', 's', '$busy_url', '{}'::jsonb
+  from generate_series(1, 50) n" >/dev/null
+
+# The index migration, with the index absent: it builds the index, which takes a lock.
+docker cp "$index_migration_path" "$container:/urlhash_type_ts_index.sql"
+absent_locks="$(apply_index_migration)"
+if [[ "$absent_locks" -lt 1 ]]; then
+  echo "Building the index held no lock, so the lock count below proves nothing" >&2
+  exit 1
+fi
+assert_equals "t" "$(run_sql "select indisvalid from pg_index where indexrelid = 'public.idx_events_urlhash_type_ts'::regclass")"
+assert_equals "CREATE INDEX idx_events_urlhash_type_ts ON public.collection_events USING btree (md5(url), type, ts DESC)" "$(run_sql "select pg_get_indexdef('public.idx_events_urlhash_type_ts'::regclass)")"
+# With a valid index already there (production, built concurrently by hand), the
+# migration takes no lock on the table or the index at all.
+assert_equals "0" "$(apply_index_migration)"
+# With an INVALID index left by an interrupted concurrent build, it stops instead of
+# reporting success with no usable index.
+run_sql "update pg_index set indisvalid = false where indexrelid = 'public.idx_events_urlhash_type_ts'::regclass" >/dev/null
+if invalid_output="$(apply_index_migration 2>&1)"; then
+  echo "The index migration accepted an INVALID index" >&2
+  exit 1
+fi
+if ! grep -q "idx_events_urlhash_type_ts exists but is INVALID" <<<"$invalid_output"; then
+  echo "The index migration failed for another reason:" >&2
+  echo "$invalid_output" >&2
+  exit 1
+fi
+run_sql "update pg_index set indisvalid = true where indexrelid = 'public.idx_events_urlhash_type_ts'::regclass" >/dev/null
 
 docker cp "$migration_path" "$container:/page_events_page.sql"
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d playhtml -f /page_events_page.sql >/dev/null
@@ -111,11 +182,12 @@ assert_equals "$expected_count" "$seen"
 assert_equals "5" "$pages"
 assert_equals "$expected_ids" "$(paste -sd, "$ids_file")"
 
-# Only the requested type comes back, and no type means every type.
+# Only the requested type comes back, and a null type matches nothing: every read
+# names one type so it can be served from the (md5(url), type, ts) index in ts order.
 assert_equals "100" "$(run_sql "select count(*) from public.page_events_page(array['$cat_hash'], 'navigation')")"
 assert_equals "0" "$(run_sql "select count(*) from public.page_events_page($page_hashes, 'navigation') where url <> '$cat_url'")"
-assert_equals "cursor:900,navigation:100" "$(run_sql "select string_agg(type || ':' || n, ',' order by type) from (
-  select type, count(*) n from public.page_events_page(array['$cat_hash'], null, '2026-03-01T00:05:01Z', '2026-03-02T00:01:40Z') group by type) t")"
+assert_equals "0" "$(run_sql "select count(*) from public.page_events_page(array['$cat_hash'], null)")"
+assert_equals "900" "$(run_sql "select count(*) from public.page_events_page(array['$cat_hash'], 'cursor', '2026-03-01T00:05:01Z', '2026-03-02T00:01:40Z')")"
 
 # A hash sent twice reads its page once, not once per copy.
 assert_equals "25" "$(run_sql "select count(*) from public.page_events_page(array['$slash_hash', '$slash_hash'], 'cursor')")"
@@ -141,15 +213,42 @@ assert_equals "1000" "$(run_sql "select count(*) from public.page_events_page(ar
 assert_equals "1" "$(run_sql "select count(*) from public.page_events_page(array['$cat_hash'], 'cursor', null, null, 'infinity', '', 0)")"
 assert_equals "1" "$(run_sql "select count(*) from public.page_events_page(array['$cat_hash'], 'cursor', null, null, 'infinity', '', -5)")"
 
-# Each hash is read through the page URL index, not a scan of every page. The function
-# turns bitmap scans off, so the plan is checked the same way.
-page_query="select e.* from public.collection_events e
-  where md5(e.url) = '$cat_hash' and e.type = 'cursor' and e.ts <= 'infinity' and (e.ts, e.id) < ('infinity', '')
-  order by e.ts desc, e.id desc limit 1000"
-plan="$(run_sql "set enable_bitmapscan = off; explain $page_query")"
-if ! grep -q "idx_events_urlhash_ts" <<<"$plan"; then
-  echo "The planner did not read the page through the page URL index:" >&2
-  echo "$plan" >&2
+# A type that is rare on a busy page is read straight from the (md5(url), type, ts)
+# index: the plan of the function's own statement names the index, puts the type in
+# its index condition, and reads only the 50 keyboard rows, not the 200,000 cursor rows.
+busy_hash="$(run_sql "select md5('$busy_url')")"
+check_rare_type_plan() {
+  local plan
+  plan="$(function_plan "select count(*) from public.page_events_page(array['$busy_hash'], 'keyboard')")"
+  if ! grep -q "Index Scan using idx_events_urlhash_type_ts" <<<"$plan" \
+    || ! grep -Eq "Index Cond: .*type = " <<<"$plan" \
+    || grep -q "Rows Removed by Filter" <<<"$plan" \
+    || [[ "$(index_scan_rows "$plan")" != "50" ]]; then
+    echo "A rare type on a busy page was not read through idx_events_urlhash_type_ts alone ($1):" >&2
+    echo "$plan" >&2
+    exit 1
+  fi
+  echo "rare type on a busy page ($1):"
+  grep -E "Index Scan using|Index Cond|Buffers" <<<"$plan" | sed 's/^/  /'
+}
+assert_equals "50" "$(run_sql "select count(*) from public.page_events_page(array['$busy_hash'], 'keyboard')")"
+check_rare_type_plan "both page indexes present"
+
+# A common type on the same page stops after one page of rows. The index orders by ts
+# only, so an incremental sort orders each run of equal timestamps by id and reads at
+# most one row past the page; a full sort would read all 200,000 cursor rows first.
+cursor_plan="$(function_plan "select count(*) from public.page_events_page(array['$busy_hash'], 'cursor')")"
+if ! grep -q "Incremental Sort" <<<"$cursor_plan" || [[ "$(index_scan_rows "$cursor_plan")" -gt 1001 ]] || grep -q "JIT:" <<<"$cursor_plan"; then
+  echo "A common type on a busy page did not stop after one page through idx_events_urlhash_type_ts:" >&2
+  echo "$cursor_plan" >&2
+  exit 1
+fi
+
+# A time window bounds the index range: a 100-second window of that page reads 100 rows.
+window_plan="$(function_plan "select count(*) from public.page_events_page(array['$busy_hash'], 'cursor', '2026-07-01T12:00:01Z', '2026-07-01T12:01:40Z')")"
+if [[ "$(index_scan_rows "$window_plan")" != "100" ]] || grep -q "Rows Removed by Filter" <<<"$window_plan"; then
+  echo "A time window on a busy page was not read as an index range:" >&2
+  echo "$window_plan" >&2
   exit 1
 fi
 
@@ -160,13 +259,17 @@ run_sql "grant usage on schema public to anon, authenticated, service_role; gran
 signature="public.page_events_page(text[], text, timestamptz, timestamptz, timestamptz, text, integer)"
 for role in anon authenticated; do
   assert_equals "f" "$(run_sql "select has_function_privilege('$role', '$signature', 'execute')")"
-  if run_sql "set role $role; select count(*) from public.page_events_page(array['$cat_hash'])" >/dev/null 2>&1; then
+  if run_sql "set role $role; select count(*) from public.page_events_page(array['$cat_hash'], 'cursor')" >/dev/null 2>&1; then
     echo "$role was able to call page_events_page" >&2
     exit 1
   fi
 done
 # The Worker's service role can.
 assert_equals "t" "$(run_sql "select has_function_privilege('service_role', '$signature', 'execute')")"
-assert_equals "1000" "$(run_sql "set role service_role; select count(*) from public.page_events_page(array['$cat_hash'])" | tail -1)"
+assert_equals "1000" "$(run_sql "set role service_role; select count(*) from public.page_events_page(array['$cat_hash'], 'cursor')" | tail -1)"
+
+# Once the older page index is dropped by hand, nothing changes.
+run_sql "drop index public.idx_events_urlhash_ts" >/dev/null
+check_rare_type_plan "older page index dropped"
 
 echo "page events page: ok"
