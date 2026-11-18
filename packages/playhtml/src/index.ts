@@ -54,6 +54,7 @@ import {
   findSharedElementsOnPage,
   findSharedReferencesOnPage,
   isSharedReadOnly,
+  parseSharedPermission,
   setSharedPermission,
 } from "./sharing";
 import { parseDataSource, normalizeHost } from "@playhtml/common";
@@ -372,15 +373,7 @@ function handleNewSharedElement(element: HTMLElement): void {
   if (!element.id) return;
 
   const elementId = element.id;
-  const permissions = element.getAttribute("shared");
-  let permissionMode: "read-only" | "read-write" = "read-write";
-
-  if (permissions && permissions !== "") {
-    const val = permissions.toLowerCase();
-    if (val.includes("read-only") || val === "ro") {
-      permissionMode = "read-only";
-    }
-  }
+  const permissionMode = parseSharedPermission(element.getAttribute("shared"));
 
   // Update local permissions
   setSharedPermission(elementId, permissionMode);
@@ -2223,7 +2216,14 @@ function getElementInitializerInfoForElement(
   }
 
   const customProps = getCustomElementProps(element);
-  // Merge: built-in defaults overridden by any custom properties on the element
+  // Merge: built-in defaults overridden by any custom properties on the element.
+  // `update` and `updateElement` are two names for the same callback, so a
+  // custom one under either name replaces the built-in one under both.
+  if (customProps.update !== undefined || customProps.updateElement !== undefined) {
+    const { update: _update, updateElement: _updateElement, ...builtInRest } =
+      builtIn;
+    return { ...builtInRest, ...customProps };
+  }
   return { ...builtIn, ...customProps };
 }
 
