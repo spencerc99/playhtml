@@ -1,4 +1,4 @@
-// ABOUTME: Serves recent browsing events filtered by domain for the historical overlay.
+// ABOUTME: Serves recent browsing events filtered by domain or one page for the historical overlay.
 // ABOUTME: Public endpoint that pages through Supabase collection_events newest first.
 // ABOUTME: Navigation events have titles stripped at ingest (stored in page_metadata_history);
 // ABOUTME: this handler re-joins them by page_ref before returning.
@@ -7,6 +7,7 @@ import { createSupabaseClient, type Env } from '../lib/supabase';
 import { loadParticipantColors } from '../lib/participantColors';
 import { getEarlierEventFilter } from '../lib/eventCursorFilter';
 import { parseOptionalIsoDate, parseOptionalPositiveInt } from '../lib/requestInput';
+import { parseUrlHashes } from '../../../src/utils/pageEventUrls';
 import {
   buildPageRef,
   canonicalizeUrl,
@@ -237,6 +238,12 @@ export interface RecentEventQuery {
   /** Maximum number of rows to read before the require_title filter. */
   limit: number;
   domain: string | null;
+  /**
+   * md5 hashes of one page's stored URL forms (see pageEventUrlVariants). Reads
+   * through the page URL index (page_events_page) instead of the domain filter;
+   * cannot be combined with `domain` or `pid`, and needs a non-null `type`.
+   */
+  urlHashes: string[] | null;
   pid: string | null;
   /** Inclusive ISO lower bound on ts. */
   from: string | null;
@@ -260,7 +267,30 @@ export async function loadRecentEvents(
   query: RecentEventQuery,
 ): Promise<RecentEvents> {
   const supabase = createSupabaseClient(env);
+  const { urlHashes } = query;
+  if (urlHashes !== null && (query.domain !== null || query.pid !== null)) {
+    throw new Error('A page query cannot also filter by domain or participant');
+  }
+  const pageType = query.type;
+  if (urlHashes !== null && pageType === null) {
+    throw new Error('A page query needs an event type');
+  }
   const { rows, error } = await loadRecentEventRows(query.limit, async (cursor, pageSize) => {
+    if (urlHashes !== null) {
+      const result = await supabase.rpc('page_events_page', {
+        p_url_hashes: urlHashes,
+        p_type: pageType,
+        p_from: query.from,
+        p_to: query.to,
+        ...(cursor ? { p_before_ts: cursor.ts, p_before_id: cursor.id } : {}),
+        p_limit: pageSize,
+      });
+      return {
+        data: result.data as Record<string, unknown>[] | null,
+        error: result.error,
+      };
+    }
+
     let request = supabase
       .from('collection_events')
       .select('*');
@@ -299,6 +329,10 @@ export async function loadRecentEvents(
  * - type: Event type filter (default: 'cursor'; 'all' disables the filter)
  * - limit: Maximum number of events, a positive integer (default: 1000, max: 20000). Pagination is used internally.
  * - domain: Domain filter (optional) - filters events by URL domain
+ * - urlHash: 1-4 comma-separated md5 hex digests of one page's stored URL forms
+ *   (optional; see pageEventUrlVariants). Returns events whose url hashes to one
+ *   of them, so the page URL itself never reaches the Worker. Cannot be combined
+ *   with domain or pid, or with type=all: a page is read one event type at a time.
  * - pid: Participant ID filter (optional)
  * - from: ISO date string, inclusive lower bound on ts (optional)
  * - to: ISO date string, inclusive upper bound on ts (optional)
@@ -331,11 +365,37 @@ export async function handleRecent(
         { status: 400, headers }
       );
     }
+    const domain = url.searchParams.get('domain') || null;
+    const pid = url.searchParams.get('pid') || null;
+    const urlHashParam = url.searchParams.get('urlHash');
+    let urlHashes: string[] | null = null;
+    if (urlHashParam !== null) {
+      if (domain !== null || pid !== null) {
+        return new Response(
+          JSON.stringify({ error: 'urlHash cannot be combined with domain or pid' }),
+          { status: 400, headers }
+        );
+      }
+      if (url.searchParams.get('type') === 'all') {
+        return new Response(
+          JSON.stringify({ error: 'urlHash cannot be combined with type=all' }),
+          { status: 400, headers }
+        );
+      }
+      urlHashes = parseUrlHashes(urlHashParam);
+      if (urlHashes === null) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid urlHash (expected 1-4 comma-separated md5 hex digests)' }),
+          { status: 400, headers }
+        );
+      }
+    }
     const { events, error } = await loadRecentEvents(env, {
       type: getRecentEventTypeFilter(url),
       limit: Math.min(limit.value ?? 1000, 20000),
-      domain: url.searchParams.get('domain') || null,
-      pid: url.searchParams.get('pid') || null,
+      domain,
+      urlHashes,
+      pid,
       from: from.value,
       to: to.value,
       requireTitle: url.searchParams.get('require_title') === 'true',

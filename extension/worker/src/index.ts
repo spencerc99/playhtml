@@ -203,7 +203,7 @@ export default {
     if (featureAccessMatch && request.method === 'GET') {
       const publicId = decodePathSegment(featureAccessMatch[1]);
       if (publicId === null) return badPathResponse();
-      return handleFeatureAccessCheck(env, publicId);
+      return handleFeatureAccessCheck(request, env, publicId);
     }
 
     if (path === '/access-requests' && request.method === 'POST') {

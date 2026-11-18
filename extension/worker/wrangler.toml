@@ -39,9 +39,10 @@ compatibility_flags = ["global_fetch_strictly_public"]
 #   extension, such as /events/recent, /stream and /page-meta. This stops casual
 #   cross-origin scraping; it is not an auth boundary.
 # - Signed by the participant's identity key: requests that act on one participant's
-#   data, such as /events/restore, /events/delete-site, /access-requests and
-#   PUT /participants/:pid. The last two refuse unsigned requests only while
-#   REQUIRE_PARTICIPANT_SIGNATURES is "true"; a signature that is sent is always checked.
+#   data, such as /events/restore, /events/delete-site, /access-requests,
+#   PUT /participants/:pid and GET /feature-access/:id. The last three refuse unsigned
+#   requests only while REQUIRE_PARTICIPANT_SIGNATURES is "true"; a signature that is
+#   sent is always checked.
 # - ADMIN_KEY: /admin/*, /commute/review (also
 #   origin-allowlisted), and internet map bundles (which INTERNET_MAP_PASSWORD also opens).
 # - Public: event ingest, feedback, subscribe, quarantine tape, commute summaries and
@@ -72,10 +73,12 @@ custom_domain = true
 host = "localhost"
 
 [vars]
-# Gates rejecting unsigned PUT /participants/:pid and POST /access-requests.
-# "true" rejects them with 401; anything else accepts them as before signing
-# existed (signed requests are always verified). Turn on once the signing
-# extension build is the minimum in use.
+# Gates rejecting unsigned PUT /participants/:pid, POST /access-requests and
+# GET /feature-access/:id. "true" rejects them with 401; anything else accepts
+# them as before signing existed (signed requests are always verified). Turn on
+# only once the minimum extension build in use signs all three, including
+# feature-access reads; older builds read feature access unsigned and would be
+# refused.
 REQUIRE_PARTICIPANT_SIGNATURES = "false"
 
 # Note: rate limiting in /subscribe is per-isolate (in-memory Map), so the
