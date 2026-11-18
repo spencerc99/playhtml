@@ -145,13 +145,12 @@
 }
 
 .scenic-route__panel {
-  padding: 9px 12px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 7px;
-  border: 1px solid rgba($accent-blue, 0.34);
+  border: 1px solid $border;
   border-radius: 10px;
-  background: $surface;
 }
 
 .scenic-route__row {
