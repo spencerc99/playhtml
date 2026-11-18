@@ -65,6 +65,7 @@ import {
 import {
   checkEdgeRateLimit,
   checkMessageRate,
+  DEFAULT_MAX_SHARED_PERMISSION_ENTRIES,
   isDurableObjectOverloadError,
   countOtherConnections,
   isRoomAtConnectionLimit,
@@ -101,7 +102,14 @@ import {
 import { BridgeHealth } from "./bridgeHealth";
 import { collectChangedPlayElementIds, touchesAny } from "./bridgeDirty";
 import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
-import { getPermittedSharedElementIds } from "./bridgePermissionPolicy";
+import {
+  getPermittedSharedElementIds,
+  getSharedElementPermission,
+  replaceSharedElementPermissions,
+  setSharedElementPermission,
+  type SharedElementPermissionMap,
+  type SharedPermissionsUpdate,
+} from "./bridgePermissionPolicy";
 import { createBridgeRequest, getBridgeAuthFailure } from "./bridgeAuth";
 import { getBridgeApplyRelationship } from "./bridgeRequestPolicy";
 import { mergeSharedReferenceLeases } from "./bridgeLeasePolicy";
@@ -411,6 +419,8 @@ export class PartyServer extends YServer {
       ((await this.ctx.storage.get(STORAGE_KEYS.sharedPermissions)) as
         | Record<string, SharedElementPermissions>
         | undefined) || {};
+    // A write that landed during the read is newer than what was read.
+    if (this.cachedSharedPerms !== null) return this.cachedSharedPerms;
     this.cachedSharedPerms = perms;
     return perms;
   }
@@ -420,6 +430,29 @@ export class PartyServer extends YServer {
   ): Promise<void> {
     this.cachedSharedPerms = permissions;
     await this.ctx.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
+  }
+
+  // Applies a change to the stored permissions map. The cache is read after
+  // the await, with no await before the write, so a connect and a register
+  // that overlap each apply to the other's result instead of a stale copy.
+  private async updateSharedPermissions<T extends SharedPermissionsUpdate>(
+    update: (existing: SharedElementPermissionMap, maxEntries: number) => T
+  ): Promise<T> {
+    await this.getSharedPermissions();
+    const existing = this.cachedSharedPerms ?? {};
+    const maxEntries = readPositiveNumberEnv(
+      "MAX_SHARED_PERMISSION_ENTRIES",
+      DEFAULT_MAX_SHARED_PERMISSION_ENTRIES
+    );
+    const result = update(existing, maxEntries);
+    const { permissions, changed, ignoredForCap } = result;
+    if (ignoredForCap > 0) {
+      console.warn(
+        `[Bridge] Ignoring ${ignoredForCap} shared element id(s) for room ${this.name}: the room already stores the maximum of ${maxEntries} shared-element permissions.`
+      );
+    }
+    if (changed) await this.setSharedPermissions(permissions);
+    return result;
   }
 
   private getOpenConnectionCount(): number {
@@ -1759,7 +1792,8 @@ export class PartyServer extends YServer {
     const filtered: Record<string, SharedElementPermissions> = {};
 
     for (const id of elementIds) {
-      if (perms[id]) filtered[id] = perms[id];
+      const permission = getSharedElementPermission(perms, id);
+      if (permission) filtered[id] = permission;
     }
 
     // Send permissions back to the requesting client
@@ -1773,14 +1807,13 @@ export class PartyServer extends YServer {
   }): Promise<void> {
     if (!element || !element.elementId) return;
 
-    // Update shared permissions for this source room
-    const existingPerms = await this.getSharedPermissions();
-    const mode =
-      element.permissions && element.permissions === "read-only"
-        ? "read-only"
-        : "read-write";
-    existingPerms[element.elementId] = mode;
-    await this.setSharedPermissions(existingPerms);
+    const { accepted } = await this.updateSharedPermissions(
+      (existing, maxEntries) =>
+        setSharedElementPermission(existing, element, maxEntries)
+    );
+    // A refused registration stores no permission, so consumers could not
+    // write it; fanning it out would hand them state that never updates.
+    if (!accepted) return;
 
     // If new shared element just registered, proactively fanout to subscribers who requested it
     try {
@@ -1965,21 +1998,17 @@ export class PartyServer extends YServer {
       await this.subscribeAndHydrate(merged);
     }
 
-    // Persist source-declared permissions for simple global read-only
+    // Persist source-declared permissions. The connecting page's declaration
+    // replaces the room's whole map, because the server cannot tell the site
+    // owner's page from any other client. Known limitation: a page that
+    // declares only some elements, or a stale or hostile client, drops or
+    // changes the other elements' entries, including ones registered at
+    // runtime with register-shared-element.
     const sharedElements = parseSharedElementsFromUrl(ctx.request.url);
     if (this.canWriteSharedData() && sharedElements.length) {
-      const permissionsByElementId: Record<string, SharedElementPermissions> =
-        {};
-      for (const el of sharedElements) {
-        const mode =
-          el.permissions && el.permissions.includes("read-only")
-            ? "read-only"
-            : "read-write";
-        permissionsByElementId[el.elementId] = mode;
-      }
-      // TODO: instead of overriding, maybe we should merge and also do pruning of permissions that aren't present anymore to handle dynamic elements?
-      // OR we should stop with all this pruning and instead enforce that these are declared globally in the client even for dynamically rendered elements (they have to be registered in init?)
-      await this.setSharedPermissions(permissionsByElementId);
+      await this.updateSharedPermissions((existing, maxEntries) =>
+        replaceSharedElementPermissions(existing, sharedElements, maxEntries)
+      );
     }
 
     await super.onConnect(connection, ctx);
@@ -2796,7 +2825,8 @@ export class PartyServer extends YServer {
         const perms = await this.getSharedPermissions();
         const filtered: Record<string, SharedElementPermissions> = {};
         for (const id of elementIds) {
-          if (perms[id]) filtered[id] = perms[id];
+          const permission = getSharedElementPermission(perms, id);
+          if (permission) filtered[id] = permission;
         }
         const response: ExportPermissionsResponse = { permissions: filtered };
         return new Response(JSON.stringify(response), {
@@ -2865,7 +2895,9 @@ export class PartyServer extends YServer {
               Object.entries(elements).forEach(([elementId, data]) => {
                 // Only allow writes to elements explicitly shared as read-write
                 // This handles both read-only elements and ones that aren't even shared
-                if (perms[elementId] !== "read-write") {
+                if (
+                  getSharedElementPermission(perms, elementId) !== "read-write"
+                ) {
                   return;
                 }
                 kept[elementId] = data;
