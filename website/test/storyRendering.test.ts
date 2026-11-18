@@ -1,5 +1,5 @@
-// ABOUTME: Tests rendering persisted words in the one-word story.
-// ABOUTME: Ensures untrusted shared text remains text instead of markup.
+// ABOUTME: Tests rendering and submitting words in the one-word story.
+// ABOUTME: Ensures shared text stays text, colors are six-digit hex, and words are trimmed.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -61,5 +61,89 @@ describe("one-word story rendering", () => {
       "171, 205, 239",
     );
     expect(storyContent.querySelector("svg, img, [onload], [onerror]")).toBeNull();
+  });
+});
+
+const randomColorSource = storyHtml.match(
+  /function randomColor\(\) \{[\s\S]*?\n\s*\}/,
+)?.[0];
+const wordCheckSource = storyHtml.match(
+  /(const explicitSlurRegexes = \[[\s\S]*?const hasExplicitSlur = [\s\S]*?\n\s*\};)/,
+)?.[1];
+const isValidWordSource = storyHtml.match(
+  /function isValidWord\(word\) \{[\s\S]*?\n\s*\}/,
+)?.[0];
+const onSubmitSource = storyHtml.match(
+  /const onSubmit = (\(\) => \{[\s\S]*?\n\s*\});\n\s*submitBtn\.addEventListener/,
+)?.[1];
+
+function getRandomColor(random: () => number) {
+  if (!randomColorSource) {
+    throw new Error("Could not find the one-word story color picker");
+  }
+  return new Function(
+    "Math",
+    `${randomColorSource}
+return randomColor;`,
+  )({ floor: Math.floor, random });
+}
+
+// Submits one word through the story's real submit handler and returns the
+// story list it saved, plus any alert the visitor saw.
+function submitWord(value: string) {
+  if (!wordCheckSource || !isValidWordSource || !onSubmitSource) {
+    throw new Error("Could not find the one-word story submit handler");
+  }
+  let story: Array<{ word: string; color: string; ts: number }> = [];
+  const alerts: string[] = [];
+  const input = { value };
+  const onSubmit = new Function(
+    "input",
+    "submitBtn",
+    "getData",
+    "setData",
+    "setMyAwareness",
+    "getUserColor",
+    "alert",
+    `${wordCheckSource}
+${isValidWordSource}
+return ${onSubmitSource};`,
+  )(
+    input,
+    { disabled: false },
+    () => story,
+    (next: typeof story) => {
+      story = next;
+    },
+    () => {},
+    () => "#112233",
+    (message: string) => alerts.push(message),
+  );
+  onSubmit();
+  return { story, alerts };
+}
+
+describe("one-word story submissions", () => {
+  test("random colors are six-digit hex even when the number is small", () => {
+    expect(getRandomColor(() => 0.0001)()).toBe("#00068d");
+    expect(getRandomColor(() => 0)()).toBe("#000000");
+    expect(getRandomColor(() => 0.5)()).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  test("saves a word typed with surrounding spaces, trimmed", () => {
+    const { story, alerts } = submitWord("  hello ");
+    expect(alerts).toEqual([]);
+    expect(story.map((entry) => entry.word)).toEqual(["hello"]);
+  });
+
+  test("rejects blank and multi-word input", () => {
+    expect(submitWord("   ")).toEqual({
+      story: [],
+      alerts: ["please enter a single word!"],
+    });
+    expect(submitWord("two words")).toEqual({
+      story: [],
+      alerts: ["please enter a single word!"],
+    });
   });
 });

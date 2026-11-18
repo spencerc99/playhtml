@@ -42,6 +42,6 @@ export default defineConfig({
   // the same rule: dev and preview builds only.
   plugins: [directedit(), agentation(), react()],
   server: {
-    allowedHosts: ["16ea7fb66b66.ngrok-free.app"],
+    allowedHosts: [".ngrok-free.app"],
   },
 });

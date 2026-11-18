@@ -317,7 +317,6 @@ const Main = withSharedState(
       Map<string, HandHold>
     >(new Map());
     const mainRef = useRef<HTMLDivElement>(null);
-    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
     const [starAnimations, setStarAnimations] = useState<
       Array<{
         id: string;
@@ -510,16 +509,6 @@ const Main = withSharedState(
     ]);
 
 
-    // Track mouse position
-    useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
-        setMousePosition({ x: e.clientX, y: e.clientY });
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      return () => window.removeEventListener("mousemove", handleMouseMove);
-    }, []);
-
     // Render stars
     const renderStars = useMemo(() => {
       return Object.values(data.stars).map((star) => (
@@ -534,7 +523,7 @@ const Main = withSharedState(
         .filter((handHold): handHold is HandHold => handHold !== undefined);
 
       return allHandHolds.map((handHold) => {
-        const user1Color = me.color;
+        const user1Color = handHold.user1.playerStyle.colorPalette[0];
         const user2Color = handHold.user2.playerStyle.colorPalette[0];
 
         // Calculate positions so hands appear to be overlapping/holding
@@ -565,7 +554,7 @@ const Main = withSharedState(
           </React.Fragment>
         );
       });
-    }, [everyone, me.color]);
+    }, [everyone]);
 
     // Render star creation animations
     const renderStarAnimations = useMemo(() => {

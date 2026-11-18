@@ -173,30 +173,13 @@ export function loadLiveCounts() {
     })
     .catch(() => {});
 
-  fetchJson(
-    "https://api.github.com/search/issues?q=" +
-      encodeURIComponent(
-        'repo:spencerc99/playhtml is:issue is:open label:"good first issue"',
-      ),
-  )
-    .then((result) => {
-      const total = readNumber(result, "total_count");
-      const label = document.querySelector<HTMLElement>(
-        "[data-good-first-issues]",
-      );
-      if (!total || !label) return;
-      label.textContent = `${total} good first ${total === 1 ? "issue" : "issues"}`;
-    })
-    .catch(() => {});
-
+  const counts = document.querySelector<HTMLElement>("[data-discord-counts]");
+  if (!counts) return;
   fetchJson("https://discord.com/api/v9/invites/SKbsSf4ptU?with_counts=true")
     .then((invite) => {
       const online = readNumber(invite, "approximate_presence_count");
       const members = readNumber(invite, "approximate_member_count");
-      const counts = document.querySelector<HTMLElement>(
-        "[data-discord-counts]",
-      );
-      if (online === undefined || members === undefined || !counts) return;
+      if (online === undefined || members === undefined) return;
       counts.querySelector("[data-discord-online]")!.textContent =
         online.toLocaleString();
       counts.querySelector("[data-discord-members]")!.textContent =
