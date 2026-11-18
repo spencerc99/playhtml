@@ -1,7 +1,7 @@
 // ABOUTME: Test page for page-level shared data and presence API.
-// ABOUTME: Demonstrates createPageData and playhtml.presence with live UI.
+// ABOUTME: Demonstrates createPageData and playhtml.people with live UI.
 
-import { playhtml } from "../../packages/playhtml/src";
+import { playhtml, type Person } from "../../packages/playhtml/src";
 
 async function main() {
   await playhtml.init({
@@ -71,107 +71,92 @@ async function main() {
     });
   });
 
-  // --- Presence: Who's Here ---
+  // --- People: Who's Here ---
 
-  const myIdentity = playhtml.presence.getMyIdentity();
+  const people = playhtml.people;
   const myIdentityEl = document.getElementById("myIdentity")!;
-  myIdentityEl.textContent = myIdentity.publicKey.slice(0, 12) + "...";
-  const primaryColor = myIdentity.playerStyle.colorPalette[0] ?? "#999";
-  myIdentityEl.style.color = primaryColor;
+  myIdentityEl.textContent = people.me.name ?? people.me.pid.slice(0, 12) + "...";
+  myIdentityEl.style.color = people.me.color || "#999";
 
   const userListEl = document.getElementById("userList")!;
   const statusListEl = document.getElementById("statusList")!;
   const debugStateEl = document.getElementById("debugState")!;
 
-  function renderUserList(presences: Map<string, any>) {
-    if (presences.size === 0) {
-      userListEl.innerHTML =
-        '<li style="color: #8a8279;">(no users)</li>';
-    } else {
-      userListEl.innerHTML = "";
-      presences.forEach((p, id) => {
-        const li = document.createElement("li");
-        const color =
-          p.playerIdentity?.playerStyle?.colorPalette?.[0] ?? "#999";
-        const name = p.playerIdentity?.name ?? id.slice(0, 12) + "...";
-        const meTag = p.isMe ? " (you)" : "";
-        const cursorInfo = p.cursor
-          ? ` [cursor: ${Math.round(p.cursor.x)}, ${Math.round(p.cursor.y)}]`
-          : "";
-        li.innerHTML = `<span class="color-dot" style="background:${color}"></span>${name}${meTag}${cursorInfo}`;
-        userListEl.appendChild(li);
-      });
+  const labelFor = (person: Person) =>
+    (person.name ?? person.pid.slice(0, 12) + "...") +
+    (person.isMe ? " (you)" : "");
+
+  function renderUserList(everyone: Person[]) {
+    if (everyone.length === 0) {
+      userListEl.innerHTML = '<li style="color: #8a8279;">(no users)</li>';
+      return;
+    }
+    userListEl.innerHTML = "";
+    for (const person of everyone) {
+      const li = document.createElement("li");
+      const cursor = person.presence.cursor;
+      const cursorInfo = cursor
+        ? ` [cursor: ${Math.round(cursor.x)}, ${Math.round(cursor.y)}]`
+        : "";
+      li.innerHTML = `<span class="color-dot" style="background:${person.color || "#999"}"></span>${labelFor(person)}${cursorInfo}`;
+      userListEl.appendChild(li);
     }
   }
 
-  function renderStatuses(presences: Map<string, any>) {
+  function renderStatuses(everyone: Person[]) {
     const statuses: string[] = [];
-    presences.forEach((p, id) => {
-      if (p.status) {
-        const name =
-          p.playerIdentity?.name ?? id.slice(0, 12) + "...";
-        const meTag = p.isMe ? " (you)" : "";
-        statuses.push(`${name}${meTag}: ${p.status.text}`);
-      }
-    });
+    for (const person of everyone) {
+      const status = person.presence.status as { text: string } | undefined;
+      if (status) statuses.push(`${labelFor(person)}: ${status.text}`);
+    }
     if (statuses.length === 0) {
-      statusListEl.innerHTML =
-        '<li style="color: #8a8279;">(no statuses)</li>';
+      statusListEl.innerHTML = '<li style="color: #8a8279;">(no statuses)</li>';
     } else {
-      statusListEl.innerHTML = statuses
-        .map((s) => `<li>${s}</li>`)
-        .join("");
+      statusListEl.innerHTML = statuses.map((s) => `<li>${s}</li>`).join("");
     }
   }
 
   function renderDebug() {
-    const presences = playhtml.presence.getPresences();
-    const debugData: Record<string, any> = {};
-    presences.forEach((p, id) => {
-      debugData[id.slice(0, 12)] = p;
-    });
+    const debugData: Record<string, unknown> = {};
+    for (const person of people.everyone) {
+      debugData[person.pid.slice(0, 12)] = person;
+    }
     debugStateEl.textContent = JSON.stringify(
       {
         counter: counter.getData(),
         clickMap: clickMap.getData(),
-        presences: debugData,
+        people: debugData,
       },
       null,
       2,
     );
   }
 
-  // Initial render
-  const initialPresences = playhtml.presence.getPresences();
-  renderUserList(initialPresences);
-  renderStatuses(initialPresences);
-  renderDebug();
-
-  // Subscribe to cursor changes for user list (includes position)
-  playhtml.presence.onPresenceChange("cursor", (presences) => {
-    renderUserList(presences);
+  // Watch cursors for the user list (includes position)
+  people.onChange("cursor", (everyone) => {
+    renderUserList(everyone);
     renderDebug();
   });
 
-  // Subscribe to status changes
-  playhtml.presence.onPresenceChange("status", (presences) => {
-    renderStatuses(presences);
+  // Watch statuses
+  people.onChange("status", (everyone) => {
+    renderStatuses(everyone);
     renderDebug();
   });
 
-  // --- Presence: Custom Channels ---
+  // --- People: Custom presence keys ---
 
   document.getElementById("setStatusOnline")!.addEventListener("click", () => {
-    playhtml.presence.setMyPresence("status", { text: "online" });
+    people.setMyPresence("status", { text: "online" });
   });
   document.getElementById("setStatusBusy")!.addEventListener("click", () => {
-    playhtml.presence.setMyPresence("status", { text: "busy" });
+    people.setMyPresence("status", { text: "busy" });
   });
   document.getElementById("setStatusAway")!.addEventListener("click", () => {
-    playhtml.presence.setMyPresence("status", { text: "away" });
+    people.setMyPresence("status", { text: "away" });
   });
   document.getElementById("clearStatus")!.addEventListener("click", () => {
-    playhtml.presence.setMyPresence("status", null);
+    people.setMyPresence("status", null);
   });
 }
 

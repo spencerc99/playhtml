@@ -4,7 +4,7 @@ export const GRID_CELL_SIZE_PX = 32;
 export const BOTTOM_BAR_HEIGHT_PX = 64;
 export const SCROLL_END_TOLERANCE_PX = 1;
 
-export interface TypingCursorAwareness {
+export interface TypingCursorPresence {
   color: string;
   cursorPos: number;
 }
@@ -114,25 +114,21 @@ export function isScrollAtEnd({
   return getScrollEndY({ scrollHeight, viewportHeight }) - scrollY <= tolerancePx;
 }
 
-export function getRemoteTypingCursors({
-  awareness,
-  myAwareness,
-}: {
-  awareness: unknown[];
-  myAwareness?: TypingCursorAwareness;
-}): TypingCursorAwareness[] {
-  return awareness.filter(
-    (cursor): cursor is TypingCursorAwareness =>
-      cursor !== myAwareness && isTypingCursorAwareness(cursor),
-  );
+export function getRemoteTypingCursors(
+  everyone: ReadonlyArray<{ isMe: boolean; presence: unknown }>,
+): TypingCursorPresence[] {
+  return everyone
+    .filter((person) => !person.isMe)
+    .map((person) => person.presence)
+    .filter(isTypingCursorPresence);
 }
 
-export function shouldPublishTypingAwareness({
+export function shouldPublishTypingPresence({
   current,
   next,
 }: {
-  current?: TypingCursorAwareness;
-  next: TypingCursorAwareness;
+  current?: TypingCursorPresence;
+  next: TypingCursorPresence;
 }): boolean {
   return current?.color !== next.color || current.cursorPos !== next.cursorPos;
 }
@@ -149,9 +145,9 @@ function assertPositiveInteger(value: number, name: string): void {
   }
 }
 
-function isTypingCursorAwareness(value: unknown): value is TypingCursorAwareness {
+function isTypingCursorPresence(value: unknown): value is TypingCursorPresence {
   if (!value || typeof value !== "object") return false;
 
-  const cursor = value as TypingCursorAwareness;
+  const cursor = value as TypingCursorPresence;
   return typeof cursor.color === "string" && Number.isInteger(cursor.cursorPos);
 }
