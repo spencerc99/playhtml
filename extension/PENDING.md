@@ -22,3 +22,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Collages keep the last thing you changed when you leave the studio, and saving tries again on its own if it fails.
 - Saving a collage's file from your list of collages (the one you can open again later) now works in Safari. Saving pictures of a collage already did.
 - Trails now follow you to the next page on sites like YouTube that switch pages without reloading (Chrome and Firefox).
+- Beta: Slow Mode is now called scenic route, and its popup controls take up much less space. Board the commute from the small train button next to it.

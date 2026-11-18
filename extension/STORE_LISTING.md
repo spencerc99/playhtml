@@ -20,7 +20,7 @@ practices tab.
 ### `webNavigation`
 
 ```
-Slow Mode uses webNavigation to detect completed top-level navigations. When the user has enabled Slow Mode and a navigation meets their distance, cooldown, and chance settings, the extension redirects the tab through Internet Commute. The extension ignores subframe navigations.
+The scenic route setting uses webNavigation to detect completed top-level navigations. When the user has turned on the scenic route and a navigation meets their distance, cooldown, and chance settings, the extension redirects the tab through Internet Commute. The extension ignores subframe navigations.
 ```
 
 ### Host permission (`<all_urls>`)

@@ -206,6 +206,7 @@ export function InternetPortraitHome({
           <span className="preview-card__dot preview-card__dot--close" />
           <span className="preview-card__dot preview-card__dot--min" />
           <span className="preview-card__dot preview-card__dot--expand" />
+          <div className="preview-card__label">Open Portrait Overlay</div>
         </div>
         <div className="preview-card__body">
           <TinyMovementPreview />
@@ -225,7 +226,6 @@ export function InternetPortraitHome({
                 : "Your portrait is loading..."}
             </p>
           )}
-          <div className="preview-card__label">Open Portrait Overlay</div>
         </div>
       </div>
     </section>
@@ -271,43 +271,6 @@ export function InternetPortraitHome({
             commuteIsOpen={commuteIsOpen}
           />
         )}
-        <FeatureGate feature="COMMUTE">
-          {onViewCommute && (
-            <>
-              {!phone && (
-                <button
-                  className="commute-entry"
-                  onClick={onViewCommute}
-                  aria-label={
-                    commuteIsOpen
-                      ? "Return to the Internet Commute"
-                      : "Board the Internet Commute"
-                  }
-                >
-                  <span className="commute-entry__route" aria-hidden="true">
-                    <span className="commute-entry__stop commute-entry__stop--blue" />
-                    <span className="commute-entry__stop commute-entry__stop--gold" />
-                    <span className="commute-entry__stop commute-entry__stop--rust" />
-                  </span>
-                  <span className="commute-entry__copy">
-                    <span className="commute-entry__eyebrow">BOARDING NOW</span>
-                    <strong>
-                      {commuteIsOpen
-                        ? "Return to the internet commute"
-                        : "Board the internet commute"}
-                    </strong>
-                    <span>A slow train through pages people found lately.</span>
-                  </span>
-                  <span className="commute-entry__door" aria-hidden="true">
-                    <span />
-                    <span />
-                  </span>
-                </button>
-              )}
-              <SlowModeSettings />
-            </>
-          )}
-        </FeatureGate>
         {!phone && portraitPreview}
 
         <section
@@ -356,17 +319,15 @@ export function InternetPortraitHome({
               ))}
             </div>
           )}
-          <div className="collection-status__footer-row">
-            <span>Your settings for every site</span>
-            <button
-              onClick={onOpenSettings}
-              title="Data settings"
-              className="collection-status__settings-link"
-            >
-              Settings →
-            </button>
-          </div>
         </section>
+        <FeatureGate feature="COMMUTE">
+          {onViewCommute && (
+            <SlowModeSettings
+              onBoard={phone ? undefined : onViewCommute}
+              commuteIsOpen={commuteIsOpen}
+            />
+          )}
+        </FeatureGate>
         <DebugModesSettings />
       </main>
 
@@ -374,12 +335,13 @@ export function InternetPortraitHome({
         <button
           type="button"
           aria-label="settings"
-          title="Settings"
-          className="portrait-home__changelog-link portrait-home__settings-link"
+          className="portrait-home__footer-link"
           onClick={onOpenSettings}
         >
-          <GearSvg size={14} />
+          <GearSvg size={13} />
+          settings
         </button>
+        <FeedbackForm />
         <button
           type="button"
           className="portrait-home__changelog-link"
@@ -387,7 +349,6 @@ export function InternetPortraitHome({
         >
           changelog
         </button>
-        <FeedbackForm />
       </footer>
     </div>
   );

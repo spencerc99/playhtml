@@ -119,7 +119,7 @@ describe("PlayHTMLPopup", () => {
 
     try {
       expect(container.querySelector(".portrait-home")).not.toBeNull();
-      expect(container.querySelector(".commute-entry")).not.toBeNull();
+      expect(container.querySelector(".board-train")).not.toBeNull();
       expect(container.textContent).toContain("scraps");
       expect(container.textContent).not.toContain("bag settings");
       expect(container.textContent).not.toContain("experiments");

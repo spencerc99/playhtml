@@ -1,8 +1,9 @@
-// ABOUTME: Renders the popup controls and daily ride summary for Slow Mode.
-// ABOUTME: Persists interception and stop-sharing choices while exposing cooldown status.
+// ABOUTME: Renders the popup's Internet Commute entry and its scenic route (Slow Mode) controls.
+// ABOUTME: Persists the setting and stop sharing, offers a train button to board, and folds today's rides behind a toggle.
 
 import React, { useEffect, useMemo, useState } from "react";
 import browser from "webextension-polyfill";
+import trainIceUrl from "../assets/train-ice.png";
 import {
   DEFAULT_SLOW_MODE_SETTINGS,
   SLOW_MODE_SETTINGS_KEY,
@@ -14,6 +15,8 @@ import {
   type SlowModeSettings as Settings,
   type SlowModeState,
 } from "../features/slowMode/slowMode";
+
+const CHANCE_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 const EMPTY_STATE: SlowModeState = {
   lastCommuteAt: null,
@@ -34,7 +37,13 @@ function rideDescription(ride: SlowModeState["rides"][number]): string {
   return `commuted to ${ride.destinationDomain}`;
 }
 
-export function SlowModeSettings() {
+interface Props {
+  /** Opens the Internet Commute. Without it, no train button shows. */
+  onBoard?: () => void;
+  commuteIsOpen?: boolean;
+}
+
+export function SlowModeSettings({ onBoard, commuteIsOpen = false }: Props) {
   const [settings, setSettings] = useState<Settings>(
     DEFAULT_SLOW_MODE_SETTINGS,
   );
@@ -66,99 +75,131 @@ export function SlowModeSettings() {
     void browser.storage.local.set({ [SLOW_MODE_SETTINGS_KEY]: next });
   };
 
+  const boardLabel = commuteIsOpen
+    ? "Return to the Internet Commute"
+    : "Board the Internet Commute";
+
   return (
-    <section className="slow-mode-settings" aria-label="Slow Mode settings">
-      <div className="slow-mode-settings__heading">
-        <span>
-          <strong>slow mode</strong>
-          <small>
-            {cooldown.ready
-              ? "ready for a far jump"
-              : `cooldown · ${cooldownMinutes}m left`}
-          </small>
-        </span>
-        <label className="slow-mode-toggle">
-          <input
-            type="checkbox"
-            aria-label="Enable Slow Mode"
-            checked={settings.enabled}
-            disabled={!loaded}
-            onChange={(event) =>
-              saveSettings({ ...settings, enabled: event.target.checked })
-            }
-          />
-          <span aria-hidden="true" />
-        </label>
-      </div>
+    <div className="scenic-route">
+      <section
+        className="scenic-route__panel"
+        aria-label="Scenic route settings"
+      >
+        <div className="scenic-route__row">
+          <label className="scenic-route__toggle">
+            <input
+              type="checkbox"
+              aria-label="Take the scenic route"
+              checked={settings.enabled}
+              disabled={!loaded}
+              onChange={(event) =>
+                saveSettings({ ...settings, enabled: event.target.checked })
+              }
+            />
+            <span className="scenic-route__switch" aria-hidden="true" />
+            <strong>scenic route</strong>
+          </label>
+          {onBoard && (
+            <button
+              type="button"
+              className="board-train"
+              onClick={onBoard}
+              aria-label={boardLabel}
+            >
+              <span className="board-train__rail" aria-hidden="true" />
+              <span className="board-train__ties" aria-hidden="true" />
+              <span className="board-train__car" aria-hidden="true">
+                <img src={trainIceUrl} alt="" />
+              </span>
+              <span className="board-train__label">
+                {commuteIsOpen ? "return →" : "board →"}
+              </span>
+            </button>
+          )}
+        </div>
 
-      <label className="slow-mode-settings__chance">
-        <span>
-          <strong>how often you commute</strong>
-          <output>{settings.chancePercent}%</output>
-        </span>
-        <input
-          type="range"
-          min="10"
-          max="100"
-          step="10"
-          value={settings.chancePercent}
-          disabled={!settings.enabled}
-          onChange={(event) =>
-            saveSettings({
-              ...settings,
-              chancePercent: Number(event.target.value),
-            })
-          }
-        />
-      </label>
+        {settings.enabled && (
+          <>
+            <div className="scenic-route__row scenic-route__options">
+              <label>
+                <span>how often</span>
+                <select
+                  className="scenic-route__chance"
+                  value={settings.chancePercent}
+                  onChange={(event) =>
+                    saveSettings({
+                      ...settings,
+                      chancePercent: Number(event.target.value),
+                    })
+                  }
+                >
+                  {CHANCE_OPTIONS.map((percent) => (
+                    <option key={percent} value={percent}>
+                      {percent}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label title="exact pages always stay private">
+                <span>share my stop</span>
+                <select
+                  value={
+                    settings.stopVisibility === "private" ? "private" : "domain"
+                  }
+                  onChange={(event) =>
+                    saveSettings({
+                      ...settings,
+                      stopVisibility:
+                        event.target.value === "private" ? "private" : "domain",
+                    })
+                  }
+                >
+                  <option value="domain">domain only</option>
+                  <option value="private">keep private</option>
+                </select>
+              </label>
+            </div>
 
-      <label className="slow-mode-settings__sharing">
-        <span>
-          <strong>share my stop</strong>
-          <small>exact pages always stay private</small>
-        </span>
-        <select
-          value={settings.stopVisibility === "private" ? "private" : "domain"}
-          disabled={!settings.enabled}
-          onChange={(event) =>
-            saveSettings({
-              ...settings,
-              stopVisibility:
-                event.target.value === "private" ? "private" : "domain",
-            })
-          }
-        >
-          <option value="domain">domain only</option>
-          <option value="private">keep private</option>
-        </select>
-      </label>
-
-      <div className="slow-mode-settings__today">
-        <span className="slow-mode-settings__label">today</span>
-        {ridesToday.length === 0 ? (
-          <p>no rides yet. no judgment.</p>
-        ) : (
-          <ol>
-            {ridesToday.slice(0, 3).map((ride) => (
-              <li key={ride.id}>
-                <time>
-                  {new Date(ride.startedAt).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </time>
-                <span>
-                  {rideDescription(ride)} · {ride.stopCount} stops
-                </span>
-              </li>
-            ))}
-          </ol>
+            {ridesToday.length === 0 ? (
+              <p className="scenic-route__history scenic-route__history--empty">
+                no rides yet today
+                {!cooldown.ready && ` · next ride in ${cooldownMinutes}m`}
+              </p>
+            ) : (
+              <details className="scenic-route__history">
+                <summary>
+                  <span>
+                    <strong>
+                      {ridesToday.length}{" "}
+                      {ridesToday.length === 1 ? "commute" : "commutes"}
+                    </strong>{" "}
+                    today
+                    {!cooldown.ready && ` · next ride in ${cooldownMinutes}m`}
+                  </span>
+                  <span className="scenic-route__history-toggle">
+                    history <span aria-hidden="true">▾</span>
+                  </span>
+                </summary>
+                <ol>
+                  {ridesToday.map((ride) => (
+                    <li key={ride.id}>
+                      <time>
+                        {new Date(ride.startedAt).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </time>
+                      <span>
+                        {rideDescription(ride)} · {ride.stopCount} stops
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
+          </>
         )}
-        <footer>
-          {ridesToday.length}{" "}
-          {ridesToday.length === 1 ? "commute" : "commutes"}
-        </footer>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }

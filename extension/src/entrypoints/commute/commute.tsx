@@ -398,7 +398,7 @@ function SlowModePlatformScene({
   return (
     <section
       className={`slow-mode-platform slow-mode-platform--${phase}`}
-      aria-label="Waiting at home station for the Slow Mode train"
+      aria-label="Waiting at home station for the scenic route train"
     >
       <span className="slow-mode-platform__stripe" />
       <span className="slow-mode-platform__pillar slow-mode-platform__pillar--left" />
@@ -1489,7 +1489,7 @@ function SlowModeProgress({
   const stopsLeft = Math.max(0, destinationStopIndex - completedIndex);
 
   return (
-    <section className="slow-mode-progress" aria-label="Slow Mode route progress">
+    <section className="slow-mode-progress" aria-label="Scenic route progress">
       <div className="slow-mode-progress__map" aria-hidden="true">
         <span className="slow-mode-progress__origin">origin</span>
         {stops.map((stop, index) => (
@@ -1670,7 +1670,7 @@ function InternetCommute({
 
         {bridgeUnavailable && (
           <p className="slow-mode-sharing" role="status">
-            Slow Mode connection unavailable · riding the public route
+            Scenic route connection unavailable · riding the public route
           </p>
         )}
 

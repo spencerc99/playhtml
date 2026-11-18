@@ -36,7 +36,8 @@ export function FeedbackForm() {
           browser: navigator.userAgent,
         }),
       });
-      if (!response.ok) throw new Error(`Feedback request failed: ${response.status}`);
+      if (!response.ok)
+        throw new Error(`Feedback request failed: ${response.status}`);
       setMessage("");
       setSubmissionState("success");
     } catch {
@@ -47,7 +48,7 @@ export function FeedbackForm() {
   if (!isOpen) {
     return (
       <button
-        className="portrait-home__feedback"
+        className="portrait-home__footer-link portrait-home__feedback"
         type="button"
         onClick={() => setIsOpen(true)}
       >
