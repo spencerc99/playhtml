@@ -18,6 +18,11 @@ export type LimitViolation = {
   reason: "Message Rate Limit Exceeded";
 };
 
+// Most shared-element entries one room stores. Each connect and register can
+// declare new ids, so the stored map is capped to keep one bad client from
+// growing it without end. Override with MAX_SHARED_PERMISSION_ENTRIES.
+export const DEFAULT_MAX_SHARED_PERMISSION_ENTRIES = 500;
+
 // 1013 is "Try Again Later": the client may reconnect once the room has room.
 export const ROOM_FULL_CLOSE_CODE = 1013;
 export const ROOM_FULL_CLOSE_REASON = "Room Full";
@@ -26,8 +31,6 @@ export const ROOM_FULL_CLOSE_REASON = "Room Full";
 export type ConnectionRateLimiter = {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 };
-
-// Matches the period configured on the binding in wrangler.jsonc.
 
 // Blocked IPs already logged in this isolate, so a flood from one IP logs once
 // a minute instead of once per request. Bounded so it can't grow without end.
@@ -45,6 +48,7 @@ function logEdgeRateLimitBlock(ip: string, pathname: string): void {
     `[ServerLimits] Edge rate limit: blocking ip=${ip} path=${pathname}`
   );
 }
+// Matches the period configured on the binding in wrangler.jsonc.
 const EDGE_RATE_LIMIT_RETRY_AFTER_SECONDS = 60;
 
 const DURABLE_OBJECT_OVERLOAD_MESSAGE =

@@ -107,14 +107,6 @@ export interface EventPage {
   nextCursor: EventPageCursor | null;
 }
 
-export interface DomainStats {
-  domain: string;
-  totalEvents: number;
-  eventsByType: Record<CollectionEventType, number>;
-  firstVisit: number;
-  lastVisit: number;
-}
-
 export interface StorageStats {
   totalEvents: number;
   /** Approximate byte size (sum of JSON string lengths; ~1:1 for ASCII event data). Single stringify per event for perf. */
@@ -1627,55 +1619,6 @@ export class LocalEventStore {
   }
 
   /**
-   * Get aggregate stats for a domain
-   */
-  async getDomainStats(domain: string): Promise<DomainStats> {
-    await this.ensureInitialized();
-
-    return new Promise((resolve, reject) => {
-      if (!this.db) {
-        reject(new Error("Database not initialized"));
-        return;
-      }
-
-      const transaction = this.db.transaction([STORE_NAME], "readonly");
-      const store = transaction.objectStore(STORE_NAME);
-      const domainIndex = store.index("domain");
-
-      let totalEvents = 0;
-      const eventsByType: Record<string, number> = {};
-      let firstVisit = Infinity;
-      let lastVisit = 0;
-
-      const keyRange = IDBKeyRange.only(domain);
-      const request = domainIndex.openCursor(keyRange);
-
-      request.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
-
-        if (cursor) {
-          const evt = cursor.value as StoredCollectionEvent;
-          totalEvents++;
-          eventsByType[evt.type] = (eventsByType[evt.type] || 0) + 1;
-          firstVisit = Math.min(firstVisit, evt.ts);
-          lastVisit = Math.max(lastVisit, evt.ts);
-          cursor.continue();
-        } else {
-          resolve({
-            domain,
-            totalEvents,
-            eventsByType: eventsByType as Record<CollectionEventType, number>,
-            firstVisit: firstVisit === Infinity ? 0 : firstVisit,
-            lastVisit,
-          });
-        }
-      };
-
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  /**
    * Read pre-computed stats from the domain_stats store (O(1) lookup).
    * Pass normalizedUrl to get page-level stats; omit for domain-level.
    */
@@ -3079,13 +3022,6 @@ export class LocalEventStore {
   }
 
   /**
-   * Add a single event — delegates to addEvents
-   */
-  async addEvent(event: CollectionEvent): Promise<void> {
-    await this.addEvents([event]);
-  }
-
-  /**
    * Get events that have not yet been uploaded (uploaded !== true)
    */
   async getPendingEvents(limit: number): Promise<CollectionEvent[]> {
@@ -3139,25 +3075,21 @@ export class LocalEventStore {
       const transaction = this.db.transaction([STORE_NAME], "readwrite");
       const store = transaction.objectStore(STORE_NAME);
 
-      let completed = 0;
-      const total = ids.length;
-
-      ids.forEach((id) => {
+      for (const id of ids) {
         const getRequest = store.get(id);
         getRequest.onsuccess = () => {
           const evt = getRequest.result;
-          if (evt) {
-            evt.uploaded = true;
-            evt.uploadState = UPLOAD_STATE_UPLOADED;
-            store.put(evt);
-          }
-          completed++;
-          if (completed === total) {
-            resolve();
-          }
+          if (!evt) return;
+          evt.uploaded = true;
+          evt.uploadState = UPLOAD_STATE_UPLOADED;
+          store.put(evt);
         };
-        getRequest.onerror = () => reject(getRequest.error);
-      });
+      }
+      // Resolves only once every put has committed; a failed request aborts
+      // the transaction and rejects.
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
   }
 
@@ -3281,10 +3213,6 @@ export class LocalEventStore {
 
     if (result.deleted > 0) await this.rebuildStatsAfterImport();
     return result;
-  }
-
-  async pruneOlderThan(cutoffTs: number): Promise<number> {
-    return this.pruneUploadedEventsOlderThan(cutoffTs);
   }
 
   /**

@@ -29,18 +29,13 @@
     </div>
     <script type="module" src="./react-test.tsx"></script>
     <script type="module">
-      // Update user count from cursor awareness
+      // Update the people count
       setTimeout(() => {
-        if (window.playhtml?.cursorClient) {
-          const updateCount = () => {
-            const colors = window.cursors?.allColors || [];
-            document.getElementById('userCount').textContent = colors.length;
-          };
-
-          // Update on changes
-          window.cursors?.on('allColors', updateCount);
-          updateCount();
-        }
+        window.playhtml?.ready.then(() => {
+          window.playhtml.people.onChange((everyone) => {
+            document.getElementById("userCount").textContent = everyone.length;
+          });
+        });
       }, 1000);
     </script>
   </body>

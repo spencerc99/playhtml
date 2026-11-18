@@ -83,6 +83,7 @@ describe("background identity messages", () => {
           captureVisibleTab: vi.fn().mockResolvedValue("data:image/png;base64,test"),
         },
         alarms: {
+          get: vi.fn().mockResolvedValue(undefined),
           create: vi.fn(),
           onAlarm: { addListener: vi.fn() },
         },

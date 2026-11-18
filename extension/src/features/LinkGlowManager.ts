@@ -236,6 +236,9 @@ export class LinkGlowManager {
     }
     this.cleanups = [];
 
+    for (const link of [...this.originalStyles.keys()]) {
+      this.removeGlow(link);
+    }
     this.visibleLinks.clear();
     this.originalStyles.clear();
     this.linkClasses.clear();

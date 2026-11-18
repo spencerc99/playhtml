@@ -1,5 +1,5 @@
-// Spatial partitioning grid for efficient proximity detection
-// Divides screen space into cells and only checks cursors in nearby cells
+// ABOUTME: Spatial partitioning grid for efficient cursor proximity detection.
+// ABOUTME: Divides screen space into cells and only checks cursors in nearby cells.
 
 export interface Point {
   x: number;

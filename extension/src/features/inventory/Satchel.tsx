@@ -162,8 +162,12 @@ export function Satchel({ inventory, openSignal }: Props) {
       {pageObjectsVisible && !isOpen && (
         <div
           ref={nubRef}
-          className="wwo-nub edge-l"
-          style={{ left: -8, top: pos.current.top }}
+          className={`wwo-nub ${edge.current}`}
+          style={
+            edge.current === "edge-r"
+              ? { left: "auto", right: -8, top: pos.current.top }
+              : { left: -8, right: "auto", top: pos.current.top }
+          }
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

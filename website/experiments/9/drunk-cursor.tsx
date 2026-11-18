@@ -13,7 +13,7 @@ import {
   PlayProvider,
   usePlayContext,
   withSharedState,
-  useCursorPresences,
+  usePeople,
 } from "@playhtml/react";
 import { playhtml } from "playhtml";
 import { mountExperimentBadge } from "../../components/experimentBadge";
@@ -35,33 +35,28 @@ const DrunkCursorController = withSharedState(
     defaultData: {
       drinkTypes: Array(DRINK_COUNT).fill("beer") as DrinkType[],
     },
-    myDefaultAwareness: {
+    defaultPresence: {
       drunkLevel: 0,
     },
   },
-  ({
-    data,
-    setData,
-    myAwareness,
-    setMyAwareness,
-    awarenessByStableId,
-  }) => {
+  ({ data, setData, everyone, me, setMyPresence }) => {
     // Use ref to track current drunk level for interval callbacks and prevent flicker
     const drunkLevelRef = useRef(0);
 
-    // Get drunk level from awareness (our own awareness)
+    // Get drunk level from my presence on this element
     // Use a more stable check - treat undefined as 0, but preserve actual 0 values
+    const myPresence = me.presence;
     const drunkLevel = useMemo(() => {
-      if (myAwareness === undefined || myAwareness === null) {
-        // If awareness is undefined but we have a ref value, use that to prevent flicker
+      if (myPresence === undefined || myPresence === null) {
+        // If presence is undefined but we have a ref value, use that to prevent flicker
         return drunkLevelRef.current;
       }
       const level =
-        typeof myAwareness.drunkLevel === "number" ? myAwareness.drunkLevel : 0;
+        typeof myPresence.drunkLevel === "number" ? myPresence.drunkLevel : 0;
       // Update ref whenever we get a valid value
       drunkLevelRef.current = level;
       return level;
-    }, [myAwareness]);
+    }, [myPresence]);
 
     const wobbleAnimationRef = useRef<number | null>(null);
     const [mouseOffset, setMouseOffset] = useState({ x: 0, y: 0 });
@@ -74,10 +69,24 @@ const DrunkCursorController = withSharedState(
     const lastInterferenceTimeRef = useRef(0);
     const lastUpdateTimeRef = useRef(0); // Track last mousemove time for wobble detection
     const wobblePhaseRef = useRef({ x: 0, y: 0, lastResetX: 0, lastResetY: 0 }); // Track wobble phase for smooth/jerk pattern
-    const { isLoading, cursors, getMyPlayerIdentity } = useContext(PlayContext);
-    const myStableId = getMyPlayerIdentity()?.publicKey ?? null;
+    const { isLoading } = useContext(PlayContext);
+    const { everyone: cursorPeople, me: pageMe } = usePeople("cursor");
+    const myStableId = pageMe.pid || null;
     const drunkDecayIntervalRef = useRef<number | null>(null);
-    const cursorPresences = useCursorPresences();
+    // Everyone's cursor and color, keyed by pid
+    const cursorPresences = useMemo(
+      () =>
+        new Map(
+          cursorPeople.map(
+            (person) =>
+              [
+                person.pid,
+                { cursor: person.presence.cursor ?? null, color: person.color },
+              ] as const,
+          ),
+        ),
+      [cursorPeople],
+    );
     // Use ref to track latest cursor positions without triggering effect restarts
     const otherCursorsRef = useRef(cursorPresences);
     // Update ref synchronously (not in useEffect) to avoid timing issues with animation loop
@@ -101,23 +110,32 @@ const DrunkCursorController = withSharedState(
     }, [isLoading]);
 
     // Get my user ID (stable ID)
-    const getMyUserId = useCallback((): string | null => {
-      const identity = getMyPlayerIdentity();
-      return identity?.publicKey ?? null;
-    }, [getMyPlayerIdentity]);
+    const getMyUserId = useCallback(
+      (): string | null => myStableId,
+      [myStableId],
+    );
 
-    // Get drunk level for a user from awareness (using stable ID)
+    // Everyone's drunk level on this element, keyed by pid
+    const drunkLevelByPid = useMemo(
+      () =>
+        new Map(
+          everyone.map(
+            (person) => [person.pid, person.presence?.drunkLevel ?? 0] as const,
+          ),
+        ),
+      [everyone],
+    );
+
+    // Get drunk level for a user from their presence (using pid)
     const getUserDrunkLevel = useCallback(
       (stableId: string, isMyCursor: boolean = false): number => {
         if (isMyCursor) {
           return drunkLevel;
         }
 
-        // Use awarenessByStableId from withSharedState
-        const userAwareness = awarenessByStableId.get(stableId);
-        return userAwareness?.drunkLevel ?? 0;
+        return drunkLevelByPid.get(stableId) ?? 0;
       },
-      [drunkLevel, awarenessByStableId],
+      [drunkLevel, drunkLevelByPid],
     );
 
     // Track own cursor movements
@@ -511,7 +529,7 @@ const DrunkCursorController = withSharedState(
 
         const newLevel = Math.max(0, currentLevel - 1);
         drunkLevelRef.current = newLevel; // Keep ref in sync so next tick reads correct value
-        setMyAwareness({ drunkLevel: newLevel });
+        setMyPresence({ drunkLevel: newLevel });
 
         if (newLevel === 0) {
           setMouseOffset({ x: 0, y: 0 });
@@ -538,28 +556,23 @@ const DrunkCursorController = withSharedState(
         let baseColor: string | undefined;
 
         if (isMyCursor) {
-          // Same source as playhtml: cursor client's playerIdentity (exposed as cursors.color in PlayContext)
-          baseColor = cursors?.color;
+          baseColor = pageMe.color;
         }
         if (!baseColor) {
-          // Other users: use cursor presence from the new API
-          const cursorPresence = cursorPresences.get(stableId);
-          baseColor =
-            cursorPresence?.playerIdentity?.playerStyle?.colorPalette?.[0];
+          // Other users: their person color
+          baseColor = cursorPresences.get(stableId)?.color;
         }
         if (!baseColor) {
           // Fallback to my color
-          const myIdentity = getMyPlayerIdentity();
-          baseColor =
-            myIdentity?.playerStyle?.colorPalette?.[0] ?? cursors?.color;
+          baseColor = pageMe.color;
         }
 
         return baseColor;
       },
-      [cursorPresences, cursors, getMyPlayerIdentity],
+      [cursorPresences, pageMe.color],
     );
 
-    const myColor = cursors?.color;
+    const myColor = pageMe.color;
 
     // Welcome modal: show on first visit, persist dismissal in localStorage
     const [welcomeDismissed, setWelcomeDismissed] = useState(() => {
@@ -668,7 +681,7 @@ const DrunkCursorController = withSharedState(
                   ? Math.max(0, currentLevel - 30)
                   : Math.min(100, currentLevel + 20);
               drunkLevelRef.current = newLevel;
-              setMyAwareness({ drunkLevel: newLevel });
+              setMyPresence({ drunkLevel: newLevel });
             }
             setAnimatingSlotData((prev) => ({
               ...prev,
@@ -738,7 +751,7 @@ const DrunkCursorController = withSharedState(
           }
         }, STEP_INTERVAL);
       },
-      [setMyAwareness],
+      [setMyPresence],
     );
 
     // Collaborative: when anyone drinks, all clients play sound and start local animation
@@ -878,8 +891,8 @@ const DrunkCursorController = withSharedState(
                       height: isFullyActive
                         ? "100%"
                         : isPartiallyActive
-                        ? `${fillPercentage}%`
-                        : "0%",
+                          ? `${fillPercentage}%`
+                          : "0%",
                     }}
                   >
                     <img
@@ -1090,7 +1103,7 @@ const DrunkCursorController = withSharedState(
               ? state === "draining" || state === "falling"
                 ? slotAnim.consumedType
                 : slotAnim.nextType
-              : drinkTypes[i] ?? "beer";
+              : (drinkTypes[i] ?? "beer");
             const isWater = displayType === "water";
 
             // Don't render hidden drinks
