@@ -241,7 +241,7 @@ export interface RecentEventQuery {
   /**
    * md5 hashes of one page's stored URL forms (see pageEventUrlVariants). Reads
    * through the page URL index (page_events_page) instead of the domain filter;
-   * cannot be combined with `domain` or `pid`.
+   * cannot be combined with `domain` or `pid`, and needs a non-null `type`.
    */
   urlHashes: string[] | null;
   pid: string | null;
@@ -271,11 +271,15 @@ export async function loadRecentEvents(
   if (urlHashes !== null && (query.domain !== null || query.pid !== null)) {
     throw new Error('A page query cannot also filter by domain or participant');
   }
+  const pageType = query.type;
+  if (urlHashes !== null && pageType === null) {
+    throw new Error('A page query needs an event type');
+  }
   const { rows, error } = await loadRecentEventRows(query.limit, async (cursor, pageSize) => {
     if (urlHashes !== null) {
       const result = await supabase.rpc('page_events_page', {
         p_url_hashes: urlHashes,
-        p_type: query.type,
+        p_type: pageType,
         p_from: query.from,
         p_to: query.to,
         ...(cursor ? { p_before_ts: cursor.ts, p_before_id: cursor.id } : {}),
@@ -328,7 +332,7 @@ export async function loadRecentEvents(
  * - urlHash: 1-4 comma-separated md5 hex digests of one page's stored URL forms
  *   (optional; see pageEventUrlVariants). Returns events whose url hashes to one
  *   of them, so the page URL itself never reaches the Worker. Cannot be combined
- *   with domain or pid.
+ *   with domain or pid, or with type=all: a page is read one event type at a time.
  * - pid: Participant ID filter (optional)
  * - from: ISO date string, inclusive lower bound on ts (optional)
  * - to: ISO date string, inclusive upper bound on ts (optional)
@@ -369,6 +373,12 @@ export async function handleRecent(
       if (domain !== null || pid !== null) {
         return new Response(
           JSON.stringify({ error: 'urlHash cannot be combined with domain or pid' }),
+          { status: 400, headers }
+        );
+      }
+      if (url.searchParams.get('type') === 'all') {
+        return new Response(
+          JSON.stringify({ error: 'urlHash cannot be combined with type=all' }),
           { status: 400, headers }
         );
       }

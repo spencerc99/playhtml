@@ -378,7 +378,7 @@ describe('recent events for one page', () => {
     const { rpcCalls } = fakePageIndex(rows);
 
     const result = await loadRecentEvents(env, {
-      type: null,
+      type: 'cursor',
       limit: 1200,
       domain: null,
       urlHashes: [md5(PAGE)],
@@ -399,6 +399,24 @@ describe('recent events for one page', () => {
     });
   });
 
+  it('refuses a page query with no event type before reading anything', async () => {
+    const { rpcCalls } = fakePageIndex([{ ...makeRow(0), url: PAGE }]);
+
+    await expect(
+      loadRecentEvents(env, {
+        type: null,
+        limit: 1000,
+        domain: null,
+        urlHashes: PAGE_HASHES,
+        pid: null,
+        from: null,
+        to: null,
+        requireTitle: false,
+      }),
+    ).rejects.toThrow('A page query needs an event type');
+    expect(rpcCalls).toHaveLength(0);
+  });
+
   it('handles GET /events/recent?urlHash= through the page index', async () => {
     const { rpcCalls } = fakePageIndex([{ ...makeRow(0), url: PAGE }]);
 
@@ -417,6 +435,7 @@ describe('recent events for one page', () => {
   it.each([
     [`urlHash=${md5(PAGE)}&domain=en.wikipedia.org`, 'urlHash cannot be combined with domain or pid'],
     [`urlHash=${md5(PAGE)}&pid=someone`, 'urlHash cannot be combined with domain or pid'],
+    [`urlHash=${md5(PAGE)}&type=all`, 'urlHash cannot be combined with type=all'],
     [`urlHash=${encodeURIComponent(PAGE)}`, 'Invalid urlHash (expected 1-4 comma-separated md5 hex digests)'],
     ['urlHash=', 'Invalid urlHash (expected 1-4 comma-separated md5 hex digests)'],
     [`urlHash=${Array(5).fill(md5(PAGE)).join(',')}`, 'Invalid urlHash (expected 1-4 comma-separated md5 hex digests)'],
