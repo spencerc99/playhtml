@@ -183,8 +183,16 @@ export function ScrapsPage() {
   const closing = closingRef.current;
   /** True while a collage is being read back to reopen the studio on it. */
   const [resuming, setResuming] = useState(false);
-  /** A problem to show over the collage list: a failed reopen, or a lost last change. */
+  /** A collage that could not be reopened, said over the collage list. */
   const [listNotice, setListNotice] = useState<string | null>(null);
+  /** A last change that could not be stored, kept until the list has shown it. */
+  const [unsavedNotice, setUnsavedNotice] = useState<string | null>(null);
+  const unsavedNoticeShownRef = useRef(false);
+  const listShowing =
+    mode === "create" && ready && Boolean(createMode) && !resuming && !studioOpen;
+  useEffect(() => {
+    if (unsavedNotice && listShowing) unsavedNoticeShownRef.current = true;
+  }, [unsavedNotice, listShowing]);
 
   const openStudio = (record: CollageRecord | null) => {
     placeGenerationRef.current += 1;
@@ -196,6 +204,10 @@ export function ScrapsPage() {
     setStudioOpen(true);
     setResuming(false);
     setListNotice(null);
+    if (unsavedNoticeShownRef.current) {
+      unsavedNoticeShownRef.current = false;
+      setUnsavedNotice(null);
+    }
   };
 
   const closeStudio = () => {
@@ -664,12 +676,13 @@ export function ScrapsPage() {
           }}
           onLeave={closeStudio}
           onClosed={noteStudioClosing}
-          onUnsaved={({ title }) =>
-            setListNotice(
+          onUnsaved={({ title }) => {
+            unsavedNoticeShownRef.current = false;
+            setUnsavedNotice(
               `could not save the last change to ${title || "untitled"}`,
-            )
-          }
-          notice={listNotice}
+            );
+          }}
+          notice={listNotice ?? unsavedNotice}
         />
       )}
       {mode === "create" && ready && (!createMode || resuming) && (

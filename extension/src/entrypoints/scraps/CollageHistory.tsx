@@ -75,6 +75,8 @@ export function CollageHistory({
   const [error, setError] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const filePicker = useRef<HTMLInputElement>(null);
+  /** Collages being copied or deleted, so a second press while one waits does nothing. */
+  const busyIds = useRef(new Set<string>());
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +122,8 @@ export function CollageHistory({
    * is there to open the moment the button is pressed.
    */
   const duplicate = async (id: string) => {
+    if (busyIds.current.has(id)) return;
+    busyIds.current.add(id);
     try {
       await settling();
       const source = await loadCollage(id);
@@ -136,6 +140,8 @@ export function CollageHistory({
       );
     } catch (copyError) {
       setError(`could not copy that collage — ${errorText(copyError)}`);
+    } finally {
+      busyIds.current.delete(id);
     }
   };
 
@@ -210,6 +216,16 @@ export function CollageHistory({
    * link that can be read, so it is deleted as it is.
    */
   const remove = async (id: string, readable = true) => {
+    if (busyIds.current.has(id)) return;
+    busyIds.current.add(id);
+    try {
+      await removeStored(id, readable);
+    } finally {
+      busyIds.current.delete(id);
+    }
+  };
+
+  const removeStored = async (id: string, readable: boolean) => {
     await settling();
     let publication: CollageRecord["publication"];
     if (readable) {

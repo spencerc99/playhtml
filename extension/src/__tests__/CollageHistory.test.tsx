@@ -573,4 +573,18 @@ describe("a collage whose studio is still saving as it is left", () => {
     expect(titles).toEqual(["a walk, edited", "a walk, edited copy"]);
     expect((await loadCollage("collage_1"))?.title).toBe("a walk, edited");
   });
+
+  it("makes one copy when duplicate is pressed again while it waits", async () => {
+    await saveCollage(record());
+    const studio = await leaveMidWrite(record({ title: "a walk, edited" }));
+    const { view } = await mount(vi.fn(), () => studio.closing);
+
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await act(async () => buttonNamed(view, "Duplicate a walk").click());
+    await settle();
+    studio.land();
+    await settle();
+
+    expect(await listCollages()).toHaveLength(2);
+  });
 });
