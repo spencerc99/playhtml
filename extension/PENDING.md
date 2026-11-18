@@ -20,4 +20,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Delete everything collected on a site you turned off, on your computer and the shared copy, from the site's menu in Settings.
 - Number keys no longer set off emotes while you are typing.
 - Collages keep the last thing you changed when you leave the studio, and saving tries again on its own if it fails.
-- Saving a collage as a file now works in Safari.
+- Saving a collage's file from your list of collages (the one you can open again later) now works in Safari. Saving pictures of a collage already did.
