@@ -244,9 +244,10 @@ works; read it instead of trusting a summary here. Paths are relative to
 
 ### Things the code will not tell you
 
-- **A content script's `fetch` carries the page's Origin**, which the Worker
-  refuses. Worker reads from a web page go through the background and are
-  signed with the identity key.
+- **A content script's `fetch` carries the page's Origin.** `/events/recent`
+  refuses origins it does not know, so shared-event reads from a web page go
+  through the background and are signed with the identity key. Each Worker
+  route decides its own access; check the route before assuming.
 - **Dev builds talk to the production Worker** unless `VITE_WORKER_URL` is set.
   Point them at `wrangler dev` with `VITE_WORKER_URL=http://localhost:8787`.
 - **Email addresses are never linked to browsing data.** `/subscribe` accepts
