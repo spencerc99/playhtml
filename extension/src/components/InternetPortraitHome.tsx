@@ -273,39 +273,10 @@ export function InternetPortraitHome({
         )}
         <FeatureGate feature="COMMUTE">
           {onViewCommute && (
-            <>
-              {!phone && (
-                <button
-                  className="commute-entry"
-                  onClick={onViewCommute}
-                  aria-label={
-                    commuteIsOpen
-                      ? "Return to the Internet Commute"
-                      : "Board the Internet Commute"
-                  }
-                >
-                  <span className="commute-entry__route" aria-hidden="true">
-                    <span className="commute-entry__stop commute-entry__stop--blue" />
-                    <span className="commute-entry__stop commute-entry__stop--gold" />
-                    <span className="commute-entry__stop commute-entry__stop--rust" />
-                  </span>
-                  <span className="commute-entry__copy">
-                    <span className="commute-entry__eyebrow">BOARDING NOW</span>
-                    <strong>
-                      {commuteIsOpen
-                        ? "Return to the internet commute"
-                        : "Board the internet commute"}
-                    </strong>
-                    <span>A slow train through pages people found lately.</span>
-                  </span>
-                  <span className="commute-entry__door" aria-hidden="true">
-                    <span />
-                    <span />
-                  </span>
-                </button>
-              )}
-              <SlowModeSettings />
-            </>
+            <SlowModeSettings
+              onBoard={phone ? undefined : onViewCommute}
+              commuteIsOpen={commuteIsOpen}
+            />
           )}
         </FeatureGate>
         {!phone && portraitPreview}
@@ -374,12 +345,13 @@ export function InternetPortraitHome({
         <button
           type="button"
           aria-label="settings"
-          title="Settings"
-          className="portrait-home__changelog-link portrait-home__settings-link"
+          className="portrait-home__footer-link"
           onClick={onOpenSettings}
         >
-          <GearSvg size={14} />
+          <GearSvg size={13} />
+          settings
         </button>
+        <FeedbackForm />
         <button
           type="button"
           className="portrait-home__changelog-link"
@@ -387,7 +359,6 @@ export function InternetPortraitHome({
         >
           changelog
         </button>
-        <FeedbackForm />
       </footer>
     </div>
   );

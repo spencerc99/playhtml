@@ -19,3 +19,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Beta: search your scraps by what's in the pictures, like "eye" or "shoe". Turn it on from the scraps page search; it downloads a picture-reading model once and runs entirely on your computer.
 - Delete everything collected on a site you turned off, on your computer and the shared copy, from the site's menu in Settings.
 - Number keys no longer set off emotes while you are typing.
+- Beta: Slow Mode is now called scenic route, and its popup controls take up much less space. You can hide the boarding sign and board from a small train button instead.
