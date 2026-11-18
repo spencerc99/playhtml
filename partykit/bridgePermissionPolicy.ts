@@ -48,6 +48,9 @@ function readDeclaration(
   };
   if (typeof elementId !== "string" || !elementId) return null;
   if (elementId === "__proto__") return null;
+  // An omitted `permissions` means read-write; a present non-string one is
+  // malformed rather than a reason to guess read-write.
+  if (permissions !== undefined && typeof permissions !== "string") return null;
   return { elementId, permission: parseSharedElementPermission(permissions) };
 }
 

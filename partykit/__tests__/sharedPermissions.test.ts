@@ -320,6 +320,30 @@ describe("shared element permissions on the source room", () => {
     source.destroy();
   });
 
+  it("drops declarations whose permissions are present but not a string", async () => {
+    const stored: PermissionMap = { locked: "read-only", open: "read-only" };
+    const onlyMalformed = await createSourceRoom(stored);
+    await connectSource(onlyMalformed.room, [
+      { elementId: "locked", permissions: 42 as any },
+      { elementId: "open", permissions: ["read-only"] as any },
+    ]);
+    await registerSharedElement(onlyMalformed.room, {
+      elementId: "locked",
+      permissions: null as any,
+    });
+    expect(onlyMalformed.storage.puts).not.toContain("sharedPermissions");
+    expect(onlyMalformed.storedPermissions()).toEqual(stored);
+    onlyMalformed.destroy();
+
+    const mixed = await createSourceRoom(stored);
+    await connectSource(mixed.room, [
+      { elementId: "locked", permissions: 42 as any },
+      { elementId: "open" },
+    ]);
+    expect(mixed.storedPermissions()).toEqual({ open: "read-write" });
+    mixed.destroy();
+  });
+
   it("serves and accepts writes only for declared ids, never Object.prototype names", async () => {
     const source = await createSourceRoom({ open: "read-write" });
 
