@@ -24,7 +24,11 @@ import { useSettledFeatureState } from "../../features/useFeatureAccess";
 import { useMeaningSearch } from "./meaning/useMeaningSearch";
 import { MeaningSearchControl } from "./meaning/MeaningSearchControl";
 import { parsePlaceHash, placeHash, type ScrapsPlace } from "./scrapsPlace";
-import { resumeStudio } from "./studioResume";
+import {
+  closingStudios,
+  resumeStudio,
+  type ClosingStudios,
+} from "./studioResume";
 import type { CollageRecord } from "./collageRecord";
 import {
   inBackground,
@@ -170,12 +174,13 @@ export function ScrapsPage() {
   /** The open collage's id, read by a reopen that waited on a closing save. */
   const openCollageIdRef = useRef<string | null>(null);
   /**
-   * Settles once the studio that last closed has stored everything it had.
-   * Reopening waits on it, so it reads the newest copy and the closing
-   * studio's late writes never land over the reopened one's.
+   * Every studio that has closed but is still storing. Reopening waits for all
+   * of them, so it reads the newest copy and no closing studio's late writes
+   * land over the reopened one's.
    */
-  const closingRef = useRef<Promise<void>>(Promise.resolve());
-  const closingPendingRef = useRef(false);
+  const closingRef = useRef<ClosingStudios | null>(null);
+  closingRef.current ??= closingStudios();
+  const closing = closingRef.current;
   /** True while a collage is being read back to reopen the studio on it. */
   const [resuming, setResuming] = useState(false);
   const [reopenProblem, setReopenProblem] = useState<string | null>(null);
@@ -212,7 +217,7 @@ export function ScrapsPage() {
     setReopenProblem(null);
     const { loadCollage } = await import("./collageStore");
     const resumed = await resumeStudio({
-      closing: closingRef.current,
+      closing: closing.settled(),
       collageId,
       load: loadCollage,
     });
@@ -228,11 +233,7 @@ export function ScrapsPage() {
   };
 
   const noteStudioClosing = (stored: Promise<void>) => {
-    closingRef.current = stored;
-    closingPendingRef.current = true;
-    void stored.then(() => {
-      if (closingRef.current === stored) closingPendingRef.current = false;
-    });
+    closing.note(stored);
   };
 
   /** Back to create: an open studio comes back on its newest stored copy. */
@@ -270,7 +271,7 @@ export function ScrapsPage() {
     setResuming(true);
     const { loadCollage } = await import("./collageStore");
     const resumed = await resumeStudio({
-      closing: closingRef.current,
+      closing: closing.settled(),
       collageId: () => id,
       load: loadCollage,
     });
@@ -644,7 +645,7 @@ export function ScrapsPage() {
           onEdit={(record) =>
             // While a closing studio is still storing, the list's copy may be
             // older than what is about to land, so it is read again after.
-            closingPendingRef.current
+            closing.pending()
               ? void reopenStudio(() => record.id)
               : openStudio(record)
           }

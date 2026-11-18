@@ -110,7 +110,7 @@ import {
   type BackLook,
   type CollageBackContent,
 } from "./collageBack";
-import { loadCollage, saveCollage } from "./collageStore";
+import { loadCollage, saveCollage, saveCollagePreview } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
 import {
@@ -686,6 +686,7 @@ export function CollageStudio({
         pieces: draftRef.current.record.pieces,
       }),
     store: saveCollage,
+    storePreview: saveCollagePreview,
     onStored: (record) => {
       setChangedAt(record.updatedAt);
       onSaved(record);

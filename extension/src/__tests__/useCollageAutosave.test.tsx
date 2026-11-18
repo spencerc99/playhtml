@@ -49,6 +49,19 @@ function deferredBlob() {
   return { promise, settle, fail };
 }
 
+/**
+ * Puts a picture onto the newest record in `stored`, the way the real store
+ * does: only while that record is still the arrangement it was drawn from.
+ */
+function previewOnto(stored: CollageRecord[]) {
+  return async (id: string, arrangedAt: number, image: Blob) => {
+    const newest = [...stored].reverse().find((record) => record.id === id);
+    if (!newest || newest.updatedAt !== arrangedAt) return false;
+    stored.push({ ...newest, preview: { drawn: true, image } });
+    return true;
+  };
+}
+
 function baseRecord(preview: CollageRecord["preview"]): CollageRecord {
   return {
     id: "collage_1",
@@ -115,6 +128,7 @@ describe("reopening a collage that already has a picture", () => {
       store: async (record) => {
         stored.push(record);
       },
+      storePreview: previewOnto(stored),
       onStored: () => {},
       startsStored: true,
       reopening: baseRecord({ drawn: true, image: loaded }),
@@ -148,6 +162,7 @@ describe("reopening a collage that already has a picture", () => {
       store: async (record) => {
         stored.push(record);
       },
+      storePreview: previewOnto(stored),
       onStored: () => {},
       startsStored: true,
       reopening: baseRecord({ drawn: true, image: loaded }),
@@ -197,6 +212,7 @@ describe("two bakes overlapping", () => {
       store: async (record) => {
         stored.push(record);
       },
+      storePreview: previewOnto(stored),
       onStored: () => {},
       startsStored: true,
       reopening: baseRecord({ drawn: true, image: loaded }),
@@ -263,6 +279,7 @@ describe("the picture the back shows through", () => {
       }),
       bake: () => bake.promise,
       store: async () => {},
+      storePreview: async () => true,
       onStored: () => {},
       startsStored: true,
       reopening: baseRecord({ drawn: true, image: loaded }),
@@ -303,6 +320,7 @@ describe("leaving the studio", () => {
       store: async (record) => {
         stored.push(record);
       },
+      storePreview: previewOnto(stored),
       onStored: () => {},
       startsStored: true,
       reopening: baseRecord({ drawn: true, image: loaded }),
@@ -332,6 +350,7 @@ describe("leaving the studio", () => {
       store: async (record) => {
         stored.push(record);
       },
+      storePreview: previewOnto(stored),
       onStored: () => {},
       startsStored: true,
       reopening: baseRecord({ drawn: false, reason: "x" }),
@@ -376,6 +395,7 @@ describe("leaving the studio while the drawer fails", () => {
         attempts.push(record);
         throw new Error("the collage drawer would not open");
       },
+      storePreview: previewOnto(attempts),
       onStored: () => {},
       startsStored: true,
       reopening: baseRecord({ drawn: true, image: loaded }),
@@ -427,6 +447,7 @@ describe("a write that fails", () => {
         }
         stored.push(record);
       },
+      storePreview: previewOnto(stored),
       onStored: () => {},
       startsStored: true,
       reopening: baseRecord({ drawn: true, image: loaded }),
@@ -468,6 +489,7 @@ describe("the first save of a new collage", () => {
       store: async (record) => {
         stored.push(record);
       },
+      storePreview: previewOnto(stored),
       onStored: () => {},
       startsStored: false,
       timers,

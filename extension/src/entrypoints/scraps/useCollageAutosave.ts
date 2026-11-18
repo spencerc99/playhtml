@@ -41,6 +41,17 @@ export interface CollageAutosaveOptions {
   bake: () => Promise<Blob>;
   /** Stores the record. */
   store: (record: CollageRecord) => Promise<void>;
+  /**
+   * Puts a re-drawn picture on the stored collage, only while the drawer still
+   * holds the arrangement stamped `arrangedAt`. Resolves false when it does
+   * not, so a bake that finishes after a newer write, or after the collage was
+   * deleted, never puts an older arrangement back.
+   */
+  storePreview: (
+    id: string,
+    arrangedAt: number,
+    image: Blob,
+  ) => Promise<boolean>;
   /** Told after every landed write, so history can refresh. */
   onStored: (record: CollageRecord) => void;
   /** Whether this studio opened on a collage that is already in the drawer. */
@@ -234,16 +245,26 @@ export function useCollageAutosave(
                 "A preview was drawn for a collage that has not been stored",
               );
             }
-            // Only the picture is written in. The arrangement and its
-            // `updatedAt` are the ones that already landed, so a re-bake never
-            // counts as a change to the collage itself.
-            const stored: CollageRecord = {
-              ...written,
-              preview: { drawn: true, image: baked },
-            };
-            await optionsRef.current.store(stored);
-            storedRef.current = stored;
-            optionsRef.current.onStored(stored);
+            // Only the picture is written in, and only onto the arrangement it
+            // was drawn from. The arrangement and its `updatedAt` are the ones
+            // that already landed, so a re-bake never counts as a change to
+            // the collage itself. A studio that has closed can finish its bake
+            // after the collage was reopened and written again, or deleted;
+            // then the picture is dropped rather than bringing back the older
+            // arrangement.
+            const landed = await optionsRef.current.storePreview(
+              written.id,
+              written.updatedAt,
+              baked,
+            );
+            if (landed) {
+              const stored: CollageRecord = {
+                ...written,
+                preview: { drawn: true, image: baked },
+              };
+              storedRef.current = stored;
+              optionsRef.current.onStored(stored);
+            }
             dispatchRef.current({ kind: "bakeSucceeded", token });
           } catch (error) {
             // A superseded bake's failure says nothing about the arrangement

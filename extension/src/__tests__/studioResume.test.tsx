@@ -18,8 +18,12 @@ import {
   listCollages,
   loadCollage,
   saveCollage,
+  saveCollagePreview,
 } from "../entrypoints/scraps/collageStore";
-import { resumeStudio } from "../entrypoints/scraps/studioResume";
+import {
+  closingStudios,
+  resumeStudio,
+} from "../entrypoints/scraps/studioResume";
 import type {
   CollagePiece,
   CollageRecord,
@@ -158,6 +162,10 @@ async function openStudio(options: {
   opened: CollageRecord | null;
   writes: CollageRecord[];
   onSaved?: (record: CollageRecord) => void;
+  /** Draws the picture; by default it fails, as nothing can draw in a test. */
+  bake?: () => Promise<Blob>;
+  /** The `updatedAt` each write stamps; by default the clock. */
+  stamp?: () => number;
 }): Promise<Studio> {
   let pieces = options.opened?.pieces.map((each) => ({ ...each })) ?? [];
   let latest: CollageAutosave | null = null;
@@ -166,16 +174,22 @@ async function openStudio(options: {
   function Harness() {
     latest = useCollageAutosave({
       draft: () => ({
-        record: { ...collage(options.id, pieces), updatedAt: Date.now() },
+        record: {
+          ...collage(options.id, pieces),
+          updatedAt: options.stamp?.() ?? Date.now(),
+        },
         hasContent: pieces.length > 0,
       }),
-      bake: async () => {
-        throw new Error("not drawn in a test");
-      },
+      bake:
+        options.bake ??
+        (async () => {
+          throw new Error("not drawn in a test");
+        }),
       store: async (record) => {
         options.writes.push(record);
         await saveCollage(record);
       },
+      storePreview: saveCollagePreview,
       onStored: (record) => options.onSaved?.(record),
       startsStored: options.opened !== null,
       reopening: options.opened,
@@ -319,5 +333,143 @@ describe("a collage that cannot be read back", () => {
       },
     });
     expect(resumed).toEqual({ kind: "failed", reason: "the drawer is stuck" });
+  });
+});
+
+/** A promise the test settles when it chooses. */
+function deferred<T>() {
+  let settle!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, settle };
+}
+
+/** Whether a promise has settled within a short real-time wait. */
+async function settlesSoon(promise: Promise<unknown>): Promise<boolean> {
+  const pending = Symbol("pending");
+  const outcome = await Promise.race([
+    promise.then(
+      () => "settled",
+      () => "settled",
+    ),
+    new Promise((resolve) => setTimeout(() => resolve(pending), 50)),
+  ]);
+  return outcome !== pending;
+}
+
+/**
+ * The row exactly as the drawer holds it. A picture blob does not survive the
+ * in-memory IndexedDB's copy, so the stored row is read directly rather than
+ * through `loadCollage`, which would refuse it.
+ */
+async function storedRow(
+  id: string,
+): Promise<{ updatedAt: number; pieces: CollagePiece[]; preview: { drawn: boolean } }> {
+  return new Promise((resolve, reject) => {
+    const open = fakeIndexedDB.open(DB_NAME);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const read = db.transaction("collages").objectStore("collages").get(id);
+      read.onerror = () => reject(read.error);
+      read.onsuccess = () => {
+        db.close();
+        resolve(read.result);
+      };
+    };
+  });
+}
+
+describe("several studios closing one after another", () => {
+  it("waits for every one, not only the last to close", async () => {
+    const closing = closingStudios();
+    const stillBaking = deferred<void>();
+    closing.note(stillBaking.promise);
+    // A new collage left empty: it has nothing to store and settles at once.
+    closing.note(Promise.resolve());
+    await settle();
+
+    expect(closing.pending()).toBe(true);
+    expect(await settlesSoon(closing.settled())).toBe(false);
+
+    stillBaking.settle();
+    await settle();
+    expect(closing.pending()).toBe(false);
+    expect(await settlesSoon(closing.settled())).toBe(true);
+  });
+});
+
+describe("a closed studio's picture finishing after the collage was reopened", () => {
+  it("never puts the older arrangement back over the newer one", async () => {
+    const original = piece({ x: 10 });
+    await saveCollage({
+      ...collage("collage_a", [original]),
+      preview: { drawn: false, reason: "not drawn in a test" },
+    });
+    const lateBake = deferred<Blob>();
+    const first = await openStudio({
+      id: "collage_a",
+      opened: await loadCollage("collage_a"),
+      writes: [],
+      bake: () => lateBake.promise,
+      stamp: () => 100,
+    });
+
+    // Edited and left: the arrangement lands, and its re-bake is still out
+    // fetching images.
+    first.setPieces([{ ...original, x: 600 }]);
+    const { closing } = await first.leave();
+    await settle();
+    expect((await loadCollage("collage_a"))?.updatedAt).toBe(100);
+
+    // Opened again from the list without waiting, and edited; that lands too.
+    const reopened = await loadCollage("collage_a");
+    const second = await openStudio({
+      id: "collage_a",
+      opened: reopened,
+      writes: [],
+      stamp: () => 200,
+    });
+    second.setPieces([...second.pieces(), piece({ id: "piece_2", x: 900, z: 1 })]);
+    await act(async () => second.autosave().flush());
+    await settle();
+    expect((await loadCollage("collage_a"))?.pieces.map((each) => each.x)).toEqual([
+      600, 900,
+    ]);
+
+    // Now the first studio's picture finally draws.
+    lateBake.settle(new Blob(["the old arrangement"], { type: "image/png" }));
+    await settle();
+
+    const stored = await storedRow("collage_a");
+    expect(stored.updatedAt).toBe(200);
+    expect(stored.pieces.map((each) => each.x)).toEqual([600, 900]);
+    // The closed studio still lets go of anything waiting on it.
+    expect(await settlesSoon(closing)).toBe(true);
+  });
+
+  it("still puts the picture on the arrangement it was drawn from", async () => {
+    const original = piece({ x: 10 });
+    await saveCollage({
+      ...collage("collage_a", [original]),
+      preview: { drawn: false, reason: "not drawn in a test" },
+    });
+    const picture = new Blob(["the new arrangement"], { type: "image/png" });
+    const first = await openStudio({
+      id: "collage_a",
+      opened: await loadCollage("collage_a"),
+      writes: [],
+      bake: async () => picture,
+      stamp: () => 100,
+    });
+    first.setPieces([{ ...original, x: 600 }]);
+    await first.leave();
+    await settle();
+
+    const stored = await storedRow("collage_a");
+    expect(stored.updatedAt).toBe(100);
+    expect(stored.pieces.map((each) => each.x)).toEqual([600]);
+    expect(stored.preview.drawn).toBe(true);
   });
 });

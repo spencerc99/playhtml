@@ -56,6 +56,43 @@ export async function saveCollage(record: CollageRecord): Promise<void> {
   await withStore("readwrite", (store) => store.put(record));
 }
 
+/**
+ * Puts a newly drawn picture on a stored collage, but only while the drawer
+ * still holds the arrangement it was drawn from: the row must exist and carry
+ * the `updatedAt` that arrangement was stored with. The rest of the row is
+ * kept as it stands, so nothing written to it since is lost. Returns whether
+ * the picture was written; a picture of an arrangement that has since been
+ * replaced or deleted is dropped.
+ */
+export async function saveCollagePreview(
+  id: string,
+  arrangedAt: number,
+  image: Blob,
+): Promise<boolean> {
+  const db = await openDatabase();
+  try {
+    return await new Promise<boolean>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      let written = false;
+      const read = store.get(id);
+      read.onsuccess = () => {
+        const row = read.result as { updatedAt?: unknown } | undefined;
+        if (!row || row.updatedAt !== arrangedAt) return;
+        store.put({ ...row, preview: { drawn: true, image } });
+        written = true;
+      };
+      transaction.oncomplete = () => resolve(written);
+      transaction.onerror = () =>
+        reject(transaction.error ?? new Error("Collage database request failed"));
+      transaction.onabort = () =>
+        reject(transaction.error ?? new Error("Collage transaction aborted"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
 export async function loadCollage(id: string): Promise<CollageRecord | null> {
   const stored = await withStore<unknown>("readonly", (store) => store.get(id));
   if (stored === undefined) return null;
