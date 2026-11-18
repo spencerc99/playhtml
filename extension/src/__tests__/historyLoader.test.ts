@@ -10,6 +10,7 @@ import {
   FETCH_SERVER_EVENTS_MESSAGE,
   fetchRecentServerEvents,
   loadHistoricalData,
+  pageUrlHashes,
 } from "../storage/historyLoader";
 
 function cursorEvent(id: string, url: string, ts: number): CollectionEvent {
@@ -211,5 +212,24 @@ describe("fetchRecentServerEvents", () => {
       fetchRecentServerEvents({ domain: "example.com", type: "cursor", limit: 10 }),
     ).rejects.toThrow("Could not load shared trails (server error 403)");
     expect(error).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("pageUrlHashes for a very long page URL", () => {
+  const md5 = (value: string) => createHash("md5").update(value).digest("hex");
+
+  it("looks the page up by its address without the query string", () => {
+    const long = `https://example.com/search?q=${"a".repeat(3000)}#top`;
+
+    expect(pageUrlHashes(long)).toEqual([
+      md5("https://example.com/search"),
+      md5("https://example.com/search/"),
+    ]);
+  });
+
+  it("still refuses a page whose path alone is too long", () => {
+    expect(() =>
+      pageUrlHashes(`https://example.com/${"a".repeat(3000)}`),
+    ).toThrow("Could not load shared trails for this page");
   });
 });

@@ -13,7 +13,11 @@ import {
 } from "../utils/urlNormalization";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import { MissingIdentityError, signedReadHeaders } from "./signedRead";
-import { formatUrlHashes, pageEventUrlVariants } from "../utils/pageEventUrls";
+import {
+  MAX_PAGE_EVENT_URL_LENGTH,
+  formatUrlHashes,
+  pageEventUrlVariants,
+} from "../utils/pageEventUrls";
 import { md5Hex } from "../utils/md5";
 
 /** Background message that fetches one type of shared events from the Worker. */
@@ -34,12 +38,20 @@ export type ServerEventsRequest = {
 
 /**
  * md5 hashes of the stored URL forms of `pageUrl` (see pageEventUrlVariants).
- * Throws for a page that is not http(s).
+ * A URL too long for a page lookup is looked up without its query string, so
+ * a page reached through a very long link still shows the trails left on its
+ * plain address. Throws for a page that is not http(s).
  */
 export function pageUrlHashes(pageUrl: string): string[] {
   let variants: string[];
   try {
-    variants = pageEventUrlVariants(stripFragment(pageUrl));
+    let url = stripFragment(pageUrl);
+    if (url.length > MAX_PAGE_EVENT_URL_LENGTH) {
+      const withoutQuery = new URL(url);
+      withoutQuery.search = "";
+      url = withoutQuery.toString();
+    }
+    variants = pageEventUrlVariants(url);
   } catch {
     throw new Error("Could not load shared trails for this page");
   }
