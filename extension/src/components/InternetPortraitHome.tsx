@@ -300,7 +300,7 @@ export function InternetPortraitHome({
                     .join(" · ") || "nothing right now"}
             </p>
           )}
-          {collectors && !phone && (
+          {collectors && !phone && !siteOff && (
             <div className="collection-status__grid">
               {collectors.map((c) => (
                 <div key={c.type} className="collector-pill">
