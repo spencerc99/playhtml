@@ -1,0 +1,27 @@
+name: Database Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'supabase/**'
+      - 'extension/worker/**'
+      - '.github/workflows/db-tests.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  db-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      # Each test starts its own postgres:15-alpine container with Docker and applies
+      # files from supabase/migrations, so no dependencies need to be installed.
+      - name: Run Supabase database tests
+        run: bun run --cwd extension/worker test:db
