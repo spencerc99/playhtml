@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 import type { CollectionEvent } from "../../types";
 import {
   deriveSessionColor,
+  extractDomain,
   getColorForEvent,
   getColorForParticipant,
+  oldestTs,
   parseColorToHsl,
 } from "../eventUtils";
 
@@ -62,5 +64,39 @@ describe("parseColorToHsl", () => {
     expect(parseColorToHsl("#52b1e080")).toEqual(parseColorToHsl("#52b1e0"));
     expect(parseColorToHsl("#0f08")).toEqual(parseColorToHsl("#00ff00"));
     expect(parseColorToHsl("#52b1e0")).not.toBeNull();
+  });
+});
+
+describe("extractDomain", () => {
+  it("strips a leading www. label", () => {
+    expect(extractDomain("https://www.example.com/page")).toBe("example.com");
+  });
+
+  it("keeps www. text that is not the leading label", () => {
+    expect(extractDomain("https://awww.example.com")).toBe("awww.example.com");
+    expect(extractDomain("https://shop.www.example.com")).toBe(
+      "shop.www.example.com",
+    );
+  });
+
+  it("accepts bare hostnames", () => {
+    expect(extractDomain("www.example.com")).toBe("example.com");
+  });
+});
+
+describe("oldestTs", () => {
+  it("finds the earliest timestamp in a list too long to spread into Math.min", () => {
+    // Safari's argument limit is 65,536; Node's is higher, so the list is long
+    // enough that a spread would throw here too.
+    const events = Array.from(
+      { length: 500_000 },
+      (_, i) => ({ ts: 1_000_000 - i }) as CollectionEvent,
+    );
+    events[40_000] = { ts: 5 } as CollectionEvent;
+    expect(oldestTs(events)).toBe(5);
+  });
+
+  it("throws on an empty list", () => {
+    expect(() => oldestTs([])).toThrow("oldestTs needs at least one event");
   });
 });

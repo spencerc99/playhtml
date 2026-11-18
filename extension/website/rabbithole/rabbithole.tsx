@@ -91,8 +91,6 @@ function processEvents(events: NavigationEvent[], wikipediaOnly: boolean): Proce
     nonWikiEvents: nonWikiEvents.length,
   };
 
-  console.log("[rabbithole] event stats:", stats);
-
   const focused = wikipediaOnly ? wikiEvents : allFocus;
   focused.sort((a, b) => a.ts - b.ts);
 

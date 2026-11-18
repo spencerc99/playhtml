@@ -236,13 +236,24 @@ export function getColorForEvent(
 }
 
 /**
+ * The earliest `ts` among `events`. A loop rather than Math.min(...spread):
+ * event lists grow past 65,536 items, which is Safari's argument-count limit.
+ */
+export function oldestTs(events: readonly CollectionEvent[]): number {
+  if (events.length === 0) throw new Error("oldestTs needs at least one event");
+  let oldest = Infinity;
+  for (const e of events) if (e.ts < oldest) oldest = e.ts;
+  return oldest;
+}
+
+/**
  * Extract the domain from a URL, removing 'www.' prefix
  */
 export function extractDomain(url: string): string {
   if (!url) return "";
   try {
     const urlObj = new URL(url.startsWith("http") ? url : `https://${url}`);
-    return urlObj.hostname.replace("www.", "");
+    return urlObj.hostname.replace(/^www\./, "");
   } catch {
     return "";
   }

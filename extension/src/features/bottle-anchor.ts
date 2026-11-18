@@ -2,6 +2,7 @@
 // ABOUTME: Stores a CSS selector + relative offset; the anchor is page-stable and its viewport position moves with scroll.
 
 import { bottleDebug as debug } from "./bottle-debug";
+import { EXTENSION_HOST_SELECTOR } from "./extensionPageUi";
 
 export interface BottleAnchor {
   selector: string;
@@ -345,13 +346,8 @@ function buildStructuralSelector(el: Element): string | null {
   return parts.join(" > ");
 }
 
-// Hosts the extension injects into the page. Anchoring a bottle to one of
-// these (or their subtree) would let a bottle attach to our own overlay, so we
-// exclude them. Matched by id prefix since each feature mints its own host id.
-const EXTENSION_HOST_SELECTOR =
-  '[id^="we-were-online"], [id^="wewere-"], [id^="playhtml-historical-overlay"]';
-
 function isReasonableAnchor(el: HTMLElement): boolean {
+  // Anchoring to our own injected UI would let a bottle attach to an overlay.
   if (el.closest(EXTENSION_HOST_SELECTOR)) return false;
   const rect = el.getBoundingClientRect();
   if (rect.width < 80 || rect.height < 16) return false;

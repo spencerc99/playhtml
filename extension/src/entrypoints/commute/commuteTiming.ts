@@ -230,3 +230,21 @@ export function getCommuteTiming(
     complete: false,
   };
 }
+
+/**
+ * True when moving the clock from `previousNow` to `nextNow` changes the whole
+ * second elapsed since any of `anchors` (all in milliseconds). Everything the
+ * commute renders from its clock is a whole-second value, so ticks that change
+ * none of them need no re-render.
+ */
+export function crossesCommuteClockSecond(
+  previousNow: number,
+  nextNow: number,
+  anchors: readonly number[],
+): boolean {
+  return anchors.some(
+    (anchor) =>
+      Math.floor((previousNow - anchor) / 1_000) !==
+      Math.floor((nextNow - anchor) / 1_000),
+  );
+}

@@ -56,6 +56,10 @@ describe("playhtml basic setup with SyncedStore", () => {
 
     // Verify element has the generic playhtml class for easy selection
     expect(el.classList.contains("__playhtml-element")).toBe(true);
+    // A valid per-element animation offset (browsers drop malformed values)
+    expect(el.style.getPropertyValue("--jiggle-delay")).toMatch(
+      /^\d\.\d{2}s$/,
+    );
     // Verify element has the attribute for CSS targeting
     expect(el.hasAttribute("can-toggle")).toBe(true);
 
@@ -590,6 +594,68 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(
       elementHandlers!.get("can-spin")!.get("chair-example")!.element,
     ).toBe(readdedChair);
+  });
+
+  it("keeps bound mirrored descendants on later updates and re-applies their own data", async () => {
+    const mirror = document.createElement("div");
+    mirror.id = "mirror-keeps-descendants";
+    mirror.setAttribute("can-mirror", "");
+    document.body.appendChild(mirror);
+    await playhtml.setupPlayElementForTag(mirror, "can-mirror");
+    const handler = elementHandlers!
+      .get("can-mirror")!
+      .get("mirror-keeps-descendants")!;
+
+    const snapshot = (outerAttr: string) => ({
+      nodeType: "HTMLElement",
+      tagName: "div",
+      attributes: {
+        id: "mirror-keeps-descendants",
+        "can-mirror": "",
+        "data-n": outerAttr,
+      },
+      children: [
+        {
+          nodeType: "HTMLElement",
+          tagName: "div",
+          attributes: { id: "kept-toggle", class: "lamp", "can-toggle": "" },
+          children: [],
+        },
+      ],
+    });
+
+    handler.setData(snapshot("1"));
+    await waitForCondition(
+      () => Boolean(elementHandlers!.get("can-toggle")?.has("kept-toggle")),
+      "Expected can-mirror to register the toggle",
+    );
+    const toggleHandler = elementHandlers!
+      .get("can-toggle")!
+      .get("kept-toggle")!;
+    toggleHandler.setData({ on: true });
+    await waitForCondition(
+      () => document.getElementById("kept-toggle")!.classList.contains("clicked"),
+      "Expected the toggle to turn on",
+    );
+
+    const reinit = vi.spyOn(toggleHandler, "reinitializeElementData");
+    // The mirror's copy of the toggle predates "clicked"; the toggle's own
+    // data must win after the mirror applies it.
+    handler.setData(snapshot("2"));
+    await waitForCondition(
+      () => mirror.getAttribute("data-n") === "2",
+      "Expected the mirror update to apply",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(elementHandlers!.get("can-toggle")!.get("kept-toggle")).toBe(
+      toggleHandler,
+    );
+    expect(reinit).not.toHaveBeenCalled();
+    expect(
+      document.getElementById("kept-toggle")!.classList.contains("clicked"),
+    ).toBe(true);
+    reinit.mockRestore();
   });
 
   it("rebinds a locally re-added mirrored descendant with the same id", async () => {

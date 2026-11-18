@@ -10,7 +10,6 @@ import {
   getFeatureState,
   hasExperimentAccess,
   hasInternalAccess,
-  hasPrivateExperimentAccess,
 } from "./featureAccess";
 
 const UNSETTLED_FEATURE_STATE: FeatureState = {
@@ -88,10 +87,6 @@ function useExperimentAccessCheck(checkAccess: () => Promise<boolean>): boolean 
 
 export function useExperimentAccess(): boolean {
   return useExperimentAccessCheck(hasExperimentAccess);
-}
-
-export function usePrivateExperimentAccess(): boolean {
-  return useExperimentAccessCheck(hasPrivateExperimentAccess);
 }
 
 export function useInternalAccess(): boolean {

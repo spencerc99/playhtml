@@ -31,8 +31,6 @@ export function createSupabaseClient(env: Env) {
  * The ingest endpoint is public but validated. Admin endpoints require ADMIN_KEY
  * because even though data is anonymous, we're collecting it from real users
  * and should protect access to aggregated/exported data.
- * 
- * Future: Consider adding CORS restrictions to admin endpoints as additional layer.
  */
 export interface Env {
   SUPABASE_URL: string;
@@ -52,4 +50,8 @@ export interface Env {
   SHARED_COLLAGES: R2Bucket;      // Public, view-only shared collages and their pictures
   COLLAGE_SHARE_RATE_LIMITER: RateLimit; // Public collage share upload limiter
   COLLAGE_VIEWER_ORIGIN?: string; // Optional: where share links open, for local development
+  // Gates rejecting unsigned color updates and access requests: "true" rejects
+  // them, anything else accepts them as legacy requests. Meant to be turned on
+  // once the signing extension build is the minimum in use.
+  REQUIRE_PARTICIPANT_SIGNATURES?: string;
 }

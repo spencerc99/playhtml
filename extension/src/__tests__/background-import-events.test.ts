@@ -64,7 +64,11 @@ async function loadBackground(
         query: vi.fn().mockResolvedValue([]),
         sendMessage: vi.fn().mockResolvedValue(undefined),
       },
-      alarms: { create: vi.fn(), onAlarm: { addListener: vi.fn() } },
+      alarms: {
+        get: vi.fn().mockResolvedValue(undefined),
+        create: vi.fn(),
+        onAlarm: { addListener: vi.fn() },
+      },
     },
   }));
 

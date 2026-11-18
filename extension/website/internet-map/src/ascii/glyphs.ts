@@ -12,18 +12,6 @@
  * partner, so half of them leaned against the direction of travel.
  */
 
-/** Terrain ramp, sparse -> dense. Index 0 means "nothing here". */
-export const TERRAIN = [
-  " ",   // empty
-  "q",   // three scattered dots — open country
-  "w",   // scattered
-  "C",   // loose dot grid — hamlet     (22.8% ink)
-  "v",   // regular dot grid — village   (30.4% ink)
-  "b",   // checker — suburb
-  "B",   // brick with windows — town
-  "n",   // solid block — city
-];
-
 /** Road glyphs (Dings). */
 /**
  * Road glyphs, from MEKMode Dings. Overridable at runtime via ?roadh= / ?roadv=.
@@ -34,17 +22,6 @@ export const TERRAIN = [
  * a route reads as trodden rather than paved.
  */
 export const ROAD = { h: "T", v: "T" };
-
-/** Landmarks and scenery (Dings). */
-export const LANDMARK = {
-  tower: "L",
-  block: "D",
-  gate: "G",
-  tree: "i",
-  grass: "u",
-  mount: "y",
-  conifer: "~",
-};
 
 /** Direction bits recorded while rasterising a road across the grid. */
 export const N = 1, E = 2, S = 4, W = 8;

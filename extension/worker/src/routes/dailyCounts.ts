@@ -1,7 +1,8 @@
 // ABOUTME: Serves daily event counts for the movement page calendar heatmap.
-// ABOUTME: Public endpoint calling the daily_event_counts Supabase RPC function.
+// ABOUTME: Public endpoint reading the pre-computed daily_counts Supabase table.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
+import { parseOptionalIsoDate } from '../lib/requestInput';
 
 /**
  * GET /events/daily-counts
@@ -20,8 +21,19 @@ export async function handleDailyCounts(
   try {
     const url = new URL(request.url);
     const type = url.searchParams.get('type') || null;
-    const from = url.searchParams.get('from') || null;
-    const to = url.searchParams.get('to') || null;
+    const fromParam = parseOptionalIsoDate(url.searchParams, 'from');
+    const toParam = parseOptionalIsoDate(url.searchParams, 'to');
+    if (!fromParam.ok || !toParam.ok) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid from/to (expected an ISO date)' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        }
+      );
+    }
+    const from = fromParam.value;
+    const to = toParam.value;
 
     const supabase = createSupabaseClient(env);
 
@@ -46,7 +58,10 @@ export async function handleDailyCounts(
       console.error('daily_counts query error:', error);
       return new Response(
         JSON.stringify({ error: 'Failed to fetch daily counts', details: error.message }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        }
       );
     }
 
@@ -78,7 +93,10 @@ export async function handleDailyCounts(
     console.error('Daily counts error:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        }
     );
   }
 }

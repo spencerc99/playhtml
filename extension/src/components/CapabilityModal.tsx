@@ -1,3 +1,6 @@
+// ABOUTME: Modal for an element picked on a page: collect it into the inventory or apply a playhtml capability.
+// ABOUTME: Rendered by the content script's element picker.
+
 import React from "react";
 
 interface Capability {

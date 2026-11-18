@@ -23,24 +23,6 @@ export default defineConfig({
     alias: {
       playhtml: path.resolve(__dirname, "../playhtml/src/index.ts"),
       "@playhtml/common": path.resolve(__dirname, "../common/src/index.ts"),
-      "react/jsx-runtime": path.resolve(
-        __dirname,
-        "../../node_modules/react/jsx-runtime",
-      ),
-      "react/jsx-dev-runtime": path.resolve(
-        __dirname,
-        "../../node_modules/react/jsx-dev-runtime",
-      ),
-      "react-dom/test-utils": path.resolve(
-        __dirname,
-        "../../node_modules/react-dom/test-utils",
-      ),
-      "react-dom/client": path.resolve(
-        __dirname,
-        "../../node_modules/react-dom/client",
-      ),
-      "react-dom": path.resolve(__dirname, "../../node_modules/react-dom"),
-      react: path.resolve(__dirname, "../../node_modules/react"),
     },
   },
 });
