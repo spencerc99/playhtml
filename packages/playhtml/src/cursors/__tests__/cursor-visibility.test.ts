@@ -101,6 +101,53 @@ describe("remote cursor rendering", () => {
     client.destroy();
   });
 
+  it("measures a zone cursor's visibility from where it is drawn", () => {
+    const zoneElement = document.createElement("div");
+    zoneElement.id = "zone";
+    document.body.appendChild(zoneElement);
+    // Locally the zone spans viewport (100, 100) to (120, 120).
+    vi.spyOn(zoneElement, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(100, 100, 20, 20),
+    );
+
+    const transport = createFakePresenceTransport();
+    const { client } = createTransportCursorClient(
+      {
+        enabled: true,
+        playerIdentity: makeIdentity("local", "#ff0000"),
+        visibilityThreshold: 100,
+      },
+      transport,
+    );
+    client.registerZone(zoneElement);
+
+    const moveTo = (clientX: number, clientY: number) => {
+      document.dispatchEvent(
+        new MouseEvent("mousemove", { clientX, clientY, bubbles: true }),
+      );
+      vi.advanceTimersByTime(Math.ceil(1000 / 60));
+    };
+    moveTo(100, 100);
+
+    // The peer's layout puts the zone center at (900, 900), but here it is
+    // drawn at the zone's center, (110, 110), next to our pointer.
+    emitRemoteCursors(transport, {
+      remote: {
+        x: 900,
+        y: 900,
+        zone: { zoneId: "zone", relX: 0.5, relY: 0.5 },
+      },
+    });
+    const [cursor] = cursorElements();
+    expect(cursor.style.display).toBe("block");
+
+    // Our own pointer moves re-check every cursor the same way.
+    moveTo(105, 105);
+    expect(cursor.style.display).toBe("block");
+
+    client.destroy();
+  });
+
   it("applies only the zone style to a cursor created inside a zone", () => {
     const zoneElement = document.createElement("div");
     zoneElement.id = "zone";

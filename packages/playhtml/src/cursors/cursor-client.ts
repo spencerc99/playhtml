@@ -500,6 +500,20 @@ export class CursorClientAwareness {
     return storageToClientCoordinates(x, y, this.coordinateMode);
   }
 
+  // The viewport point a zone-relative cursor is drawn at, from the zone's
+  // live bounding rect. Null when the zone is not registered on this page.
+  private resolveZoneClientPoint(
+    zone: CursorZonePosition,
+  ): { x: number; y: number } | null {
+    const zoneEntry = this.zones.get(zone.zoneId);
+    if (!zoneEntry || !document.contains(zoneEntry.element)) return null;
+    const rect = zoneEntry.element.getBoundingClientRect();
+    return {
+      x: rect.left + zone.relX * rect.width,
+      y: rect.top + zone.relY * rect.height,
+    };
+  }
+
   private zones: Map<string, { element: HTMLElement; options?: CursorZoneOptions }> = new Map();
   private currentZone: CursorZonePosition | null = null;
   private cursorZoneState: Map<string, string | null> = new Map(); // stableId -> previous zoneId
@@ -1433,18 +1447,16 @@ export class CursorClientAwareness {
     let targetCoords: { x: number; y: number };
     let inZone = false;
 
+    const zonePoint = zone ? this.resolveZoneClientPoint(zone) : null;
     if (zone) {
-      const zoneEntry = this.zones.get(zone.zoneId);
-      if (zoneEntry && document.contains(zoneEntry.element)) {
-        // Resolve zone-relative (0-1) to viewport pixels via live bounding rect
-        const rect = zoneEntry.element.getBoundingClientRect();
+      if (zonePoint) {
         // Center the cursor element on the target point by offsetting
         // by half its rendered dimensions.
         const cursorEl = this.cursors.get(stableId);
         const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
         const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
-        const zoneViewportX = rect.left + zone.relX * rect.width - offsetX;
-        const zoneViewportY = rect.top + zone.relY * rect.height - offsetY;
+        const zoneViewportX = zonePoint.x - offsetX;
+        const zoneViewportY = zonePoint.y - offsetY;
         if (this.coordinateMode === "absolute") {
           // getBoundingClientRect returns viewport coords; convert to document
           // coords since absolute-mode cursors use position:absolute.
@@ -1519,7 +1531,8 @@ export class CursorClientAwareness {
       // updateAllCursorVisibility uses. targetCoords can be document or
       // container-local coordinates, so it is not used here.
       const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
-      const theirClientCoords = this.storageToClient(cursor.x, cursor.y);
+      const theirClientCoords =
+        zonePoint ?? this.storageToClient(cursor.x, cursor.y);
       const distance = calculateDistance(
         { x: theirClientCoords.x, y: theirClientCoords.y, pointer: cursor.pointer },
         {
@@ -1922,8 +1935,13 @@ export class CursorClientAwareness {
       const cursorData = gridItems.find((item) => item.id === stableId)?.data;
 
       if (cursorData && cursorData.cursor) {
-        // Convert to viewport coordinates for distance calculation
-        const theirClientCoords = this.storageToClient(cursorData.cursor.x, cursorData.cursor.y);
+        // Measure from where the cursor is drawn, in viewport coordinates
+        const zonePoint = cursorData.zone
+          ? this.resolveZoneClientPoint(cursorData.zone)
+          : null;
+        const theirClientCoords =
+          zonePoint ??
+          this.storageToClient(cursorData.cursor.x, cursorData.cursor.y);
         const distance = calculateDistance(
           { ...ourClientCoords, pointer: this.currentCursor!.pointer },
           { ...theirClientCoords, pointer: cursorData.cursor.pointer },
