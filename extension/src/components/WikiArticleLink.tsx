@@ -35,6 +35,9 @@ export function WikiArticleLink({ title, className }: Props) {
   const anchorRef = useRef<HTMLAnchorElement | null>(null);
   const openTimer = useRef<number | null>(null);
   const closeTimer = useRef<number | null>(null);
+  // The title currently shown, so a summary for an earlier title is dropped.
+  const titleRef = useRef(title);
+  titleRef.current = title;
 
   const clearTimers = useCallback(() => {
     if (openTimer.current !== null) window.clearTimeout(openTimer.current);
@@ -49,6 +52,8 @@ export function WikiArticleLink({ title, className }: Props) {
     setOpen(false);
     setPos(null);
   }, [clearTimers, title]);
+
+  useEffect(() => clearTimers, [clearTimers]);
 
   const computePos = useCallback((): CardPos | null => {
     const rect = anchorRef.current?.getBoundingClientRect();
@@ -76,7 +81,9 @@ export function WikiArticleLink({ title, className }: Props) {
       setPos(computePos());
       setOpen(true);
       if (summary === undefined) {
-        void fetchWikiSummary(title).then((s) => setSummary(s));
+        void fetchWikiSummary(title).then((s) => {
+          if (titleRef.current === title) setSummary(s);
+        });
       }
     }, HOVER_OPEN_DELAY_MS);
   }, [clearTimers, computePos, summary, title]);

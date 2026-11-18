@@ -12,7 +12,16 @@ import type {
 } from '../storage/LocalEventStore'
 import { uploadEvents } from '../storage/sync'
 import { restoreEventsFromServer } from '../storage/restore'
-import type { CollectionEvent } from '@playhtml/extension-types'
+import {
+  getValidEventTypes,
+  type CollectionEvent,
+  type CollectionEventType,
+} from '@playhtml/extension-types'
+import {
+  FETCH_SERVER_EVENTS_MESSAGE,
+  fetchRecentServerEvents,
+} from '../storage/historyLoader'
+import { removeSiteMigrationMarkers } from '../storage/siteMigrationMarkers'
 import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
 import {
@@ -324,7 +333,34 @@ async function getExtensionLocalUsageBytes(): Promise<number | null> {
   return usageParts.reduce((sum, bytes) => sum + bytes, 0)
 }
 
-async function flushPendingUploads(): Promise<void> {
+function isCollectionEventType(value: unknown): value is CollectionEventType {
+  return (
+    typeof value === 'string' &&
+    (getValidEventTypes() as string[]).includes(value)
+  )
+}
+
+let uploadFlush: Promise<void> | null = null
+let uploadFlushFollowUp: Promise<void> | null = null
+
+// Single-flight: every tab asks for a flush, and two concurrent drains would
+// read and upload the same pending events. A request that arrives during a
+// drain shares one follow-up drain that starts after the current one ends.
+function flushPendingUploads(): Promise<void> {
+  if (!uploadFlush) {
+    uploadFlush = drainPendingUploads().finally(() => {
+      uploadFlush = null
+    })
+    return uploadFlush
+  }
+  uploadFlushFollowUp ??= uploadFlush.then(() => {
+    uploadFlushFollowUp = null
+    return flushPendingUploads()
+  })
+  return uploadFlushFollowUp
+}
+
+async function drainPendingUploads(): Promise<void> {
   try {
     const pending = await store.getPendingEvents(500)
     if (pending.length === 0) return
@@ -351,7 +387,9 @@ async function flushPendingUploads(): Promise<void> {
       await uploadEvents(uploadable)
     }
 
-    // Mark all pending events uploaded (local-mode events are marked too so they don't pile up)
+    // Mark all pending events uploaded. Local-mode events and batches the
+    // worker rejected outright are marked too: they stay in local history
+    // but are not sent again.
     await store.markEventsAsUploaded(pending.map((e) => e.id))
   } catch (e) {
     console.error('[Background] flushPendingUploads error:', e)
@@ -459,6 +497,11 @@ export default defineBackground(() => {
       grandfatherNewTabTakeover(details.previousVersion).catch((e) => {
         console.warn('Failed to carry over the new tab preference', e)
       })
+      // Earlier versions wrote a migration marker for every site visited;
+      // they are removed once, on the first update that no longer writes them.
+      removeSiteMigrationMarkers(browser.storage.local).catch((e) => {
+        console.warn('Failed to remove site migration markers', e)
+      })
     } else {
       initializePlayerIdentity().then(() => initializeIdentityServices())
     }
@@ -496,7 +539,7 @@ export default defineBackground(() => {
 
   browser.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'checkMilestones') {
-      await runMilestoneCheck()
+      await runGuardedMilestoneCheck()
       return
     }
 
@@ -531,29 +574,36 @@ export default defineBackground(() => {
 
   // Single-flight + 1s trailing debounce. Rapid navigation events coalesce
   // into one check, and we never run two checks concurrently (the function
-  // reads-modifies-writes shared state).
+  // reads-modifies-writes shared state). The milestone alarm goes through the
+  // same guard.
   let milestoneCheckRunning = false
   let milestoneCheckQueued = false
   let milestoneCheckTimer: ReturnType<typeof setTimeout> | null = null
   function scheduleMilestoneCheck() {
     if (milestoneCheckTimer) return
-    milestoneCheckTimer = setTimeout(async () => {
+    milestoneCheckTimer = setTimeout(() => {
       milestoneCheckTimer = null
-      if (milestoneCheckRunning) {
-        milestoneCheckQueued = true
-        return
-      }
-      milestoneCheckRunning = true
-      try {
-        await runMilestoneCheck()
-      } finally {
-        milestoneCheckRunning = false
-        if (milestoneCheckQueued) {
-          milestoneCheckQueued = false
-          scheduleMilestoneCheck()
-        }
-      }
+      runGuardedMilestoneCheck().catch((e) => {
+        console.error('[Background] milestone check error:', e)
+      })
     }, 1000)
+  }
+
+  async function runGuardedMilestoneCheck() {
+    if (milestoneCheckRunning) {
+      milestoneCheckQueued = true
+      return
+    }
+    milestoneCheckRunning = true
+    try {
+      await runMilestoneCheck()
+    } finally {
+      milestoneCheckRunning = false
+      if (milestoneCheckQueued) {
+        milestoneCheckQueued = false
+        scheduleMilestoneCheck()
+      }
+    }
   }
 
   // Ensure player identity has an ECDSA keypair. Single-flight, because
@@ -847,6 +897,37 @@ export default defineBackground(() => {
           console.error('[Background] FLUSH_PENDING_UPLOADS error:', e)
           reply({ success: false })
         })
+      return true
+    }
+
+    if (message.type === FETCH_SERVER_EVENTS_MESSAGE) {
+      // Content scripts read shared events through here: their own fetch
+      // carries the page's Origin, which the Worker refuses.
+      if (
+        typeof message.domain !== 'string' ||
+        !isCollectionEventType(message.eventType) ||
+        typeof message.limit !== 'number' ||
+        !Number.isFinite(message.limit) ||
+        message.limit <= 0
+      ) {
+        reply({ ok: false, error: 'Could not load shared trails: bad request' })
+        return
+      }
+      fetchRecentServerEvents({
+        domain: message.domain,
+        type: message.eventType,
+        limit: message.limit,
+      })
+        .then((events) => reply({ ok: true, events }))
+        .catch((error: unknown) =>
+          reply({
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Could not load shared trails',
+          }),
+        )
       return true
     }
 

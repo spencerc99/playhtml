@@ -159,8 +159,6 @@ export function useKeyboardTyping(
       });
     });
 
-    console.log("[Keyboard] Created", animations.length, "typing animations");
-
     // Optionally shuffle the order of animations
     if (settings.keyboardRandomizeOrder) {
       // Fisher-Yates shuffle for consistent randomization
