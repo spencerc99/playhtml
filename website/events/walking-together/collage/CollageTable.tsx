@@ -3,7 +3,8 @@
 import React, { useCallback, useMemo, useRef } from "react";
 import "@fontsource/atkinson-hyperlegible/latin-400.css";
 import "@fontsource/atkinson-hyperlegible/latin-700.css";
-import { playhtml, usePlayerIdentity } from "@playhtml/react";
+import { playhtml } from "@playhtml/react";
+import { useMe } from "../../../utils/useMe";
 import { CollageStudio } from "@extension/entrypoints/scraps/CollageStudio";
 import { COLLAGE_STYLES } from "@movement/components/ScrapCollage";
 import { COLLAGE_STUDIO_STYLES } from "@extension/entrypoints/scraps/collageStudioStyles";
@@ -19,7 +20,7 @@ import {
   remoteDrafts,
   templatePointsFromCursors,
   type CollageData,
-  type CollageLive,
+  type CollagePresence,
   type DraftPatch,
   type Piece,
   type Placer,
@@ -39,8 +40,8 @@ interface Props {
   data: CollageData;
   setData: (data: CollageData | ((draft: CollageData) => void)) => void;
   /** Everyone's in-progress edits, from the drag presence channel. */
-  peers: Array<{ user: { isMe: boolean }; live: Partial<CollageLive> | undefined }>;
-  setLive: (live: CollageLive) => void;
+  peers: Array<{ isMe: boolean; presence: Partial<CollagePresence> | undefined }>;
+  setMyDraft: (presence: CollagePresence) => void;
 }
 
 /** Writes a piece field by field, so two people editing different parts of
@@ -64,8 +65,8 @@ function applyPatch(target: Piece, patch: PiecePatch) {
   for (const [key, value] of Object.entries(patch.set)) record[key] = value;
 }
 
-export function CollageTable({ data, setData, peers, setLive }: Props) {
-  const { pid, name, color } = usePlayerIdentity();
+export function CollageTable({ data, setData, peers, setMyDraft }: Props) {
+  const { pid, name, color } = useMe();
   const admin = isAdmin(name, color);
   const stored = piecesOf(data);
   const storedRef = useRef(stored);
@@ -124,7 +125,7 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
   const onDraft = useCallback(
     (draft: PiecesChange | null) => {
       if (draft === null) {
-        setLive({ draft: null });
+        setMyDraft({ draft: null });
         return;
       }
       // Live previews ride presence; a few a second is enough to follow.
@@ -143,9 +144,9 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
           }
           return { id: studio.id, ...piecePatch(before, studio, existing, placer(), now) };
         });
-      setLive({ draft: patches });
+      setMyDraft({ draft: patches });
     },
-    [placer, setLive],
+    [placer, setMyDraft],
   );
 
   const removalRefusal = useCallback(
@@ -172,23 +173,14 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
 
   const captureShape = () => {
     const frame = document.querySelector(".collage-table .collage-frame");
-    const client = playhtml.cursorClient;
-    if (!frame || !client) {
+    if (!frame || !playhtml.cursorClient) {
       flash("cursors are not connected yet");
       return;
     }
-    const cursors = Array.from(client.getCursorPresences().entries()).flatMap(
-      ([key, presence]) =>
-        presence.cursor
-          ? [
-              {
-                key,
-                x: presence.cursor.x,
-                y: presence.cursor.y,
-                color: presence.playerIdentity?.playerStyle.colorPalette[0] ?? "#888888",
-              },
-            ]
-          : [],
+    const cursors = playhtml.people.everyone.flatMap(({ pid, color, presence }) =>
+      presence.cursor
+        ? [{ key: pid, x: presence.cursor.x, y: presence.cursor.y, color: color || "#888888" }]
+        : [],
     );
     // The admin's own cursor is on this button, not in the shape.
     const points = templatePointsFromCursors(cursors, frame.getBoundingClientRect(), pid);

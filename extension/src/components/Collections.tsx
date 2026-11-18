@@ -4,7 +4,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import browser from "webextension-polyfill";
 import { isExtensionPageUrl } from "../utils/extensionPage";
-import type { CollectorStatus } from "../collectors/types";
 import { getValidEventTypes } from "@playhtml/extension-types";
 import type { CollectionEvent } from "@playhtml/extension-types";
 import { CollectorIcon } from "./icons";
@@ -58,6 +57,7 @@ import {
   redactWithLegibility,
 } from "../utils/keyboardRedaction";
 import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
+import { DEV_MODE_KEY } from "../features/debugModes/debugModes";
 import "./Collections.scss";
 
 interface CollectionsProps {
@@ -67,7 +67,6 @@ interface CollectionsProps {
 
 const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
 const FILTER_SUBSTRINGS_KEY = "collection_keyboard_filter_substrings";
-const DEV_MODE_KEY = "dev_mode";
 
 interface StorageStats {
   totalEvents: number;
@@ -228,7 +227,7 @@ function getEventTypeCounts(countsByType: Record<string, number>) {
 // Renders collector cards with off/local/shared radio controls and the keyboard
 // privacy level sub-setting. Used by both Collections and SetupPage.
 
-export interface CollectorListProps {
+interface CollectorListProps {
   modes: Record<string, CollectionMode>;
   onModeChange: (type: string, mode: CollectionMode) => void;
   keyboardLegibilityPct: number;
@@ -405,7 +404,6 @@ export function Collections({
   onBack,
   visibleSection = "all",
 }: CollectionsProps) {
-  const [collectors, setCollectors] = useState<CollectorStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [keyboardLegibilityPct, setKeyboardLegibilityPct] =
@@ -617,7 +615,6 @@ export function Collections({
       const clamped = Math.max(0, Math.min(100, Math.round(pct)));
       await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: clamped });
       setKeyboardLegibilityPct(clamped);
-      await loadCollectors();
     } catch (error) {
       console.error("Failed to update keyboard legibility:", error);
       alert("Failed to update keyboard legibility. Please try again.");
@@ -1143,9 +1140,12 @@ export function Collections({
     }
   };
 
+  /**
+   * Checks that the active tab's content script answers, so the full view can
+   * say when it is open on a page the extension cannot reach.
+   */
   const loadCollectors = async () => {
     try {
-      // Request collector statuses from content script
       const [tab] = await browser.tabs.query({
         active: true,
         currentWindow: true,
@@ -1167,33 +1167,8 @@ export function Collections({
         type: "GET_COLLECTOR_STATUSES",
       });
 
-      if (
-        response &&
-        Array.isArray(response.statuses) &&
-        response.statuses.length > 0
-      ) {
-        setCollectors(response.statuses);
-      } else if (response?.error) {
+      if (response?.error) {
         console.warn("Collector manager not initialized:", response.error);
-        // Fallback to default collectors
-        setCollectors([
-          {
-            type: "cursor",
-            enabled: false,
-            description:
-              "Captures cursor movement, clicks, holds, and cursor style changes",
-          },
-        ]);
-      } else {
-        // No collectors registered yet, show default
-        setCollectors([
-          {
-            type: "cursor",
-            enabled: false,
-            description:
-              "Captures cursor movement, clicks, holds, and cursor style changes",
-          },
-        ]);
       }
       setError(null);
     } catch (error: any) {
@@ -1201,67 +1176,8 @@ export function Collections({
       setError(
         "Unable to connect to content script. Make sure you're on a regular webpage (not chrome:// pages).",
       );
-      // Fallback to default collectors
-      setCollectors([
-        {
-          type: "cursor",
-          enabled: false,
-          description:
-            "Captures cursor movement, clicks, hovers, drags, and zoom",
-        },
-      ]);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const toggleCollector = async (type: string, enabled: boolean) => {
-    try {
-      const [tab] = await browser.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-
-      if (!tab?.id) {
-        console.error("No active tab found");
-        return;
-      }
-
-      // Optimistically update UI
-      setCollectors((prev) =>
-        prev.map((c) => (c.type === type ? { ...c, enabled } : c)),
-      );
-
-      // Send message and wait for response
-      const response = await browser.tabs.sendMessage(tab.id, {
-        type: enabled ? "ENABLE_COLLECTOR" : "DISABLE_COLLECTOR",
-        collectorType: type,
-      });
-
-      if (response && !response.success) {
-        console.error("Failed to toggle collector:", response.error);
-        // Revert optimistic update
-        setCollectors((prev) =>
-          prev.map((c) => (c.type === type ? { ...c, enabled: !enabled } : c)),
-        );
-        alert(
-          `Failed to ${enabled ? "enable" : "disable"} collector: ${
-            response.error || "Unknown error"
-          }`,
-        );
-      } else {
-        // Reload collector statuses to ensure sync
-        await loadCollectors();
-      }
-    } catch (error) {
-      console.error("Failed to toggle collector:", error);
-      // Revert optimistic update
-      setCollectors((prev) =>
-        prev.map((c) => (c.type === type ? { ...c, enabled: !enabled } : c)),
-      );
-      alert(
-        `Failed to toggle collector. Make sure you're on a webpage (not chrome:// pages).`,
-      );
     }
   };
 

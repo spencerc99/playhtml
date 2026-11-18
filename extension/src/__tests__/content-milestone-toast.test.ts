@@ -22,15 +22,7 @@ vi.mock("webextension-polyfill", () => ({
               },
             });
           }
-          if (!Array.isArray(keys)) return Promise.resolve({});
-
-          return Promise.resolve(
-            Object.fromEntries(
-              keys
-                .filter((key) => key.startsWith("migration_v1_done_"))
-                .map((key) => [key, true]),
-            ),
-          );
+          return Promise.resolve({});
         }),
         set: vi.fn().mockResolvedValue(undefined),
       },

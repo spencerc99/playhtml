@@ -1,17 +1,16 @@
 // ABOUTME: Registers the browsing portrait overlay in the isolated content-script world.
 // ABOUTME: Its sound and visualization code loads only when a participant opens the overlay.
 
+import type { ComponentProps } from "react";
 import { HistoricalOverlay } from "../components/HistoricalOverlay";
 import { injectShadowReact } from "./content/inject-ui";
 
 export default defineUnlistedScript(() => {
   (
     globalThis as typeof globalThis & {
-      wwoHistoricalOverlay?: (props: {
-        visible: boolean;
-        currentUrl: string;
-        onClose: () => void;
-      }) => ReturnType<typeof injectShadowReact>;
+      wwoHistoricalOverlay?: (
+        props: ComponentProps<typeof HistoricalOverlay>,
+      ) => ReturnType<typeof injectShadowReact>;
     }
   ).wwoHistoricalOverlay = (props) =>
     injectShadowReact(HistoricalOverlay, props, {

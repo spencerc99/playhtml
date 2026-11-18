@@ -215,10 +215,10 @@ const Main = withSharedState(
     defaultData: {
       minutes: Array(MINUTES_IN_DAY).fill(null) as Minute[],
     },
-    myDefaultAwareness: undefined as undefined | { color: string },
+    defaultPresence: undefined as undefined | { color: string },
     id: "main",
   },
-  ({ data, setData, awareness, setMyAwareness }) => {
+  ({ data, setData, setMyPresence }) => {
     const [currentColor, setCurrentColor] = useState(generateRandomColor());
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [currentSecond, setCurrentSecond] = useState(new Date().getSeconds());
@@ -389,7 +389,7 @@ const Main = withSharedState(
         currentMinute.lastChangedTs = Date.now();
       });
 
-      setMyAwareness({ color });
+      setMyPresence({ color });
       setCurrentColor(generateRandomColor());
     };
 

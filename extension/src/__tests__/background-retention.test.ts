@@ -1,5 +1,5 @@
 // ABOUTME: Tests background service worker startup wiring for local data retention.
-// ABOUTME: Verifies raw-event pruning stays inactive during service worker startup.
+// ABOUTME: Verifies alarm scheduling on startup and that raw-event pruning stays inactive.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -35,6 +35,7 @@ const browserMock = vi.hoisted(() => ({
     queryState: vi.fn().mockResolvedValue("active"),
   },
   alarms: {
+    get: vi.fn().mockResolvedValue(undefined),
     create: vi.fn(),
     onAlarm: {
       addListener: vi.fn(),
@@ -89,6 +90,7 @@ describe("background local retention", () => {
     vi.resetModules();
     vi.clearAllMocks();
     browserMock.storage.local.get.mockResolvedValue({});
+    browserMock.alarms.get.mockResolvedValue(undefined);
     Object.defineProperty(globalThis.navigator, "storage", {
       value: {
         estimate: vi.fn().mockResolvedValue({
@@ -111,9 +113,12 @@ describe("background local retention", () => {
     const startBackground = background.default as unknown as () => void;
     startBackground();
 
-    expect(browserMock.alarms.create).toHaveBeenCalledWith("checkMilestones", {
-      periodInMinutes: 5,
-    });
+    await vi.waitFor(() =>
+      expect(browserMock.alarms.create).toHaveBeenCalledWith(
+        "checkMilestones",
+        { periodInMinutes: 5 },
+      ),
+    );
     expect(browserMock.alarms.create).not.toHaveBeenCalledWith(
       "pruneLocalEvents",
       expect.anything(),
@@ -124,6 +129,81 @@ describe("background local retention", () => {
     await alarmListener?.({ name: "pruneLocalEvents" });
 
     expect(storeMock.pruneUploadedEventsOlderThan).not.toHaveBeenCalled();
+  });
+
+  it("keeps an existing alarm with the same period instead of replacing it", async () => {
+    browserMock.alarms.get.mockImplementation(async (name: string) =>
+      name === "checkMilestones"
+        ? { name, scheduledTime: Date.now() + 60_000, periodInMinutes: 5 }
+        : undefined,
+    );
+    const background = await import("../entrypoints/background");
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
+
+    await vi.waitFor(() =>
+      expect(browserMock.alarms.get).toHaveBeenCalledWith("checkMilestones"),
+    );
+    await vi.waitFor(() => expect(browserMock.alarms.create).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(browserMock.alarms.create).not.toHaveBeenCalledWith(
+      "checkMilestones",
+      expect.anything(),
+    );
+  });
+
+  it("recreates an existing alarm whose period changed", async () => {
+    browserMock.alarms.get.mockImplementation(async (name: string) =>
+      name === "checkMilestones"
+        ? { name, scheduledTime: Date.now() + 60_000, periodInMinutes: 15 }
+        : undefined,
+    );
+    const background = await import("../entrypoints/background");
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
+
+    await vi.waitFor(() =>
+      expect(browserMock.alarms.create).toHaveBeenCalledWith(
+        "checkMilestones",
+        { periodInMinutes: 5 },
+      ),
+    );
+  });
+
+  it("runs one milestone check at a time when the alarm fires during a check, then one follow-up", async () => {
+    let releaseFirstCheck: () => void = () => {};
+    storeMock.getGlobalStats.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseFirstCheck = () =>
+            resolve({
+              hourBuckets: new Array(24).fill(0),
+              milestoneActivity: null,
+            });
+        }),
+    );
+    const background = await import("../entrypoints/background");
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
+
+    const alarmListener =
+      browserMock.alarms.onAlarm.addListener.mock.calls[0]?.[0];
+    const firstCheck = alarmListener?.({ name: "checkMilestones" });
+    await vi.waitFor(() =>
+      expect(storeMock.getGlobalStats).toHaveBeenCalledOnce(),
+    );
+    await alarmListener?.({ name: "checkMilestones" });
+
+    expect(storeMock.getGlobalStats).toHaveBeenCalledOnce();
+    releaseFirstCheck();
+    await firstCheck;
+
+    // The alarm that arrived mid-check runs once afterwards.
+    await vi.waitFor(
+      () => expect(storeMock.getGlobalStats).toHaveBeenCalledTimes(2),
+      { timeout: 3000 },
+    );
   });
 
   it("checks milestones without reading raw event history", async () => {

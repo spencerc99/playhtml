@@ -58,21 +58,6 @@ export function replaceDocState(
 }
 
 /**
- * Clear all data from a Y.Doc's play structure.
- * Useful when replacing with a DB snapshot that should completely overwrite state.
- *
- * @param doc The Y.Doc to clear
- */
-export function clearDocState(doc: Y.Doc): void {
-  const store = syncedStore<{ play: Record<string, any> }>({ play: {} }, doc);
-  doc.transact(() => {
-    for (const key of Object.keys(store.play)) {
-      delete store.play[key];
-    }
-  });
-}
-
-/**
  * Replace a Y.Doc's state by clearing it and applying a DB snapshot.
  * This is used when the database has been updated externally and we need
  * to sync the live doc to match.

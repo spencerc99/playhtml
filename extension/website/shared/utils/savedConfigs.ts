@@ -177,16 +177,6 @@ export function deleteSavedConfig(
   return next;
 }
 
-export function renameSavedConfig(
-  current: SavedConfig[],
-  id: string,
-  name: string,
-): SavedConfig[] {
-  const next = current.map((c) => (c.id === id ? { ...c, name } : c));
-  persist(next);
-  return next;
-}
-
 /** Subscribe to cross-tab saved-config changes. Browsers fire `storage`
  * events on *other* tabs when one tab calls `setItem`/`removeItem`, so
  * the management page and the dev panel stay in sync without polling.

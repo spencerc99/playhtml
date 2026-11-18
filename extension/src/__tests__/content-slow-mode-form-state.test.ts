@@ -59,14 +59,7 @@ describe("content Slow Mode form-state reachability", () => {
 
     storageGet.mockReset();
     storageGet.mockImplementation((keys: string | string[]) => {
-      if (!Array.isArray(keys)) return Promise.resolve({});
-      return Promise.resolve(
-        Object.fromEntries(
-          keys
-            .filter((key) => key.startsWith("migration_v1_done_"))
-            .map((key) => [key, true]),
-        ),
-      );
+      return Promise.resolve({});
     });
     runtimeSendMessage.mockReset();
     runtimeSendMessage.mockImplementation((message: { type?: string }) => {
