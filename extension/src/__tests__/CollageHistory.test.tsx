@@ -587,4 +587,32 @@ describe("a collage whose studio is still saving as it is left", () => {
 
     expect(await listCollages()).toHaveLength(2);
   });
+
+  it("takes the shared link down once when delete is pressed again while it waits", async () => {
+    const publication = {
+      id: "pub_1",
+      url: "https://wewere.online/c/pub_1",
+      deleteToken: "token",
+      sharedAt: 1,
+    };
+    await saveCollage(record({ publication }));
+    const studio = await leaveMidWrite(record({ publication }));
+    const takedowns = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", takedowns);
+    try {
+      const { view } = await mount(vi.fn(), () => studio.closing);
+
+      await act(async () => buttonNamed(view, "Delete a walk").click());
+      await act(async () => buttonNamed(view, "delete for good").click());
+      await act(async () => buttonNamed(view, "delete for good").click());
+      await settle();
+      studio.land();
+      await settle();
+
+      expect(takedowns).toHaveBeenCalledTimes(1);
+      expect(await listCollages()).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

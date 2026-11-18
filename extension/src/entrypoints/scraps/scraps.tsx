@@ -191,8 +191,10 @@ export function ScrapsPage() {
   const listShowing =
     mode === "create" && ready && Boolean(createMode) && !resuming && !studioOpen;
   useEffect(() => {
-    if (unsavedNotice && listShowing) unsavedNoticeShownRef.current = true;
-  }, [unsavedNotice, listShowing]);
+    if (unsavedNotice && listShowing && !listNotice) {
+      unsavedNoticeShownRef.current = true;
+    }
+  }, [unsavedNotice, listShowing, listNotice]);
 
   const openStudio = (record: CollageRecord | null) => {
     placeGenerationRef.current += 1;
