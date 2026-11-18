@@ -4,36 +4,13 @@
 import { describe, expect, it } from "vitest";
 import {
   crossesCommuteClockSecond,
-  getCommuteRouteDurationSeconds,
   getSlowModePlatformPhase,
   getSlowModePresentationTiming,
-  getSlowModeProgress,
   getCommuteTiming,
   SLOW_MODE_DURATIONS,
 } from "./commuteTiming";
 
 describe("getCommuteTiming", () => {
-  it("counts a stop after the train reaches it", () => {
-    expect(
-      getSlowModeProgress(
-        { atOrigin: true, phase: "stopped", stopIndex: 0 },
-        4,
-      ),
-    ).toEqual({ completedIndex: -1, stopsLeft: 3 });
-    expect(
-      getSlowModeProgress(
-        { atOrigin: false, phase: "riding", stopIndex: 0 },
-        4,
-      ),
-    ).toEqual({ completedIndex: -1, stopsLeft: 3 });
-    expect(
-      getSlowModeProgress(
-        { atOrigin: false, phase: "stopped", stopIndex: 0 },
-        4,
-      ),
-    ).toEqual({ completedIndex: 0, stopsLeft: 2 });
-  });
-
   it("uses the Slow Mode platform, leg, and dwell durations", () => {
     expect(getCommuteTiming(8, 3, SLOW_MODE_DURATIONS)).toMatchObject({
       phase: "stopped",
@@ -194,10 +171,6 @@ describe("getCommuteTiming", () => {
       atOrigin: true,
       complete: true,
     });
-  });
-
-  it("includes the synchronized return home in the finite route duration", () => {
-    expect(getCommuteRouteDurationSeconds(2)).toBe(68);
   });
 
   it("rejects an empty route", () => {

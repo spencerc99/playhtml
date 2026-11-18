@@ -56,9 +56,8 @@ export function deepReplaceIntoProxy(target: any, src: any) {
     }
     return;
   }
-  // primitives
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  target = src as any;
+  // A primitive src cannot be merged into target in place, so target is left
+  // unchanged. Recursive calls above write primitives onto the parent key.
 }
 
 // An item that names itself with `id` is the same item only when the id

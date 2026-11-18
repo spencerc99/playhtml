@@ -44,7 +44,7 @@ export const STORAGE_KEYS = {
 export const DEFAULT_SUBSCRIBER_LEASE_MS = (() => {
   return 60 * 60 * 1000 * 12;
 })();
-// Prune interval configuration (default 6 hours). See PartyKit alarms guide:
+// Prune interval configuration (default 4 hours). See PartyKit alarms guide:
 // https://docs.partykit.io/guides/scheduling-tasks-with-alarms/
 export const DEFAULT_PRUNE_INTERVAL_MS = (() => {
   return 60 * 60 * 1000 * 4;

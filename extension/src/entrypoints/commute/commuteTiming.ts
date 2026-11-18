@@ -95,34 +95,6 @@ export interface CommuteTiming {
   complete: boolean;
 }
 
-export function getSlowModeProgress(
-  timing: Pick<CommuteTiming, "atOrigin" | "phase" | "stopIndex">,
-  stopCount: number,
-): { completedIndex: number; stopsLeft: number } {
-  const completedIndex = timing.atOrigin
-    ? -1
-    : timing.phase === "stopped"
-      ? timing.stopIndex
-      : timing.stopIndex - 1;
-  return {
-    completedIndex,
-    stopsLeft: Math.max(0, stopCount - 2 - completedIndex),
-  };
-}
-
-export function getCommuteRouteDurationSeconds(stopCount: number): number {
-  if (stopCount < 1) {
-    throw new Error("Internet Commute requires at least one stop");
-  }
-
-  return (
-    INITIAL_PLATFORM_SECONDS +
-    stopCount * (TRAVEL_SECONDS + ARRIVAL_SECONDS + PLATFORM_SECONDS) +
-    RETURN_TRAVEL_SECONDS +
-    RETURN_ARRIVAL_SECONDS
-  );
-}
-
 export function getCommuteTiming(
   elapsedSeconds: number,
   stopCount: number,

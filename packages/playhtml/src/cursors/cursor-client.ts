@@ -1139,16 +1139,12 @@ export class CursorClientAwareness {
       }
     };
 
-    const handleTouchEnd = () => {
-      // Keep presence alive on touch end — cursor freezes at last known position.
-      // Same rationale as mouseleave: switching apps shouldn't remove presence.
-    };
-
     this.addCursorEventListener(document, "mousemove", updateCursor);
+    // Touch end needs no handler: the cursor stays at its last position and
+    // presence stays alive, as with mouseleave below.
     this.addCursorEventListener(document, "touchmove", updateTouchCursor, {
       passive: true,
     });
-    this.addCursorEventListener(document, "touchend", handleTouchEnd);
 
     // When mouse leaves the window, keep presence alive but stop updating position.
     // The cursor freezes at its last known position for other clients.

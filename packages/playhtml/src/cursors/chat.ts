@@ -217,10 +217,6 @@ export class CursorChat {
     }
   }
 
-  public getCurrentMessage(): string | null {
-    return this.message.length > 0 ? this.message : null;
-  }
-
   public destroy(): void {
     if (this.keydownHandler) {
       document.removeEventListener("keydown", this.keydownHandler);

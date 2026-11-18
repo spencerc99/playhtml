@@ -58,6 +58,7 @@ async function createHarness() {
     persistenceMode: { value: { kind: "available" }, writable: true },
     documentLoadCompleted: { value: true, writable: true },
     documentMaintenanceInProgress: { value: false, writable: true },
+    committedSnapshotAwaitingLoad: { value: false, writable: true },
     documentWriteTail: { value: Promise.resolve(), writable: true },
     realtimeSyncStarted: { value: true, writable: true },
     circuitBreaker: {

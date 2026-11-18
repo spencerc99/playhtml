@@ -190,7 +190,7 @@ export interface DraftPatch {
   unset?: string[];
 }
 
-export interface CollageLive {
+export interface CollagePresence {
   draft: DraftPatch[] | null;
 }
 
@@ -205,13 +205,13 @@ function isWholePiece(value: Partial<Piece>): value is Piece {
  * anything malformed) is skipped.
  */
 export function remoteDrafts(
-  users: Array<{ user: { isMe: boolean }; live: Partial<CollageLive> | undefined }>,
+  people: Array<{ isMe: boolean; presence: Partial<CollagePresence> | undefined }>,
   stored: Pieces,
 ): Record<string, Piece> {
   const byPiece: Record<string, Piece> = {};
-  for (const { user, live } of users) {
-    if (user.isMe || !Array.isArray(live?.draft)) continue;
-    for (const patch of live.draft) {
+  for (const { isMe, presence } of people) {
+    if (isMe || !Array.isArray(presence?.draft)) continue;
+    for (const patch of presence.draft) {
       if (!patch || typeof patch.id !== "string") continue;
       if (!patch.set || typeof patch.set !== "object") continue;
       const base = byPiece[patch.id] ?? stored[patch.id];
