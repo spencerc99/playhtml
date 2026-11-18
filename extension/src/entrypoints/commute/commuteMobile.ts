@@ -100,16 +100,6 @@ export function getCommutePointFromClient(
   });
 }
 
-export function getCommutePointFromZone(
-  relativeX: number,
-  relativeY: number,
-): CommutePoint {
-  return clampCommuteAvatarPosition({
-    x: relativeX * COMMUTE_CAR_WIDTH,
-    y: relativeY * COMMUTE_CAR_HEIGHT,
-  });
-}
-
 export function getCommuteRiderStart(stableId: string): CommutePoint {
   let hash = 2166136261;
   for (const character of stableId) {
