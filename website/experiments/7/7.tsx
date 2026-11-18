@@ -37,7 +37,7 @@ interface StellarData {
   stars: Record<string, Star>;
 }
 
-interface StellarAwareness {
+interface StellarPresence {
   activeHandHold?: HandHold;
 }
 
@@ -305,12 +305,11 @@ const Main = withSharedState(
     defaultData: {
       stars: {} as Record<string, Star>,
     } as StellarData,
-    myDefaultAwareness: undefined as StellarAwareness | undefined,
+    defaultPresence: undefined as StellarPresence | undefined,
     id: "stellar-connections",
   },
-  ({ data, setData, awareness, setMyAwareness }) => {
-    const { isLoading, configureCursors, getMyPlayerIdentity, cursors } =
-      usePlayContext();
+  ({ data, setData, everyone, me, setMyPresence }) => {
+    const { isLoading, configureCursors, cursors } = usePlayContext();
     const [proximityUsers, setProximityUsers] = useState<Set<string>>(
       new Set()
     );
@@ -318,7 +317,6 @@ const Main = withSharedState(
       Map<string, HandHold>
     >(new Map());
     const mainRef = useRef<HTMLDivElement>(null);
-    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
     const [starAnimations, setStarAnimations] = useState<
       Array<{
         id: string;
@@ -402,9 +400,8 @@ const Main = withSharedState(
           y: window.innerHeight / 2,
         };
 
-        // Set hand hold in awareness with actual positions and angle
-        const myIdentity = getMyPlayerIdentity();
-        const myColor = myIdentity.color;
+        // Set hand hold in presence with actual positions and angle
+        const myColor = me.color;
         const myUser = { playerStyle: { colorPalette: [myColor] } };
         const pairId = getPairId(myUser, otherPlayer);
         const handHold: HandHold = {
@@ -419,7 +416,7 @@ const Main = withSharedState(
 
         // Store locally for cursor hiding
         setActiveHandHolds((prev) => new Map(prev.set(connectionId, handHold)));
-        setMyAwareness({ activeHandHold: handHold });
+        setMyPresence({ activeHandHold: handHold });
 
         // Create or brighten star
         if (!isLoading) {
@@ -460,7 +457,7 @@ const Main = withSharedState(
           });
         }
       },
-      [isLoading, setData, setMyAwareness, triggerStarAnimation]
+      [isLoading, setData, setMyPresence, triggerStarAnimation, me.color]
     );
 
     const handleProximityLeft = useCallback(
@@ -478,10 +475,10 @@ const Main = withSharedState(
           return next;
         });
 
-        // Remove hand hold from awareness
-        setMyAwareness({ activeHandHold: undefined });
+        // Remove hand hold from presence
+        setMyPresence({ activeHandHold: undefined });
       },
-      [setMyAwareness]
+      [setMyPresence]
     );
 
     // Custom cursor renderer to hide cursors that are hand-holding
@@ -512,16 +509,6 @@ const Main = withSharedState(
     ]);
 
 
-    // Track mouse position
-    useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
-        setMousePosition({ x: e.clientX, y: e.clientY });
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      return () => window.removeEventListener("mousemove", handleMouseMove);
-    }, []);
-
     // Render stars
     const renderStars = useMemo(() => {
       return Object.values(data.stars).map((star) => (
@@ -529,15 +516,14 @@ const Main = withSharedState(
       ));
     }, [data.stars]);
 
-    // Render hand holds from all users' awareness
+    // Render hand holds from everyone's presence
     const renderHandHolds = useMemo(() => {
-      const allHandHolds = awareness
-        .map((user) => user.activeHandHold)
+      const allHandHolds = everyone
+        .map((person) => person.presence?.activeHandHold)
         .filter((handHold): handHold is HandHold => handHold !== undefined);
 
       return allHandHolds.map((handHold) => {
-        const myIdentity = getMyPlayerIdentity();
-        const user1Color = myIdentity.color;
+        const user1Color = handHold.user1.playerStyle.colorPalette[0];
         const user2Color = handHold.user2.playerStyle.colorPalette[0];
 
         // Calculate positions so hands appear to be overlapping/holding
@@ -568,7 +554,7 @@ const Main = withSharedState(
           </React.Fragment>
         );
       });
-    }, [awareness]);
+    }, [everyone]);
 
     // Render star creation animations
     const renderStarAnimations = useMemo(() => {
@@ -664,8 +650,7 @@ const Main = withSharedState(
           <div className="presence-title">online now</div>
           <div className="presence-users">
             {cursors.allColors.map((userColor, index) => {
-              const myIdentity = getMyPlayerIdentity();
-              const isMe = userColor === myIdentity?.color;
+              const isMe = userColor === me.color;
 
               return (
                 <div
@@ -698,7 +683,7 @@ const Main = withSharedState(
           <div className="stat">
             <span className="label">holding hands:</span>
             <span className="value">
-              {awareness.filter((user) => user.activeHandHold).length}
+              {everyone.filter((person) => person.presence?.activeHandHold).length}
             </span>
           </div>
         </div>

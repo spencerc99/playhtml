@@ -2,21 +2,25 @@
 // ABOUTME: Provides fridge-specific controls for words, walls, zoom, and moderation.
 
 import "./fridge.scss";
-import profaneWords from "profane-words";
 import { MoveData, TagType } from "@playhtml/common";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
 import {
   PlayContext,
   withSharedState,
-  useCursorPresences,
-  usePlayerIdentity,
+  usePeople,
 } from "../packages/react/src";
 import React, { useContext, useEffect, useState, useRef } from "react";
 import { PlayProvider } from "../packages/react/src";
-import { canDeleteFridgeWord, DeleteWordLimit } from "./fridgeDeletion";
+import {
+  canDeleteFridgeWord,
+  DeleteWordLimit,
+  deleteSharedFridgeWord,
+} from "./fridgeDeletion";
+import { containsProfanity } from "./utils/profanity";
 import { getDefaultFridgeWordId } from "./fridgeWordIdentity";
 import { useLocation } from "./useLocation";
+import { useMe } from "./utils/useMe";
 import { mountExperimentBadge } from "./components/experimentBadge";
 
 // Detect mobile viewport
@@ -234,7 +238,6 @@ interface Props extends FridgeWordType {
 const DefaultRoom = "fridge";
 const DeleteWordInterval = 1000 * 60 * 10; // 10 minutes
 const DeleteLimitReachedKey = "fridge-lastDeleteTime";
-const RestrictedWords = [...profaneWords];
 
 type MoveLocalData = { startMouseX: number; startMouseY: number };
 
@@ -335,14 +338,16 @@ const FridgeWord = withSharedState<MoveData, MoveLocalData, Props>(
       >
         <div
           className={`fridgeWord ${className}`}
-          style={{
-            "--word-color": props.color,
-            ...(deleteMode
-              ? {
-                  border: "2px dotted red",
-                }
-              : {}),
-          } as React.CSSProperties}
+          style={
+            {
+              "--word-color": props.color,
+              ...(deleteMode
+                ? {
+                    border: "2px dotted red",
+                  }
+                : {}),
+            } as React.CSSProperties
+          }
         >
           {word}
           {deleteMode ? (
@@ -450,11 +455,11 @@ interface ToolboxProps {
   currentPan?: { x: number; y: number };
 }
 
-// Isolated so the per-tick cursor-presence updates re-render only this span.
-// Calling useCursorPresences inside WordControls re-rendered the entire word
-// list (~3,000 components) on every presence tick.
+// Isolated so presence updates re-render only this span. Reading people
+// inside WordControls re-rendered the entire word list (~3,000 components)
+// on every presence tick.
 function OnlineCount() {
-  const onlineCount = useCursorPresences().size;
+  const onlineCount = usePeople().everyone.length;
   return <>{onlineCount} online</>;
 }
 
@@ -479,9 +484,9 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const [wallInputValue, setWallInputValue] = React.useState(wall);
     const [showWallControls, setShowWallControls] = React.useState(true);
     const { deleteElementData } = useContext(PlayContext);
-    const { pid } = usePlayerIdentity();
+    const { pid, color: myColor } = useMe();
     const userColor =
-      window.cursors?.color || localStorage.getItem("userColor") || undefined;
+      myColor || localStorage.getItem("userColor") || undefined;
     const isMobile = useIsMobile();
 
     // Convert screen coordinates to fridge-relative content coordinates,
@@ -558,12 +563,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
         clearMessage();
         return;
       }
-      if (
-        RestrictedWords.some((word) => {
-          const regex = new RegExp(`\\b${word}\\b`, "gi");
-          return regex.test(input);
-        })
-      ) {
+      if (containsProfanity(input)) {
         alert(
           "we don't seem to like that word :( please keep things nice here",
         );
@@ -611,14 +611,6 @@ const WordControls = withSharedState<FridgeWordType[]>(
         return;
       }
 
-      const idxToDelete = data.findIndex((w) => {
-        if (id) {
-          return id === w.id;
-        }
-
-        return word === w.word && color === w.color;
-      });
-
       // Track successful word deletion
       window.plausible?.("DeleteWord", {
         props: {
@@ -639,9 +631,7 @@ const WordControls = withSharedState<FridgeWordType[]>(
         }
       }
 
-      setData((d) => {
-        d.splice(idxToDelete, 1);
-      });
+      deleteSharedFridgeWord(setData, { id, word, color });
       if (!canDeleteFridgeWord(DeleteWordLimit, pid)) {
         setDeleteCount(deleteCount + 1);
         if (deleteCount + 1 === DeleteWordLimit) {

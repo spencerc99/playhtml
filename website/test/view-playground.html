@@ -58,12 +58,12 @@
       </section>
 
       <section class="vp">
-        <h2>Online indicator <span>view + element awareness</span></h2>
+        <h2>Online indicator <span>view + element presence</span></h2>
         <div id="online" can-play></div>
       </section>
 
       <section class="vp">
-        <h2>Visitor count <span>view re-renders on awareness join/leave</span></h2>
+        <h2>Visitor count <span>view re-renders on join/leave</span></h2>
         <div id="visitors" can-play></div>
       </section>
 
@@ -187,34 +187,34 @@
         `,
       });
 
-      // ── Online indicator (element awareness) ───────────────────────────────
+      // ── Online indicator (element presence) ────────────────────────────────
       playhtml.register("online", {
         defaultData: {},
-        myDefaultAwareness: "#2563eb",
-        view: ({ awareness, setMyAwareness }) => html`
+        defaultPresence: "#2563eb",
+        view: ({ everyone, setMyPresence }) => html`
           <div class="online-row">
             ${repeat(
-              awareness,
-              (_c, i) => i,
-              (color) =>
-                html`<span class="dot" style=${`background:${color}`}></span>`,
+              everyone,
+              (person) => person.pid,
+              (person) =>
+                html`<span class="dot" style=${`background:${person.presence}`}></span>`,
             )}
             <input
               type="color"
               title="your color"
-              @input=${(e) => setMyAwareness(e.target.value)}
+              @input=${(e) => setMyPresence(e.target.value)}
             />
           </div>
         `,
       });
 
-      // ── Visitor count (awareness length) ───────────────────────────────────
+      // ── Visitor count (everyone on the element) ────────────────────────────
       playhtml.register("visitors", {
         defaultData: {},
-        myDefaultAwareness: true,
-        view: ({ awareness }) => html`
+        defaultPresence: true,
+        view: ({ everyone }) => html`
           <div class="pill">
-            ${awareness.length} ${awareness.length === 1 ? "person" : "people"}
+            ${everyone.length} ${everyone.length === 1 ? "person" : "people"}
             here
           </div>
         `,
@@ -560,16 +560,13 @@
         },
       });
 
-      // Online count from cursor awareness (mirrors react-test.html).
+      // People count (mirrors react-test.html).
       setTimeout(() => {
-        if (window.playhtml?.cursorClient) {
-          const updateCount = () => {
-            const colors = window.cursors?.allColors || [];
-            document.getElementById("userCount").textContent = colors.length;
-          };
-          window.cursors?.on("allColors", updateCount);
-          updateCount();
-        }
+        window.playhtml?.ready.then(() => {
+          window.playhtml.people.onChange((everyone) => {
+            document.getElementById("userCount").textContent = everyone.length;
+          });
+        });
       }, 1000);
     </script>
 

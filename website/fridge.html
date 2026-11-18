@@ -8,7 +8,7 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <meta name="description" content="fridge poetry powered by playhtml" />
-    <meta name="og:image" content="https://playhtml.fun/playhtml-fridge.png" />
+    <meta property="og:image" content="https://playhtml.fun/playhtml-fridge.png" />
 
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -47,7 +47,7 @@
         <p>
           have ideas, questions, intrusive thoughts?
           <a
-            href="mailto:spencer@spencer.place&subject=from%20a%20fridge%20lover"
+            href="mailto:spencer@spencer.place?subject=from%20a%20fridge%20lover"
             >send me mail</a
           >
           or comment on the
@@ -61,14 +61,5 @@
     </div>
 
     <script type="module" src="./fridge.tsx"></script>
-    <!-- if pathname contains .html redirect to without -->
-    <!-- <script>
-      if (window.location.pathname.includes(".html")) {
-        window.location.pathname = window.location.pathname.replace(
-          ".html",
-          ""
-        );
-      }
-    </script> -->
   </body>
 </html>

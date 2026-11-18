@@ -101,7 +101,6 @@ function calculateGridDimensions(
   // 3. Have enough cells for all minutes (1440)
   // 4. Minimize extra empty cells
 
-  const aspectRatio = windowWidth / windowHeight;
   const totalCells = MINUTES_IN_DAY; // 1440
 
   let bestColumns = 0;
@@ -216,10 +215,10 @@ const Main = withSharedState(
     defaultData: {
       minutes: Array(MINUTES_IN_DAY).fill(null) as Minute[],
     },
-    myDefaultAwareness: undefined as undefined | { color: string },
+    defaultPresence: undefined as undefined | { color: string },
     id: "main",
   },
-  ({ data, setData, awareness, setMyAwareness }) => {
+  ({ data, setData, setMyPresence }) => {
     const [currentColor, setCurrentColor] = useState(generateRandomColor());
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [currentSecond, setCurrentSecond] = useState(new Date().getSeconds());
@@ -321,11 +320,6 @@ const Main = withSharedState(
       }
     };
 
-    // Add debug effect to check ref
-    useEffect(() => {
-      console.log("Main ref:", mainRef.current);
-    }, [mainRef.current]);
-
     // Scroll helper function
     const scrollToCurrentMinute = (behavior: ScrollBehavior = "smooth") => {
       if (currentMinuteRef.current) {
@@ -390,7 +384,7 @@ const Main = withSharedState(
         currentMinute.lastChangedTs = Date.now();
       });
 
-      setMyAwareness({ color });
+      setMyPresence({ color });
       setCurrentColor(generateRandomColor());
     };
 
@@ -606,7 +600,7 @@ const Main = withSharedState(
                 className="randomize"
                 onClick={() => setCurrentColor(generateRandomColor())}
               >
-                🎲
+                ⚄
               </button>
               <button
                 className="add-color-button"
@@ -646,6 +640,7 @@ const AnimatedCounter = ({
 
   useEffect(() => {
     let startTime: number | null = null;
+    let frameId = 0;
     const step = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
@@ -655,12 +650,12 @@ const AnimatedCounter = ({
           : Math.ceil(start - progress * (start - end));
       setCounter(value);
       if (progress < 1) {
-        window.requestAnimationFrame(step);
+        frameId = window.requestAnimationFrame(step);
       }
     };
-    window.requestAnimationFrame(step);
+    frameId = window.requestAnimationFrame(step);
     return () => {
-      window.cancelAnimationFrame(window.requestAnimationFrame(step));
+      window.cancelAnimationFrame(frameId);
     };
   }, [start, end, duration, direction]);
 
@@ -673,7 +668,7 @@ mountExperimentBadge({ experiment: "EX-05" });
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider>
+  <PlayProvider initOptions={{ cursors: { enabled: true } }}>
     <Main></Main>
   </PlayProvider>
 );

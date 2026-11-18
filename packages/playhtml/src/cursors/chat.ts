@@ -5,6 +5,26 @@ export interface ChatOptions {
   onMessageUpdate?: (message: string | null) => void;
 }
 
+// True when the key event originates in an input, textarea, select, or
+// contenteditable region, including inside open shadow roots.
+function isEditableTarget(event: KeyboardEvent): boolean {
+  const origin = event.composedPath()[0] ?? event.target;
+  if (!(origin instanceof Element)) return false;
+  if (
+    origin instanceof HTMLInputElement ||
+    origin instanceof HTMLTextAreaElement ||
+    origin instanceof HTMLSelectElement
+  ) {
+    return true;
+  }
+  if ((origin as HTMLElement).isContentEditable) return true;
+  const editableAncestor = origin.closest("[contenteditable]");
+  return (
+    editableAncestor !== null &&
+    editableAncestor.getAttribute("contenteditable") !== "false"
+  );
+}
+
 export class CursorChat {
   private listening: boolean = false;
   private message: string = "";
@@ -26,47 +46,56 @@ export class CursorChat {
 
   private setupKeyboardHandlers(): void {
     this.keydownHandler = (event: KeyboardEvent) => {
-      // Reset any timeouts
-      if (this.timeout) {
-        clearTimeout(this.timeout);
-      }
-      this.timeout = setTimeout(() => {
-        this.setListening(false);
-        this.setMessage("");
-      }, 10000);
+      // Typing into the host page's own fields belongs to the page, so chat
+      // neither opens nor captures keys there.
+      if (isEditableTarget(event)) return;
 
       if (!this.listening) {
         if (event.key === "/") {
           this.setMessage("");
           this.setListening(true);
+          this.armIdleTimeout();
           event.preventDefault();
           event.stopPropagation();
         }
-      } else {
-        if (!event.metaKey && !event.ctrlKey && !event.altKey) {
-          if (event.key === "Enter") {
-            this.setListening(false);
-          } else if (event.key === "Escape") {
-            this.setListening(false);
-            this.setMessage("");
-          } else if (event.key === "Backspace") {
-            this.setMessage(this.message.slice(0, -1));
-          } else if (event.key.length === 1) {
-            const newMessage =
-              this.message.length < 42
-                ? this.message + event.key
-                : this.message;
-            this.setMessage(newMessage);
-          }
+        return;
+      }
 
-          event.preventDefault();
-          event.stopPropagation();
-          return false;
+      this.armIdleTimeout();
+      if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (event.key === "Enter") {
+          this.setListening(false);
+        } else if (event.key === "Escape") {
+          this.setListening(false);
+          this.setMessage("");
+        } else if (event.key === "Backspace") {
+          this.setMessage(this.message.slice(0, -1));
+        } else if (event.key.length === 1) {
+          const newMessage =
+            this.message.length < 42 ? this.message + event.key : this.message;
+          this.setMessage(newMessage);
         }
+
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
       }
     };
 
     document.addEventListener("keydown", this.keydownHandler);
+  }
+
+  // Clears the chat 10s after the last chat keystroke. Only chat keystrokes
+  // re-arm it, so ordinary typing on the page does not publish a cursor update.
+  private armIdleTimeout(): void {
+    if (this.timeout !== null) {
+      clearTimeout(this.timeout);
+    }
+    this.timeout = setTimeout(() => {
+      this.timeout = null;
+      this.setListening(false);
+      this.setMessage("");
+    }, 10000);
   }
 
   private setListening(listening: boolean): void {
@@ -150,20 +179,22 @@ export class CursorChat {
     if (!this.chatElement) return;
 
     if (this.listening || this.message) {
-      this.chatElement.innerHTML = `
-        <div class="playhtml-chat-input">${this.message || "..."}</div>
-        <div class="playhtml-chat-button">&times;</div>
-      `;
-      this.chatElement.style.display = "flex";
+      // The typed message is set as text so characters like "<" and "&"
+      // render literally instead of being parsed as markup.
+      const input = document.createElement("div");
+      input.className = "playhtml-chat-input";
+      input.textContent = this.message || "...";
 
-      // Add click handler to close button
-      const closeButton = this.chatElement.querySelector(
-        ".playhtml-chat-button"
-      );
-      closeButton?.addEventListener("click", () => {
+      const closeButton = document.createElement("div");
+      closeButton.className = "playhtml-chat-button";
+      closeButton.textContent = "×";
+      closeButton.addEventListener("click", () => {
         this.setListening(false);
         this.setMessage("");
       });
+
+      this.chatElement.replaceChildren(input, closeButton);
+      this.chatElement.style.display = "flex";
     } else {
       this.chatElement.style.display = "none";
     }
@@ -184,10 +215,6 @@ export class CursorChat {
     if (!this.listening && !this.message) {
       this.chatElement.style.display = "none";
     }
-  }
-
-  public getCurrentMessage(): string | null {
-    return this.message.length > 0 ? this.message : null;
   }
 
   public destroy(): void {

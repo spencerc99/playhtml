@@ -65,6 +65,7 @@ import {
 import {
   checkEdgeRateLimit,
   checkMessageRate,
+  DEFAULT_MAX_SHARED_PERMISSION_ENTRIES,
   isDurableObjectOverloadError,
   countOtherConnections,
   isRoomAtConnectionLimit,
@@ -101,7 +102,14 @@ import {
 import { BridgeHealth } from "./bridgeHealth";
 import { collectChangedPlayElementIds, touchesAny } from "./bridgeDirty";
 import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
-import { getPermittedSharedElementIds } from "./bridgePermissionPolicy";
+import {
+  getPermittedSharedElementIds,
+  getSharedElementPermission,
+  replaceSharedElementPermissions,
+  setSharedElementPermission,
+  type SharedElementPermissionMap,
+  type SharedPermissionsUpdate,
+} from "./bridgePermissionPolicy";
 import { createBridgeRequest, getBridgeAuthFailure } from "./bridgeAuth";
 import { getBridgeApplyRelationship } from "./bridgeRequestPolicy";
 import { mergeSharedReferenceLeases } from "./bridgeLeasePolicy";
@@ -229,6 +237,10 @@ export class PartyServer extends YServer {
   };
 
   private documentMaintenanceInProgress = false;
+  // True between a snapshot restore saving to the database and that snapshot
+  // replacing the live document. Saves must stay paused for that whole span,
+  // or an autosave of the stale live document would overwrite the commit.
+  private committedSnapshotAwaitingLoad = false;
   private documentWriteTail: Promise<void> = Promise.resolve();
   private documentGeneration = 0;
   private persistenceObserverAttached = false;
@@ -268,7 +280,7 @@ export class PartyServer extends YServer {
   // epoch). In-memory, so a DO reload re-enables every bridge.
   private bridgeHealth = new BridgeHealth();
 
-  // Preserve the same debounce timing as the old y-partykit callback config
+  // Debounce for YServer's onSave persistence callback.
   static callbackOptions = {
     debounceWait: 3000,
     debounceMaxWait: 15000,
@@ -407,6 +419,8 @@ export class PartyServer extends YServer {
       ((await this.ctx.storage.get(STORAGE_KEYS.sharedPermissions)) as
         | Record<string, SharedElementPermissions>
         | undefined) || {};
+    // A write that landed during the read is newer than what was read.
+    if (this.cachedSharedPerms !== null) return this.cachedSharedPerms;
     this.cachedSharedPerms = perms;
     return perms;
   }
@@ -416,6 +430,29 @@ export class PartyServer extends YServer {
   ): Promise<void> {
     this.cachedSharedPerms = permissions;
     await this.ctx.storage.put(STORAGE_KEYS.sharedPermissions, permissions);
+  }
+
+  // Applies a change to the stored permissions map. The cache is read after
+  // the await, with no await before the write, so a connect and a register
+  // that overlap each apply to the other's result instead of a stale copy.
+  private async updateSharedPermissions<T extends SharedPermissionsUpdate>(
+    update: (existing: SharedElementPermissionMap, maxEntries: number) => T
+  ): Promise<T> {
+    await this.getSharedPermissions();
+    const existing = this.cachedSharedPerms ?? {};
+    const maxEntries = readPositiveNumberEnv(
+      "MAX_SHARED_PERMISSION_ENTRIES",
+      DEFAULT_MAX_SHARED_PERMISSION_ENTRIES
+    );
+    const result = update(existing, maxEntries);
+    const { permissions, changed, ignoredForCap } = result;
+    if (ignoredForCap > 0) {
+      console.warn(
+        `[Bridge] Ignoring ${ignoredForCap} shared element id(s) for room ${this.name}: the room already stores the maximum of ${maxEntries} shared-element permissions.`
+      );
+    }
+    if (changed) await this.setSharedPermissions(permissions);
+    return result;
   }
 
   private getOpenConnectionCount(): number {
@@ -537,8 +574,12 @@ export class PartyServer extends YServer {
     );
   }
 
+  // Worker env bindings are fixed for the isolate's lifetime, so the limits
+  // are read once per room instance instead of on every message.
+  private serverLimits: ServerLimits | undefined;
+
   private getServerLimits(): ServerLimits {
-    return {
+    this.serverLimits ??= {
       maxMessagesPerWindow: readPositiveNumberEnv(
         "MESSAGE_RATE_LIMIT",
         DEFAULT_MESSAGE_RATE_LIMIT
@@ -556,6 +597,7 @@ export class PartyServer extends YServer {
         DEFAULT_DOCUMENT_WARNING_BYTES
       ),
     };
+    return this.serverLimits;
   }
 
   private checkConnectionMessageRate(connection: Party.Connection) {
@@ -1283,6 +1325,7 @@ export class PartyServer extends YServer {
       // The persisted snapshot is authoritative now. Keep autosave paused until
       // the live document catches up so a later save cannot restore stale state.
       committedSnapshotRequiresReload = true;
+      this.committedSnapshotAwaitingLoad = true;
 
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
@@ -1309,6 +1352,7 @@ export class PartyServer extends YServer {
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
       committedSnapshotRequiresReload = false;
+      this.committedSnapshotAwaitingLoad = false;
       if (options?.completeHydration !== false) {
         this.markDocumentHydrated();
       }
@@ -1387,7 +1431,9 @@ export class PartyServer extends YServer {
           committed,
         };
       } finally {
-        this.documentMaintenanceInProgress = false;
+        // Release the pause taken above unless a committed snapshot still has
+        // to replace the live document.
+        this.documentMaintenanceInProgress = this.committedSnapshotAwaitingLoad;
       }
     });
   }
@@ -1535,7 +1581,12 @@ export class PartyServer extends YServer {
           const response = await sourceRoom.fetch(
             internalRequest("/subscribe", subscribeRequest)
           );
-          if (!response.ok) return;
+          if (!response.ok) {
+            console.warn(
+              `[Bridge] Subscribe request rejected: consumer=${this.name} source=${sourceRoomId} status=${response.status}`
+            );
+            return;
+          }
 
           const subscribeResponse =
             (await response.json()) as SubscribeResponse;
@@ -1559,7 +1610,11 @@ export class PartyServer extends YServer {
               ORIGIN_S2C
             );
           }
-        } catch {}
+        } catch (error) {
+          console.warn(
+            `[Bridge] Subscribe and hydrate failed: consumer=${this.name} source=${sourceRoomId}: ${getErrorMessage(error)}`
+          );
+        }
       })
     );
 
@@ -1597,20 +1652,23 @@ export class PartyServer extends YServer {
     elementIds: Set<string>
   ): Record<string, Record<string, any>> {
     const result: Record<string, Record<string, any>> = {};
-    // Bind SyncedStore to this doc to operate on the same structure clients use
-    const store = syncedStore<{ play: Record<string, any> }>({ play: {} }, doc);
-    const playY = getYjsValue(store.play) as unknown as Y.Map<any>;
-    if (!playY) return result;
-    playY.forEach((tagMap: any, tag: string) => {
+    if (elementIds.size === 0) return result;
+    // SyncedStore keeps play data in the root "play" Y.Map (tag -> Y.Map of
+    // element id -> value), so only the requested ids are looked up in each tag.
+    const playY = doc.getMap<unknown>("play");
+    playY.forEach((tagMap, tag) => {
       if (!(tagMap instanceof Y.Map)) return;
       const outForTag: Record<string, any> = {};
-      tagMap.forEach((val: any, elementId: string) => {
-        if (!elementIds.has(elementId)) return;
+      let found = false;
+      for (const elementId of elementIds) {
+        if (!tagMap.has(elementId)) continue;
+        const val = tagMap.get(elementId);
         // Prefer toJSON to get plain values
-        const plain = typeof val?.toJSON === "function" ? val.toJSON() : val;
-        outForTag[elementId] = plain;
-      });
-      if (Object.keys(outForTag).length) {
+        outForTag[elementId] =
+          typeof val?.toJSON === "function" ? val.toJSON() : val;
+        found = true;
+      }
+      if (found) {
         result[tag] = outForTag;
       }
     });
@@ -1662,52 +1720,61 @@ export class PartyServer extends YServer {
     sender: Party.Connection<unknown>,
     message: string
   ): Promise<void> {
-    if (typeof message === "string") {
-      try {
-        const parsed = JSON.parse(message);
+    if (typeof message !== "string") return;
 
-        if (parsed.type === "add-shared-reference") {
-          if (!this.canWriteSharedData()) {
-            console.warn(
-              `[Bridge] Ignoring add-shared-reference for room ${this.name}: document hydration or persistence unavailable.`
-            );
-            return;
-          }
-          // Handle dynamic addition of shared reference
-          // TODO: this MIGHT still has some data inconsistencies when a source renders a dynamic element and changes it and then when we add the shared reference, it doesn't get the updated data
-          await this.handleAddSharedReference(parsed.reference, sender);
-        } else if (parsed.type === "export-permissions") {
-          // Handle individual permission requests
-          await this.handleExportPermissions(parsed.elementIds, sender);
-        } else if (parsed.type === "register-shared-element") {
-          if (!this.canWriteSharedData()) {
-            console.warn(
-              `[Bridge] Ignoring register-shared-element for room ${this.name}: document hydration or persistence unavailable.`
-            );
-            return;
-          }
-          // Handle dynamic registration of shared source element
-          // TODO: this still has some data inconsistencies when a consumer renders a dynamic element and changes it and then when we register the shared element, it doesn't get the updated data
-          await this.handleRegisterSharedElement(parsed.element, sender);
-        } else {
-          // Broadcast other messages normally
-          this.broadcastCustomMessage(message);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(message);
+    } catch {
+      // Non-JSON custom messages are relayed to everyone unchanged.
+      this.broadcastCustomMessage(message);
+      return;
+    }
+
+    const messageType =
+      parsed !== null && typeof parsed === "object" ? parsed.type : undefined;
+    try {
+      if (messageType === "add-shared-reference") {
+        if (!this.canWriteSharedData()) {
+          console.warn(
+            `[Bridge] Ignoring add-shared-reference for room ${this.name}: document hydration or persistence unavailable.`
+          );
+          return;
         }
-      } catch (error) {
-        // If not valid JSON, broadcast as-is (existing behavior)
+        // Handle dynamic addition of shared reference
+        // TODO: this MIGHT still has some data inconsistencies when a source renders a dynamic element and changes it and then when we add the shared reference, it doesn't get the updated data
+        await this.handleAddSharedReference(parsed.reference);
+      } else if (messageType === "export-permissions") {
+        // Handle individual permission requests
+        await this.handleExportPermissions(parsed.elementIds, sender);
+      } else if (messageType === "register-shared-element") {
+        if (!this.canWriteSharedData()) {
+          console.warn(
+            `[Bridge] Ignoring register-shared-element for room ${this.name}: document hydration or persistence unavailable.`
+          );
+          return;
+        }
+        // Handle dynamic registration of shared source element
+        // TODO: this still has some data inconsistencies when a consumer renders a dynamic element and changes it and then when we register the shared element, it doesn't get the updated data
+        await this.handleRegisterSharedElement(parsed.element);
+      } else {
+        // Broadcast other messages normally
         this.broadcastCustomMessage(message);
       }
+    } catch (error) {
+      // Control messages are never relayed to other clients, even when their
+      // handler fails.
+      console.warn(
+        `[Bridge] Control message failed for room ${this.name}: type=${String(messageType)}: ${getErrorMessage(error)}`
+      );
     }
   }
 
-  private async handleAddSharedReference(
-    reference: {
-      domain: string;
-      path: string;
-      elementId: string;
-    },
-    sender: Party.Connection<unknown>
-  ): Promise<void> {
+  private async handleAddSharedReference(reference: {
+    domain: string;
+    path: string;
+    elementId: string;
+  }): Promise<void> {
     if (!reference?.domain || !reference?.path || !reference?.elementId) return;
 
     const sourceRoomId = getSourceRoomId(reference.domain, reference.path);
@@ -1725,31 +1792,28 @@ export class PartyServer extends YServer {
     const filtered: Record<string, SharedElementPermissions> = {};
 
     for (const id of elementIds) {
-      if (perms[id]) filtered[id] = perms[id];
+      const permission = getSharedElementPermission(perms, id);
+      if (permission) filtered[id] = permission;
     }
 
     // Send permissions back to the requesting client
     this.sendCustomMessage(sender, JSON.stringify({ permissions: filtered }));
   }
 
-  private async handleRegisterSharedElement(
-    element: {
-      elementId: string;
-      permissions: SharedElementPermissions;
-      path?: string;
-    },
-    sender: Party.Connection<unknown>
-  ): Promise<void> {
+  private async handleRegisterSharedElement(element: {
+    elementId: string;
+    permissions: SharedElementPermissions;
+    path?: string;
+  }): Promise<void> {
     if (!element || !element.elementId) return;
 
-    // Update shared permissions for this source room
-    const existingPerms = await this.getSharedPermissions();
-    const mode =
-      element.permissions && element.permissions === "read-only"
-        ? "read-only"
-        : "read-write";
-    existingPerms[element.elementId] = mode;
-    await this.setSharedPermissions(existingPerms);
+    const { accepted } = await this.updateSharedPermissions(
+      (existing, maxEntries) =>
+        setSharedElementPermission(existing, element, maxEntries)
+    );
+    // A refused registration stores no permission, so consumers could not
+    // write it; fanning it out would hand them state that never updates.
+    if (!accepted) return;
 
     // If new shared element just registered, proactively fanout to subscribers who requested it
     try {
@@ -1786,7 +1850,11 @@ export class PartyServer extends YServer {
           }
         )
       );
-    } catch {}
+    } catch (error) {
+      console.warn(
+        `[Bridge] Shared element fanout failed: source=${this.name} elementId=${element.elementId}: ${getErrorMessage(error)}`
+      );
+    }
   }
 
   // Counts joined sockets. Pending and held ones are excluded like everywhere
@@ -1930,21 +1998,17 @@ export class PartyServer extends YServer {
       await this.subscribeAndHydrate(merged);
     }
 
-    // Persist source-declared permissions for simple global read-only
+    // Persist source-declared permissions. The connecting page's declaration
+    // replaces the room's whole map, because the server cannot tell the site
+    // owner's page from any other client. Known limitation: a page that
+    // declares only some elements, or a stale or hostile client, drops or
+    // changes the other elements' entries, including ones registered at
+    // runtime with register-shared-element.
     const sharedElements = parseSharedElementsFromUrl(ctx.request.url);
     if (this.canWriteSharedData() && sharedElements.length) {
-      const permissionsByElementId: Record<string, SharedElementPermissions> =
-        {};
-      for (const el of sharedElements) {
-        const mode =
-          el.permissions && el.permissions.includes("read-only")
-            ? "read-only"
-            : "read-write";
-        permissionsByElementId[el.elementId] = mode;
-      }
-      // TODO: instead of overriding, maybe we should merge and also do pruning of permissions that aren't present anymore to handle dynamic elements?
-      // OR we should stop with all this pruning and instead enforce that these are declared globally in the client even for dynamically rendered elements (they have to be registered in init?)
-      await this.setSharedPermissions(permissionsByElementId);
+      await this.updateSharedPermissions((existing, maxEntries) =>
+        replaceSharedElementPermissions(existing, sharedElements, maxEntries)
+      );
     }
 
     await super.onConnect(connection, ctx);
@@ -2761,7 +2825,8 @@ export class PartyServer extends YServer {
         const perms = await this.getSharedPermissions();
         const filtered: Record<string, SharedElementPermissions> = {};
         for (const id of elementIds) {
-          if (perms[id]) filtered[id] = perms[id];
+          const permission = getSharedElementPermission(perms, id);
+          if (permission) filtered[id] = permission;
         }
         const response: ExportPermissionsResponse = { permissions: filtered };
         return new Response(JSON.stringify(response), {
@@ -2830,7 +2895,9 @@ export class PartyServer extends YServer {
               Object.entries(elements).forEach(([elementId, data]) => {
                 // Only allow writes to elements explicitly shared as read-write
                 // This handles both read-only elements and ones that aren't even shared
-                if (perms[elementId] !== "read-write") {
+                if (
+                  getSharedElementPermission(perms, elementId) !== "read-write"
+                ) {
                   return;
                 }
                 kept[elementId] = data;

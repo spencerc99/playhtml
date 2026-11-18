@@ -1,5 +1,5 @@
 // ABOUTME: Captures cursor movement, clicks, holds, and cursor style changes.
-// ABOUTME: Streams at 60fps to PartyKit for live visualization and samples sparsely for archival.
+// ABOUTME: Samples sparsely for archival, with an optional 60fps real-time callback that nothing sets.
 
 import { BaseCollector } from './BaseCollector';
 import type { CursorEventData } from './types';
@@ -7,10 +7,11 @@ import { normalizePosition, getElementSelector } from './types';
 import { VERBOSE } from '../config';
 
 /**
- * CursorCollector captures cursor movement with dual-layer approach:
+ * CursorCollector captures cursor movement:
  *
- * 1. Real-time streaming (60fps) to PartyKit for live visualization
- * 2. Sparse sampling (250ms) to EventBuffer for archival
+ * 1. Sparse sampling (250ms, 15px) to EventBuffer for archival
+ * 2. A 60fps real-time callback, emitted only when one is set through
+ *    setRealTimeCallback (no extension code sets one)
  */
 export class CursorCollector extends BaseCollector<CursorEventData> {
   readonly type = 'cursor' as const;
@@ -258,9 +259,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   }
 
   /**
-   * Schedule a real-time update (throttled to ~60fps)
-   */
-  /**
    * Applies (or clears) installation pace. Faster sampling with a smaller
    * movement threshold makes a browsing machine's marks arrive close to live.
    */
@@ -270,6 +268,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       pace?.movementThresholdPx ?? this.defaultMovementThreshold;
   }
 
+  /**
+   * Schedule a real-time update (throttled to ~60fps)
+   */
   private scheduleRealTimeUpdate(): void {
     const now = Date.now();
     if (now - this.lastRealTimeTime >= this.realTimeRate) {
@@ -317,7 +318,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   }
 
   /**
-   * Emit real-time cursor data (for PartyKit streaming)
+   * Emit real-time cursor data to the real-time callback, when one is set
    */
   private emitRealTimeData(): void {
     const normalized = normalizePosition(
@@ -335,7 +336,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       event: 'move',
     };
 
-    // Emit to real-time stream (PartyKit)
+    // Emit to the real-time callback
     if (!this.hasRealTimeCallback()) return;
     this.emitRealTime(data);
   }

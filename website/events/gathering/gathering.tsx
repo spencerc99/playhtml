@@ -1,30 +1,19 @@
 import ReactDOM from "react-dom";
 import React, { useState } from "react";
-import { PlayProvider, withSharedState } from "@playhtml/react";
+import { PlayProvider, usePeople, withSharedState } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import { useStickyState } from "../../hooks/useStickyState";
 import "./walking-together.scss";
-
-interface CursorParty {
-  color: string;
-  count: number;
-  name: string;
-}
-
-declare global {
-  interface Window {
-    cursors?: CursorParty;
-  }
-}
+import {
+  activitySecondsLeft,
+  shouldWriteActivityAdvance,
+} from "./activityAdvance";
 
 interface SharedURL {
   url: string;
   userName: string;
   userColor: string;
   timestamp: number;
-}
-
-function shuffleArray<T>(array: T[]): T[] {
-  return array.sort(() => Math.random() - 0.5);
 }
 
 const CURSOR_INSTRUCTIONS = [
@@ -36,6 +25,10 @@ const CURSOR_INSTRUCTIONS = [
   "Split into your preferred corner",
   "Imagine your cursor as a falling rain drop",
 ];
+
+function isGatheringAdmin(name: string) {
+  return name === "Kristoffer" || name === "spencer";
+}
 
 // URL validation helper
 function isValidUrl(url: string) {
@@ -52,53 +45,39 @@ export function UserSetup() {
     "username",
     null,
     (newName) => {
-      if (window.cursors) window.cursors.name = newName ?? "";
-    }
+      // Nothing saved or typed yet: keep the name playhtml already has.
+      if (newName == null) return;
+      // Your name only saves once playhtml has connected.
+      playhtml.ready.then(() => {
+        playhtml.people.me.name = newName ?? "";
+      });
+    },
   );
 
-  const [color, setInternalColor] = useState(
-    JSON.parse(localStorage.getItem("color") || "null") || window.cursors?.color
+  const [color, setInternalColor] = useState<string>(
+    JSON.parse(localStorage.getItem("color") || "null") || "",
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
-    if (window.cursors) window.cursors.color = newColor;
+    playhtml.people.me.color = newColor;
   };
 
   const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
 
-  // Check for cursors availability
+  // Show the name and color inputs once playhtml has connected, starting
+  // from a saved color or else the color playhtml picked for you.
   React.useEffect(() => {
-    const checkCursors = () => {
-      if (!window.cursors) return false;
-      // The setters above skip writes while the client is still loading,
-      // so apply the saved identity once it arrives.
-      if (name) window.cursors.name = name;
-      if (color) window.cursors.color = color;
+    let cancelled = false;
+    playhtml.ready.then(() => {
+      if (cancelled) return;
+      if (color) playhtml.people.me.color = color;
+      else setInternalColor(playhtml.people.me.color);
       setCursorsLoaded(true);
-      return true;
-    };
-
-    if (checkCursors()) return;
-    // Check every second for 10 seconds
-    const interval = setInterval(() => {
-      if (checkCursors()) clearInterval(interval);
-    }, 1000);
-    const timeout = setTimeout(() => clearInterval(interval), 10000);
-
+    });
     return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
+      cancelled = true;
     };
-  }, [name, color]);
-
-  // The cursor client loads after first render, so the sticky name and color
-  // callbacks above can run before it exists. Apply them once it appears.
-  React.useEffect(() => {
-    if (!cursorsLoaded || !window.cursors) return;
-    if (name) window.cursors.name = name;
-    if (color) window.cursors.color = color;
-    else setInternalColor(window.cursors.color);
-  }, [cursorsLoaded]);
+  }, []);
 
   if (!cursorsLoaded) {
     return <div>Loading cursor party...</div>;
@@ -126,13 +105,13 @@ export function UserSetup() {
             height: "24px",
           }}
           src={`data:image/svg+xml,%3Csvg version='1.1' id='Layer_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 28 28' enable-background='new 0 0 28 28' xml:space='preserve'%3E%3Cpolygon fill='${encodeURIComponent(
-            color
+            color,
           )}' points='8.2,20.9 8.2,4.9 19.8,16.5 13,16.5 12.6,16.6 '/%3E%3Cpolygon fill='${encodeURIComponent(
-            color
+            color,
           )}' points='17.3,21.6 13.7,23.1 9,12 12.7,10.5 '/%3E%3Crect x='12.5' y='13.6' transform='matrix(0.9221 -0.3871 0.3871 0.9221 -5.7605 6.5909)' fill='${encodeURIComponent(
-            color
+            color,
           )}' width='2' height='8'/%3E%3Cpolygon fill='${encodeURIComponent(
-            color
+            color,
           )}' points='9.2,7.3 9.2,18.5 12.2,15.6 12.6,15.5 17.4,15.5 '/%3E%3C/svg%3E`}
         />
         <input
@@ -170,12 +149,14 @@ export const URLChat = withSharedState(
 
       const newUrl: SharedURL = {
         url: inputUrl,
-        userName: window.cursors?.name || "Anonymous",
-        userColor: window.cursors?.color || "#000000",
+        userName: playhtml.people.me.name || "Anonymous",
+        userColor: playhtml.people.me.color || "#000000",
         timestamp: Date.now(),
       };
 
-      setData({ urls: [...data.urls, newUrl] });
+      setData((draft) => {
+        draft.urls.push(newUrl);
+      });
       setInputUrl("");
     };
 
@@ -248,7 +229,7 @@ export const URLChat = withSharedState(
         </ul>
       </div>
     );
-  }
+  },
 );
 
 export const GroupActivityDisplay = withSharedState(
@@ -260,28 +241,53 @@ export const GroupActivityDisplay = withSharedState(
   },
   ({ data, setData }) => {
     const [timeLeft, setTimeLeft] = React.useState(30); // 30 seconds
+    const { me } = usePeople();
+    const isAdmin = isGatheringAdmin(me.name);
+
+    // Everyone counts down locally from the shared lastChangeTime. Only an
+    // admin writes the advance when it reaches zero, so open tabs do not all
+    // advance at once and skip activities. With no admin on the page the
+    // activity stays put at 0:00 until an admin arrives or presses SKIP.
+    const dataRef = React.useRef(data);
+    dataRef.current = data;
+    // The lastChangeTime this tab already advanced from, so it does not write
+    // again before its own advance syncs back into data.
+    const advancedFromRef = React.useRef<number | null>(null);
+    const isAdminRef = React.useRef(isAdmin);
+    isAdminRef.current = isAdmin;
 
     React.useEffect(() => {
-      const interval = setInterval(() => {
+      const tick = () => {
+        const d = dataRef.current;
         const now = Date.now();
-        const elapsed = Math.floor((now - data.lastChangeTime) / 1000);
-        const remaining = 30 - elapsed;
+        const remaining = activitySecondsLeft(d.lastChangeTime, now);
 
-        if (remaining <= 0) {
-          // Update to next instruction
+        if (remaining > 0) {
+          setTimeLeft(remaining);
+          return;
+        }
+
+        setTimeLeft(0);
+        if (
+          shouldWriteActivityAdvance({
+            lastChangeTime: d.lastChangeTime,
+            now,
+            isAdmin: isAdminRef.current,
+            advancedFrom: advancedFromRef.current,
+          })
+        ) {
+          advancedFromRef.current = d.lastChangeTime;
           setData({
             currentInstructionIndex:
-              (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
-            lastChangeTime: now,
+              (d.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+            lastChangeTime: Date.now(),
           });
-          setTimeLeft(30);
-        } else {
-          setTimeLeft(remaining);
         }
-      }, 1000);
-
+      };
+      tick();
+      const interval = setInterval(tick, 1000);
       return () => clearInterval(interval);
-    }, [data.lastChangeTime, data.currentInstructionIndex, setData]);
+    }, [setData]);
 
     const minutes = Math.floor(timeLeft / 60);
     const seconds = timeLeft % 60;
@@ -294,10 +300,6 @@ export const GroupActivityDisplay = withSharedState(
       });
       setTimeLeft(30);
     };
-
-    const isAdmin =
-      window.cursors?.name === "Kristoffer" ||
-      window.cursors?.name === "spencer";
 
     return (
       <div className="group-activity" id="group-activity">
@@ -335,12 +337,12 @@ export const GroupActivityDisplay = withSharedState(
         )}
       </div>
     );
-  }
+  },
 );
 
 function Main() {
   return (
-    <PlayProvider>
+    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <div className="walking-together">
         <UserSetup />
         <URLChat />
