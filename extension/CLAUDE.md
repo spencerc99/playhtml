@@ -219,115 +219,43 @@ via the `@movement` path alias from both `extension/website/src/**` and
 Deployed as the Cloudflare Pages project for `wewere.online`. Each experiment
 serves at its top-level path, e.g. `wewere.online/portrait`.
 
-## Architecture
+## Where things live
 
-### Entrypoints (`src/entrypoints/`)
+A map, not a description. The code is the source of truth for how each piece
+works; read it instead of trusting a summary here. Paths are relative to
+`extension/`.
 
-WXT manages multiple entry points:
+| Looking for | Start at |
+| --- | --- |
+| Service worker: messages, alarms, uploads, identity | `src/entrypoints/background.ts` |
+| What runs on every page | `src/entrypoints/content.ts`, `src/entrypoints/content/` |
+| Extension pages (popup, portrait, scraps, setup, stats, options, commute) | `src/entrypoints/<name>/` |
+| Event capture | `src/collectors/` |
+| Local event store, upload, restore | `src/storage/` (`EventBuffer.ts`, `LocalEventStore.ts`, `sync.ts`) |
+| Trails overlay data | `src/storage/historyLoader.ts`, `src/storage/signedRead.ts` |
+| Identity and participant ids | `src/storage/playerIdentity.ts`, `src/storage/participant.ts` |
+| On-page social features (follow, chat, bottles, emotes, satchel) | `src/features/`, `src/custom-sites/` |
+| Feature flags and access | `src/flags.ts`, `shared/featureCatalog.ts`, `src/features/featureAccess.ts` |
+| Shared React UI | `src/components/` |
+| Event and metadata types shared with the Worker | `../packages/extension-types/src/` |
+| Worker routes | `worker/src/index.ts`, `worker/src/routes/` |
+| Worker address used by the extension and the site | `website/shared/config.ts` (`WORKER_URL`) |
+| Manifest and permissions | `wxt.config.ts` |
 
-- **`background.ts`**: Service worker -- extension lifecycle, ECDSA keypair generation for player identity, IndexedDB event store coordination, message routing, stats computation, event upload scheduling.
-- **`content.ts`**: Injected into all pages -- initializes collectors, detects playhtml elements, element picker, site discovery, presence detection.
-- **`popup/`**: Extension popup UI -- player identity card, collector status, mini cursor trail canvas.
-- **`portrait/`**: Main portrait gallery -- domain-level browsing visualization with canvas-textured cards showing 24h activity patterns.
-- **`setup/`**: First-time onboarding -- identity init, consent, data collection mode selection.
-- **`stats/`**: Detailed analytics -- domain/page breakdowns, screen time, date ranges.
-- **`options/`**: Settings -- privacy config, keyboard privacy levels, filter substrings, import/export.
+### Things the code will not tell you
 
-### Collectors (`src/collectors/`)
-
-Event capture system: collectors emit events into an `EventBuffer` for local storage and archival upload.
-
-**BaseCollector** (abstract): Lifecycle (`enable`/`disable`/`pause`/`resume`), buffered emission, configurable sample rate. It also has an optional real-time callback (`setRealTimeCallback` / `emitRealTime`); only `CursorCollector` emits to it, and no extension code sets a callback, so nothing streams in real time today.
-
-**CollectorManager**: Orchestrates collectors, routes events to EventBuffer, supports 3 collection modes (`off`/`local`/`shared`), 3s debounced batch flush.
-
-Individual collectors:
-
-- **CursorCollector**: 250ms archival sampling with a 15px movement threshold (80ms/4px at installation pace). Tracks moves (normalized 0-1), clicks (one event per click, `quantity: 1`), holds (>250ms), cursor style changes (500ms debounce). Its 60fps real-time emission only runs when a real-time callback is set, which nothing does.
-- **NavigationCollector**: focus/blur/popstate/beforeunload events. 2s dedup window. Captures canonical URL, title, favicon on navigation.
-- **ViewportCollector**: Scroll (100ms throttle, normalized 0-1 position), resize (200ms debounce), zoom (via VisualViewport API, 2s debounce).
-- **KeyboardCollector**: Legibility is a continuous 0–100% slider (5% increments) stored under `collection_keyboard_privacy_level`. 0% = cadence only (every non-whitespace replaced with U+2588), 100% = full text with PII redacted, intermediate values randomly redact a proportion of non-PII characters using a deterministic per-session seed. PII (emails, US phone numbers, SSNs) is always redacted with U+2588 regardless of level. Excludes password inputs. 5s debounce for typing sessions. Legacy `"abstract"` / `"full"` storage values are migrated to 0 / 100 on read.
-
-### Storage (`src/storage/`)
-
-- **EventBuffer**: Creates CollectionEvents with metadata in content-script context, batches for 3s flush, sends to background via `browser.runtime.sendMessage`. The participant ID is stamped on when events are stored; until the background has an identity, events wait in the buffer (retried with backoff, capped at `MAX_HELD_EVENTS`, oldest dropped first).
-- **LocalEventStore**: IndexedDB (`DB_VERSION` 15) with domain-indexed queries. Pre-computes DomainStatsAggregate at insert time (totalTimeMs, hourBuckets[24], sessionCount, eventsByType, uniqueUrlCount), with exact URL membership stored separately in `aggregate_urls`. Screen time from focus/blur session pairing.
-- **sync.ts**: Upload to Cloudflare Worker (`POST /events`). Network errors, 5xx, 401, 403, 408, and 429 keep the batch pending for retry; any other 4xx means the Worker rejected the batch, so it is logged once and kept local only (marked uploaded, never re-sent).
-- **historyLoader.ts**: Loads trails for the page overlay. Shared events from `/events/recent` are fetched through the background (`FETCH_SERVER_EVENTS`), one message per event type, because a content script's fetch carries the page's Origin, which the Worker refuses. The background and extension pages send no Origin on a GET, so the request is signed with the identity key (`storage/signedRead.ts`, contract in `utils/recentEventsRequest.ts`); with no stored identity nothing is sent. A failed read throws so the overlay shows the error (a short message on the canvas, the details in the dev bar).
-
-All extension calls to the Worker use `WORKER_URL` from `@movement/config` (`extension/website/shared/config.ts`): `VITE_WORKER_URL` at build time, else the production Worker. Dev builds without `VITE_WORKER_URL` talk to production; point them at `wrangler dev` with `VITE_WORKER_URL=http://localhost:8787`.
-
-### Identity (`src/storage/participant.ts`)
-
-- **Player ID**: ECDSA P-256 public key (`pk_` + 130 hex chars)
-- **Session ID**: Per-browser-session (`sid_` + UUID), resets on close
-- **Player style**: cursor color (random HSL), stored in `browser.storage.local`
-
-### Features (`src/features/`)
-
-Domain-specific collaborative features:
-
-- **LinkGlowManager**: Wikipedia link click visualization -- glow intensity from click frequency, recent player colors, decay mechanic.
-- **link-glow-renderer**: Canvas/CSS rendering for link glows (inline vs multi-line).
-- **FollowManager**: Follow another user's cursor, scroll tethering, cross-page navigation via presence API. `F` toggles following the nearest cursor, `Escape` stops.
-- **PresenceCountPill**: Ambient people-count indicator with colored dots.
-- **OffscreenIndicator**: Directional arrow at screen edge when followed user is off-screen.
-- **inventory/**: The shared satchel — armable items registered by social experiments (see `features/social/`).
-- **emotes/**: Radial emote wheel (`Cmd/Ctrl+Shift+E`) — cursor-native emotes that broadcast to page peers over a presence channel. Runs on cursor-enabled sites (wired into the cursor-site path in `content.ts`). `EMOTES` in `emotes.ts` is the catalog and its `enabled` flag gates what's live; the four interaction emotes (heart, high five, nuzzle, poke), which target the nearest cursor, are currently disabled.
-
-Test social features live (no extension install) in
-`extension/website/social-playground/` — see the Website & experiments section.
-
-### Custom Sites (`src/custom-sites/`)
-
-Extensible module system for site-specific behavior. Currently:
-
-- **wikipedia.ts**: Detects article URLs (filters Special:/Talk: pages), initializes LinkGlow + Follow + PresenceCountPill, cursor client with proximity detection, domain-wide lobby.
-- **index.ts**: Router -- `shouldEnableCursors()` and `initCustomSite()` dispatch.
-
-### Components (`src/components/`)
-
-React UI for extension surfaces:
-
-- **InternetPortraitHome**: Popup home view
-- **PortraitCard**: Domain stats card with canvas-textured 24h activity pattern
-- **HistoricalOverlay**: Historical data with date range picker
-- **SetupPage**: Onboarding flow
-- **Collections**: PlayHTML element inventory
-- **PlayerIdentityCard**: Player color, public key display
-- **TinyMovementPreview / TrailsHero**: Cursor trail canvas animations
-- **DomainPortraitExport**: Export portrait as image/data
-- **icons.tsx**: Collector and UI icon components
-
-### Shared Types (`@playhtml/extension-types`)
-
-Shared between extension and Cloudflare Worker via the published
-`@playhtml/extension-types` package (source at
-`packages/extension-types/src/types.ts`). The worker depends on a pinned
-version so contract changes follow a version bump rather than a live-source
-sync.
-
-Key exports:
-
-- `CollectionEventType`: `'cursor' | 'navigation' | 'viewport' | 'keyboard' | 'element'`
-- `CollectionEvent`: `{ id, type, ts, data, meta, domain?, normalizedUrl? }`
-- `EventMeta`: `{ sid, pid, url, vw, vh, tz, cursor_color? }`
-- `PageMetadataSnapshot`: `{ page_ref, canonical_url, title, favicon_url, metadata_hash, observed_at_ts }`
-- `getValidEventTypes()`: returns the `CollectionEventType[]` array for runtime validation.
-
-### Worker Backend (`worker/`)
-
-Cloudflare Worker + Supabase PostgreSQL + Resend:
-
-- `POST /events`: Public event ingestion (rate limited)
-- `GET /events/recent`: Public (for artwork visualizations). It answers an allowed Origin/Referer (`lib/originAllowlist.ts`) or, for the extension's background and pages, which send neither, a fresh participant-key signature in `X-WWO-Public-Id` / `X-WWO-Signed-At` / `X-WWO-Signature` (`lib/publicReadAccess.ts`).
-- `POST /subscribe`: Public mailing-list signup (rate limited 5/min/IP). Adds the contact to Resend, then sends an email on every call: the welcome email for `website`, the updates email for `extension-setup`. Repeat signups send it again; only Resend's 24-hour idempotency key (one per email and template) suppresses a resend inside that window. Responds `{ ok, alreadySubscribed }`. Used by both the website (`<DownloadGate />` on mobile) and the extension setup form. Body: `{ email, source: 'website' | 'extension-setup' }`.
-
-**Resend integration:** the worker uses Resend Audiences/Contacts as the mailing-list store and welcome-email sender. Email addresses are NOT linked to browsing data — the `/subscribe` endpoint accepts only `email + source`, never participant or session IDs. The email templates live in `worker/src/emails/WelcomeEmail.tsx` as plain HTML and plaintext template strings.
-
-**Worker secrets:** `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `ADMIN_KEY`, `RESEND_API_KEY` (required); `RESEND_SEGMENT_ID` (optional, tags new contacts).
-
-**Wrangler config gotcha:** `bun run` scripts in `extension/worker/package.json` (`dev`, `deploy`, `tail`, `secret`, `secrets`) all pin `--config wrangler.toml`. Do NOT invoke bare `wrangler ...` from `extension/worker/` — wrangler walks up the filesystem and finds the partykit config in `partykit/wrangler.jsonc`, applying secrets/deploys to the wrong worker. Use the `bun run` wrappers.
+- **A content script's `fetch` carries the page's Origin**, which the Worker
+  refuses. Worker reads from a web page go through the background and are
+  signed with the identity key.
+- **Dev builds talk to the production Worker** unless `VITE_WORKER_URL` is set.
+  Point them at `wrangler dev` with `VITE_WORKER_URL=http://localhost:8787`.
+- **Email addresses are never linked to browsing data.** `/subscribe` accepts
+  only `email + source`, never participant or session ids. Keep it that way.
+- **PII redaction in keyboard events is always on**, at every legibility level.
+- **Background code has no DOM.** Content scripts and pages talk to it with
+  `browser.runtime.sendMessage`.
+- **Wrangler config gotcha:** `bun run` scripts in `extension/worker/package.json` (`dev`, `deploy`, `tail`, `secret`, `secrets`) all pin `--config wrangler.toml`. Do NOT invoke bare `wrangler ...` from `extension/worker/` — wrangler walks up the filesystem and finds the partykit config in `partykit/wrangler.jsonc`, applying secrets/deploys to the wrong worker. Use the `bun run` wrappers.
+- Worker secret names are listed in `worker/.dev.vars.example`.
 
 ## Configuration
 
@@ -399,12 +327,6 @@ sound, and pace) in isolated Chromium. Set `INSTALLATION_EVIDENCE_DIR` to save
 screenshots, and `PLAYWRIGHT_CHROMIUM_PATH` when the Chromium build is not the
 Playwright `chromium` channel.
 
-### Files
-
-- `src/config.ts`: `VERBOSE` debug logging flag
-- `src/flags.ts`: Resolves feature states from the shared `FEATURE_CATALOG` (`shared/featureCatalog.ts`), server access, and local choices. `FLAGS` is derived from each feature's `defaultStage`.
-- `wxt.config.ts`: Manifest v3, permissions (storage, tabs, `<all_urls>` host access; http/https on Safari), React module, ASCII charset output for Chrome compliance
-
 ## Testing
 
 - **Framework:** Vitest with jsdom
@@ -427,14 +349,6 @@ Use the real runtime boundaries the feature depends on:
 Unit and component tests still cover isolated logic. The generic extension smoke only proves that the extension shell starts, a content script responds, and the popup renders. Neither that smoke, mocked browser APIs, screenshots, nor an unstructured manual pass replaces automated verification of the complete feature flow.
 
 The PR description and handoff must name the automation or harness, browser and build tested, runtime boundaries, lifecycle case, and result. If the feature cannot be tested reliably through real-browser automation, stop and tell Spencer before opening or merging the PR.
-
-## Key Design Patterns
-
-1. **Archival collection**: Sparse sampling into IndexedDB, uploaded to Supabase for shared modes; live presence comes from playhtml cursors, not the collectors
-2. **Message-based architecture**: Content scripts communicate with background via `browser.runtime.sendMessage` -- no direct DOM access from background
-3. **Privacy tiers**: Keyboard legibility 0–100% slider, collection off/local/shared modes, PII redaction (always-on)
-4. **Stats pre-computation**: Aggregates computed at insert time for O(1) domain-level queries
-5. **Session + identity separation**: Persistent ECDSA identity vs ephemeral browser-session IDs
 
 ## Injecting UI into Host Pages
 
