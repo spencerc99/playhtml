@@ -413,6 +413,8 @@ interface CollageStudioProps {
    * had to store has landed, so the collage is only reopened after that.
    */
   onClosed?: (stored: Promise<void>) => void;
+  /** Told after the studio has gone when its last write failed. */
+  onUnsaved?: (lost: { title: string; reason: string }) => void;
   /** Timers the autosave runs on, so a test can drive the schedule directly. */
   autosaveTimers?: AutosaveTimers;
   /** Whether the export menu offers a view-only link. The host decides, since
@@ -477,6 +479,7 @@ export function CollageStudio({
   onSaved,
   onLeave,
   onClosed,
+  onUnsaved,
   autosaveTimers,
   canPublish = false,
   signer,
@@ -694,6 +697,7 @@ export function CollageStudio({
     startsStored: editing !== null,
     reopening: editing,
     ...(onClosed ? { onClosed } : {}),
+    ...(onUnsaved ? { onUnsaved } : {}),
     ...(autosaveTimers ? { timers: autosaveTimers } : {}),
   });
   const { noteChange, flush } = autosave;

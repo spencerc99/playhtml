@@ -183,7 +183,8 @@ export function ScrapsPage() {
   const closing = closingRef.current;
   /** True while a collage is being read back to reopen the studio on it. */
   const [resuming, setResuming] = useState(false);
-  const [reopenProblem, setReopenProblem] = useState<string | null>(null);
+  /** A problem to show over the collage list: a failed reopen, or a lost last change. */
+  const [listNotice, setListNotice] = useState<string | null>(null);
 
   const openStudio = (record: CollageRecord | null) => {
     placeGenerationRef.current += 1;
@@ -194,7 +195,7 @@ export function ScrapsPage() {
     setStudioSession((value) => value + 1);
     setStudioOpen(true);
     setResuming(false);
-    setReopenProblem(null);
+    setListNotice(null);
   };
 
   const closeStudio = () => {
@@ -214,7 +215,7 @@ export function ScrapsPage() {
   const reopenStudio = async (collageId: () => string | null) => {
     const generation = ++placeGenerationRef.current;
     setResuming(true);
-    setReopenProblem(null);
+    setListNotice(null);
     const { loadCollage } = await import("./collageStore");
     const resumed = await resumeStudio({
       closing: closing.settled(),
@@ -228,7 +229,7 @@ export function ScrapsPage() {
       openStudio(resumed.record);
     } else {
       closeStudio();
-      setReopenProblem(`could not open that collage — ${resumed.reason}`);
+      setListNotice(`could not open that collage — ${resumed.reason}`);
     }
   };
 
@@ -663,7 +664,12 @@ export function ScrapsPage() {
           }}
           onLeave={closeStudio}
           onClosed={noteStudioClosing}
-          notice={reopenProblem}
+          onUnsaved={({ title }) =>
+            setListNotice(
+              `the last change to ${title || "untitled"} was not saved`,
+            )
+          }
+          notice={listNotice}
         />
       )}
       {mode === "create" && ready && (!createMode || resuming) && (

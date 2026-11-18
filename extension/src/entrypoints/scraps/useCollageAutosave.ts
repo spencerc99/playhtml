@@ -70,6 +70,11 @@ export interface CollageAutosaveOptions {
    * older copy.
    */
   onClosed?: (stored: Promise<void>) => void;
+  /**
+   * Told once, after the studio has gone, when its last write failed: what was
+   * on screen when it closed never reached the drawer.
+   */
+  onUnsaved?: (lost: { title: string; reason: string }) => void;
 }
 
 export interface CollageAutosave {
@@ -145,6 +150,8 @@ export function useCollageAutosave(
   const closedRef = useRef(false);
   /** Waiting on everything a closed studio still had to store. */
   const closedWaitersRef = useRef<Array<() => void>>([]);
+  /** Set once a closed studio has said its last write did not land. */
+  const unsavedToldRef = useRef(false);
   /** Lets the closed-studio waiters go once nothing is left to land. */
   const releaseIfClosedAndDone = () => {
     if (!closedRef.current) return;
@@ -154,6 +161,13 @@ export function useCollageAutosave(
       state.bakingToken === null &&
       (!state.arrangementPending || state.standing.kind === "failed");
     if (!settled) return;
+    if (state.standing.kind === "failed" && !unsavedToldRef.current) {
+      unsavedToldRef.current = true;
+      optionsRef.current.onUnsaved?.({
+        title: optionsRef.current.draft().record.title,
+        reason: state.standing.reason,
+      });
+    }
     const waiters = closedWaitersRef.current;
     closedWaitersRef.current = [];
     for (const release of waiters) release();

@@ -23,6 +23,8 @@ interface CreateModeProps {
   /** Why a collage could not be reopened, shown over the list. */
   notice?: string | null;
   onClosed?: (stored: Promise<void>) => void;
+  /** Told after a studio has gone when its last write failed. */
+  onUnsaved?: (lost: { title: string; reason: string }) => void;
   onSaved: (record: CollageRecord) => void;
   onLeave: () => void;
 }
@@ -40,6 +42,7 @@ export function CreateMode({
   onLeave,
   notice = null,
   onClosed,
+  onUnsaved,
 }: CreateModeProps) {
   const shareLinks = useSettledFeatureState("COLLAGE_SHARE_LINKS");
 
@@ -65,6 +68,7 @@ export function CreateMode({
             onSaved={onSaved}
             onLeave={onLeave}
             onClosed={onClosed}
+            onUnsaved={onUnsaved}
             canPublish={shareLinks?.enabled === true}
             signer={extensionSigner}
           />

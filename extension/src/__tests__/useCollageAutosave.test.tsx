@@ -428,6 +428,81 @@ describe("leaving the studio while the drawer fails", () => {
   });
 });
 
+describe("leaving right after an edit, when that write fails", () => {
+  it("says the last change was not stored, once", async () => {
+    const timers = manualTimers();
+    const loaded = new Blob(["the original picture"], { type: "image/png" });
+    const attempts: CollageRecord[] = [];
+    const lost: Array<{ title: string; reason: string }> = [];
+    let title = "a collage";
+    const autosave = await mountAutosave({
+      draft: () => ({
+        record: { ...baseRecord({ drawn: true, image: loaded }), title },
+        hasContent: true,
+      }),
+      bake: () => deferredBlob().promise,
+      store: async (record) => {
+        attempts.push(record);
+        throw new Error("the collage drawer would not open");
+      },
+      storePreview: previewOnto(attempts),
+      onStored: () => {},
+      startsStored: true,
+      reopening: baseRecord({ drawn: true, image: loaded }),
+      timers,
+      onUnsaved: (each) => lost.push(each),
+    });
+
+    title = "renamed just before leaving";
+    await act(async () => autosave.current().noteChange());
+    expect(lost).toEqual([]);
+
+    const root = mounted!;
+    mounted = null;
+    await act(async () => root.unmount());
+    await act(async () => {});
+    await act(async () => timers.runAll());
+    await act(async () => {});
+
+    expect(attempts).toHaveLength(1);
+    expect(lost).toEqual([
+      {
+        title: "renamed just before leaving",
+        reason: "the collage drawer would not open",
+      },
+    ]);
+  });
+
+  it("says nothing when the write lands", async () => {
+    const lost: unknown[] = [];
+    const stored: CollageRecord[] = [];
+    const autosave = await mountAutosave({
+      draft: () => ({
+        record: baseRecord({ drawn: false, reason: "x" }),
+        hasContent: true,
+      }),
+      bake: () => deferredBlob().promise,
+      store: async (record) => {
+        stored.push(record);
+      },
+      storePreview: previewOnto(stored),
+      onStored: () => {},
+      startsStored: true,
+      reopening: baseRecord({ drawn: false, reason: "x" }),
+      timers: manualTimers(),
+      onUnsaved: (each) => lost.push(each),
+    });
+    await act(async () => autosave.current().noteChange());
+    const root = mounted!;
+    mounted = null;
+    await act(async () => root.unmount());
+    await act(async () => {});
+
+    expect(stored).toHaveLength(1);
+    expect(lost).toEqual([]);
+  });
+});
+
 describe("a write that fails", () => {
   it("is tried again on its own until it lands", async () => {
     const timers = manualTimers();
