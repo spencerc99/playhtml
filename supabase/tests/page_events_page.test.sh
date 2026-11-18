@@ -143,6 +143,15 @@ fi
 run_sql "update pg_index set indisvalid = true where indexrelid = 'public.idx_events_urlhash_type_ts'::regclass" >/dev/null
 echo "index migration: absent -> built holding $absent_locks lock(s); valid -> 0 locks; invalid -> refused"
 
+# An earlier definition of the function, with a default for p_type, may already exist;
+# the migration has to replace it.
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d playhtml >/dev/null <<'SQL'
+create function public.page_events_page(p_url_hashes text[], p_type text default null,
+  p_from timestamptz default null, p_to timestamptz default null,
+  p_before_ts timestamptz default 'infinity', p_before_id text default '', p_limit integer default 1000)
+returns setof public.collection_events language sql stable as $$ select * from public.collection_events limit 0 $$;
+SQL
+
 docker cp "$migration_path" "$container:/page_events_page.sql"
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d playhtml -f /page_events_page.sql >/dev/null
 run_sql "analyze public.collection_events" >/dev/null
@@ -239,11 +248,14 @@ check_rare_type_plan "both page indexes present"
 # only, so an incremental sort orders each run of equal timestamps by id and reads at
 # most one row past the page; a full sort would read all 200,000 cursor rows first.
 cursor_plan="$(function_plan "select count(*) from public.page_events_page(array['$busy_hash'], 'cursor')")"
-if ! grep -q "Incremental Sort" <<<"$cursor_plan" || [[ "$(index_scan_rows "$cursor_plan")" -gt 1001 ]] || grep -q "JIT:" <<<"$cursor_plan"; then
+cursor_rows="$(index_scan_rows "$cursor_plan")"
+if ! grep -q "Incremental Sort" <<<"$cursor_plan" || [[ -z "$cursor_rows" || "$cursor_rows" -gt 1001 ]] || grep -q "JIT:" <<<"$cursor_plan"; then
   echo "A common type on a busy page did not stop after one page through idx_events_urlhash_type_ts:" >&2
   echo "$cursor_plan" >&2
   exit 1
 fi
+
+echo "common type on a busy page: $cursor_rows index rows read for a 1,000-row page"
 
 # A time window bounds the index range: a 100-second window of that page reads 100 rows.
 window_plan="$(function_plan "select count(*) from public.page_events_page(array['$busy_hash'], 'cursor', '2026-07-01T12:00:01Z', '2026-07-01T12:01:40Z')")"

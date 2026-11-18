@@ -28,7 +28,12 @@
 -- per call), so jit is off. Bitmap scans are off as well: a bitmap scan returns rows out
 -- of order, so it would read and sort every row of that type, and the planner can pick
 -- one when it misjudges a page's size.
-CREATE OR REPLACE FUNCTION public.page_events_page(
+--
+-- A definition with a default for p_type may already exist, and CREATE OR REPLACE cannot
+-- remove a parameter default, so any existing definition is dropped first. The grants
+-- below are applied afresh.
+DROP FUNCTION IF EXISTS public.page_events_page(text[], text, timestamptz, timestamptz, timestamptz, text, integer);
+CREATE FUNCTION public.page_events_page(
   p_url_hashes text[],
   p_type text,
   p_from timestamptz DEFAULT NULL,
