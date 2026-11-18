@@ -16,6 +16,7 @@ import {
   type PixelRegion,
 } from "./backgroundCutout";
 import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
+import { loadImage, loadRemoteImage } from "./imageLoading";
 
 /** Names the image whose backdrop could not be read, so a notice can say so. */
 export class CutoutError extends Error {
@@ -99,24 +100,8 @@ function remember<T>(
  * decodes to its first frame when drawn.
  */
 async function loadPixels(src: string): Promise<HTMLImageElement> {
-  const image = new Image();
-  image.decoding = "sync";
-  if (src.startsWith("data:")) {
-    image.src = src;
-  } else {
-    const response = await fetch(await resolveScrapImageSrc(src));
-    if (!response.ok) throw new Error(`fetch returned ${response.status}`);
-    image.src = URL.createObjectURL(await response.blob());
-  }
-  try {
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error("image failed to decode"));
-    });
-  } finally {
-    if (image.src.startsWith("blob:")) URL.revokeObjectURL(image.src);
-  }
-  return image;
+  if (src.startsWith("data:")) return loadImage(src);
+  return loadRemoteImage(await resolveScrapImageSrc(src));
 }
 
 function blankCanvas(
