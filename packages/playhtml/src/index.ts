@@ -2181,7 +2181,6 @@ function getCustomElementProps(element: HTMLElement) {
     "onClick",
     "onMount",
     "resetShortcut",
-    "debounceMs",
     "isValidElementForTag",
   ];
   for (const key of keys) {

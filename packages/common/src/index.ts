@@ -114,7 +114,6 @@ export interface ElementInitializer<T = any, U = any, V = any> {
 
   // Advanced settings
   resetShortcut?: ModifierKey;
-  debounceMs?: number;
   isValidElementForTag?: (element: HTMLElement) => boolean;
 }
 
