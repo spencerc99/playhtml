@@ -33,6 +33,7 @@ import {
 import { estimateServerTimeOffset } from "./commuteService";
 import { startVisibleInterval } from "../../utils/visibleInterval";
 import {
+  crossesCommuteClockSecond,
   DEPARTURE_SECONDS,
   getSlowModePlatformPhase,
   getSlowModePresentationTiming,
@@ -1579,9 +1580,22 @@ function InternetCommute({
     return () => window.clearTimeout(timer);
   }, [assignment.stops.length]);
 
+  // The interval reads the current anchors through a ref so it can skip ticks
+  // that leave every rendered whole-second value unchanged.
+  const clockAnchors = useRef<number[]>([]);
+  clockAnchors.current = [
+    assignment.createdAt - serverTimeOffsetMs,
+    slowModeIntroStartedAt,
+  ];
+
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setClockNow(Date.now());
+      const now = Date.now();
+      setClockNow((previous) =>
+        crossesCommuteClockSecond(previous, now, clockAnchors.current)
+          ? now
+          : previous,
+      );
     }, 250);
     return () => window.clearInterval(timer);
   }, []);

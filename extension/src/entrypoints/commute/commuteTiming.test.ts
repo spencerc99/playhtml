@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  crossesCommuteClockSecond,
   getCommuteRouteDurationSeconds,
   getSlowModePlatformPhase,
   getSlowModePresentationTiming,
@@ -203,5 +204,16 @@ describe("getCommuteTiming", () => {
     expect(() => getCommuteTiming(0, 0)).toThrow(
       "Internet Commute requires at least one stop",
     );
+  });
+});
+
+describe("crossesCommuteClockSecond", () => {
+  it("ignores ticks that stay inside the same second for every anchor", () => {
+    expect(crossesCommuteClockSecond(10_000, 10_750, [0, -100])).toBe(false);
+  });
+
+  it("detects a second boundary on any anchor", () => {
+    expect(crossesCommuteClockSecond(10_000, 10_250, [0, 10_250])).toBe(true);
+    expect(crossesCommuteClockSecond(10_999, 11_000, [0])).toBe(true);
   });
 });
