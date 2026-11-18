@@ -666,7 +666,7 @@ export function ScrapsPage() {
           onClosed={noteStudioClosing}
           onUnsaved={({ title }) =>
             setListNotice(
-              `the last change to ${title || "untitled"} was not saved`,
+              `could not save the last change to ${title || "untitled"}`,
             )
           }
           notice={listNotice}
