@@ -8,8 +8,7 @@ import { createPortal } from "react-dom";
 import {
   PlayContext,
   withSharedState,
-  useCursorPresences,
-  usePlayerIdentity,
+  usePeople,
 } from "../packages/react/src";
 import React, { useContext, useEffect, useState, useRef } from "react";
 import { PlayProvider } from "../packages/react/src";
@@ -21,6 +20,7 @@ import {
 import { containsProfanity } from "./utils/profanity";
 import { getDefaultFridgeWordId } from "./fridgeWordIdentity";
 import { useLocation } from "./useLocation";
+import { useMe } from "./utils/useMe";
 import { mountExperimentBadge } from "./components/experimentBadge";
 
 // Detect mobile viewport
@@ -455,11 +455,11 @@ interface ToolboxProps {
   currentPan?: { x: number; y: number };
 }
 
-// Isolated so the per-tick cursor-presence updates re-render only this span.
-// Calling useCursorPresences inside WordControls re-rendered the entire word
-// list (~3,000 components) on every presence tick.
+// Isolated so presence updates re-render only this span. Reading people
+// inside WordControls re-rendered the entire word list (~3,000 components)
+// on every presence tick.
 function OnlineCount() {
-  const onlineCount = useCursorPresences().size;
+  const onlineCount = usePeople().everyone.length;
   return <>{onlineCount} online</>;
 }
 
@@ -484,9 +484,9 @@ const WordControls = withSharedState<FridgeWordType[]>(
     const [wallInputValue, setWallInputValue] = React.useState(wall);
     const [showWallControls, setShowWallControls] = React.useState(true);
     const { deleteElementData } = useContext(PlayContext);
-    const { pid } = usePlayerIdentity();
+    const { pid, color: myColor } = useMe();
     const userColor =
-      window.cursors?.color || localStorage.getItem("userColor") || undefined;
+      myColor || localStorage.getItem("userColor") || undefined;
     const isMobile = useIsMobile();
 
     // Convert screen coordinates to fridge-relative content coordinates,

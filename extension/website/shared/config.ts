@@ -13,7 +13,9 @@ import {
   type CinematicConfig,
 } from "./utils/cinematicCamera";
 
-const DEFAULT_WORKER_URL = "https://playhtml-game-api.spencerc99.workers.dev";
+const DEFAULT_WORKER_URL = "https://api.wewere.online";
+/** The same Worker at its workers.dev address, which stays reachable if the wewere.online zone is not. */
+const WORKERS_DEV_URL = "https://playhtml-game-api.spencerc99.workers.dev";
 
 export const WORKER_URL: string =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ?? DEFAULT_WORKER_URL;
@@ -35,7 +37,18 @@ export const COMMUTE_REVIEW_URL =
   `${WORKER_URL}/commute/review`;
 export const COMMUTE_TRAIN_BOARD_URL = `${WORKER_URL}/commute/trains/board`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
-export const PAGE_META_URL = `${WORKER_URL}/page-meta`;
+/**
+ * Page title and favicon lookups. Cloudflare's edge cache holds the answers on
+ * the wewere.online subdomain (the cache does nothing on workers.dev).
+ * PAGE_META_FALLBACK_URL is the same route on workers.dev, used when the
+ * subdomain cannot be reached.
+ */
+export const API_URL: string =
+  (import.meta.env.VITE_API_URL as string | undefined) ?? WORKER_URL;
+export const PAGE_META_URL = `${API_URL}/page-meta`;
+export const PAGE_META_FALLBACK_URL = `${
+  (import.meta.env.VITE_WORKER_URL as string | undefined) ?? WORKERS_DEV_URL
+}/page-meta`;
 export const PAGE_INSPECTION_URL =
   (import.meta.env.VITE_PAGE_INSPECTION_URL as string | undefined) ??
   PAGE_META_URL;

@@ -1,6 +1,7 @@
 import ReactDOM from "react-dom";
 import React, { useState } from "react";
-import { PlayProvider, withSharedState } from "@playhtml/react";
+import { PlayProvider, usePeople, withSharedState } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import { useStickyState } from "../../hooks/useStickyState";
 import "./walking-together.scss";
 import {
@@ -25,10 +26,8 @@ const CURSOR_INSTRUCTIONS = [
   "Imagine your cursor as a falling rain drop",
 ];
 
-function isGatheringAdmin() {
-  return (
-    window.cursors?.name === "Kristoffer" || window.cursors?.name === "spencer"
-  );
+function isGatheringAdmin(name: string) {
+  return name === "Kristoffer" || name === "spencer";
 }
 
 // URL validation helper
@@ -46,54 +45,39 @@ export function UserSetup() {
     "username",
     null,
     (newName) => {
-      if (window.cursors) window.cursors.name = newName ?? "";
+      // Nothing saved or typed yet: keep the name playhtml already has.
+      if (newName == null) return;
+      // Your name only saves once playhtml has connected.
+      playhtml.ready.then(() => {
+        playhtml.people.me.name = newName ?? "";
+      });
     },
   );
 
-  const [color, setInternalColor] = useState(
-    JSON.parse(localStorage.getItem("color") || "null") ||
-      window.cursors?.color,
+  const [color, setInternalColor] = useState<string>(
+    JSON.parse(localStorage.getItem("color") || "null") || "",
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
-    if (window.cursors) window.cursors.color = newColor;
+    playhtml.people.me.color = newColor;
   };
 
   const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
 
-  // Check for cursors availability
+  // Show the name and color inputs once playhtml has connected, starting
+  // from a saved color or else the color playhtml picked for you.
   React.useEffect(() => {
-    const checkCursors = () => {
-      if (!window.cursors) return false;
-      // The setters above skip writes while the client is still loading,
-      // so apply the saved identity once it arrives.
-      if (name) window.cursors.name = name;
-      if (color) window.cursors.color = color;
+    let cancelled = false;
+    playhtml.ready.then(() => {
+      if (cancelled) return;
+      if (color) playhtml.people.me.color = color;
+      else setInternalColor(playhtml.people.me.color);
       setCursorsLoaded(true);
-      return true;
-    };
-
-    if (checkCursors()) return;
-    // Check every second for 10 seconds
-    const interval = setInterval(() => {
-      if (checkCursors()) clearInterval(interval);
-    }, 1000);
-    const timeout = setTimeout(() => clearInterval(interval), 10000);
-
+    });
     return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
+      cancelled = true;
     };
-  }, [name, color]);
-
-  // The cursor client loads after first render, so the sticky name and color
-  // callbacks above can run before it exists. Apply them once it appears.
-  React.useEffect(() => {
-    if (!cursorsLoaded || !window.cursors) return;
-    if (name) window.cursors.name = name;
-    if (color) window.cursors.color = color;
-    else setInternalColor(window.cursors.color);
-  }, [cursorsLoaded]);
+  }, []);
 
   if (!cursorsLoaded) {
     return <div>Loading cursor party...</div>;
@@ -165,8 +149,8 @@ export const URLChat = withSharedState(
 
       const newUrl: SharedURL = {
         url: inputUrl,
-        userName: window.cursors?.name || "Anonymous",
-        userColor: window.cursors?.color || "#000000",
+        userName: playhtml.people.me.name || "Anonymous",
+        userColor: playhtml.people.me.color || "#000000",
         timestamp: Date.now(),
       };
 
@@ -257,6 +241,8 @@ export const GroupActivityDisplay = withSharedState(
   },
   ({ data, setData }) => {
     const [timeLeft, setTimeLeft] = React.useState(30); // 30 seconds
+    const { me } = usePeople();
+    const isAdmin = isGatheringAdmin(me.name);
 
     // Everyone counts down locally from the shared lastChangeTime. Only an
     // admin writes the advance when it reaches zero, so open tabs do not all
@@ -267,6 +253,8 @@ export const GroupActivityDisplay = withSharedState(
     // The lastChangeTime this tab already advanced from, so it does not write
     // again before its own advance syncs back into data.
     const advancedFromRef = React.useRef<number | null>(null);
+    const isAdminRef = React.useRef(isAdmin);
+    isAdminRef.current = isAdmin;
 
     React.useEffect(() => {
       const tick = () => {
@@ -284,7 +272,7 @@ export const GroupActivityDisplay = withSharedState(
           shouldWriteActivityAdvance({
             lastChangeTime: d.lastChangeTime,
             now,
-            isAdmin: isGatheringAdmin(),
+            isAdmin: isAdminRef.current,
             advancedFrom: advancedFromRef.current,
           })
         ) {
@@ -312,8 +300,6 @@ export const GroupActivityDisplay = withSharedState(
       });
       setTimeLeft(30);
     };
-
-    const isAdmin = isGatheringAdmin();
 
     return (
       <div className="group-activity" id="group-activity">

@@ -1,4 +1,4 @@
-// ABOUTME: Compares playhtml client benchmark results (bundle size, render/traffic counts, timings).
+// ABOUTME: Compares playhtml client benchmark results (bundle size, render/traffic counts, per-capability scenarios, timings).
 // ABOUTME: Writes a PR comment report and fails on regressions when --fail-on-regression is passed.
 
 import { readFile, mkdir, writeFile } from "node:fs/promises";
@@ -46,13 +46,6 @@ export const METRICS = [
     maxRelative: 0.05,
     minAbsolute: 3,
   },
-  {
-    key: "bundle_raw_kb",
-    label: "Bundle size (raw)",
-    unit: "KB",
-    maxRelative: 0.05,
-    minAbsolute: 2,
-  },
   count("stream_msgs", "can-play stream: messages"),
   bytes("stream_bytes", "can-play stream: bytes sent"),
   bytes("stream_doc_growth", "can-play stream: doc growth"),
@@ -75,7 +68,6 @@ export const METRICS = [
   seconds("idle_hour_room_awake_s", "Idle tab 1h: server time awake"),
   count("hidden_hour_msgs", "Background tab 1h: messages"),
   seconds("hidden_hour_room_awake_s", "Background tab 1h: server time awake"),
-  count("init_qsa_calls", "Init 200 elements: DOM scans"),
   count("init_1000_qsa_calls", "Init 1,000 elements: DOM scans"),
   count("init_1000_listeners", "Init 1,000 elements: event listeners"),
   count(
@@ -101,6 +93,62 @@ export const METRICS = [
   ),
   timing("init_1000_ms", "Init 1,000 elements: time (median of 5)"),
   timing("react_mount_50_ms", "React, mount 50 cards: time (median of 5)"),
+  ...capability("can-mirror", [
+    count(
+      "mirror_init_presence_msgs",
+      "Playground page load: presence messages",
+    ),
+    bytes(
+      "mirror_playground_bytes",
+      "Playground, one pass through every demo: bytes sent",
+    ),
+    bytes(
+      "mirror_playground_doc_growth",
+      "Playground, one pass through every demo: doc growth",
+    ),
+    count(
+      "mirror_hover_presence_msgs",
+      "Playground, hover each demo and focus one: presence messages",
+    ),
+    bytes("mirror_form_type_bytes", "50-field form, type 50 chars: bytes sent"),
+    bytes(
+      "mirror_form_type_doc_growth",
+      "50-field form, type 50 chars: doc growth",
+    ),
+    bytes("mirror_list_append_bytes", "1,000-item list, add 10: bytes sent"),
+    bytes(
+      "mirror_list_bulk_bytes",
+      "1,000-item list, add 500 at once: bytes sent",
+    ),
+    bytes("mirror_list_remove_bytes", "1,000-item list, remove 10: bytes sent"),
+    count(
+      "mirror_board_remote_dom_writes",
+      "Board of 30 nested cards, someone else restyles it 20x: DOM writes",
+    ),
+    timing(
+      "mirror_list_edit_ms",
+      "1,000-item list, add one item: time (median of 10)",
+    ),
+    timing(
+      "mirror_list_bulk_ms",
+      "1,000-item list, add 500 at once: time (median of 3)",
+    ),
+    timing(
+      "mirror_board_remote_ms",
+      "Board of 30 nested cards, apply one remote restyle: time (median of 20)",
+    ),
+  ]),
+];
+
+// Per-capability metrics come from packages/playhtml/bench/capabilities/ and
+// get their own section of the report. To add a capability, add a
+// <capability>.perf.ts there and list its metrics here.
+function capability(name, metrics) {
+  return metrics.map((metric) => ({ ...metric, capability: name }));
+}
+
+export const CAPABILITIES = [
+  ...new Set(METRICS.map((metric) => metric.capability).filter(Boolean)),
 ];
 
 function parseArgs(argv) {
@@ -215,26 +263,87 @@ function resultLine(comparison) {
     : `**Result:** ${flagged} (report-only, the check still passes).`;
 }
 
+function metricRow(metric) {
+  const status = metric.status === "regression" ? "**flagged**" : metric.status;
+  return `| ${metric.label} | ${formatValue(metric, metric.base)} | ${formatValue(
+    metric,
+    metric.head,
+  )} | ${formatChange(metric)} | ${formatThreshold(metric)} | ${status} |`;
+}
+
+const TABLE_HEADER = [
+  "| Metric | main | This PR | Change | Flag if | Status |",
+  "| --- | ---: | ---: | ---: | --- | --- |",
+];
+
+// A counted metric moved if its value changed at all or it was added or
+// dropped. Timings never count: they vary with the runner.
+function hasMoved(metric) {
+  if (metric.infoOnly) return false;
+  if (["new", "missing"].includes(metric.status)) return true;
+  return metric.delta !== null && metric.delta !== 0;
+}
+
+// One line per capability for the collapsed summary: what moved, if anything.
+function capabilitySummary(metrics) {
+  const counted = metrics.filter((metric) => !metric.infoOnly);
+  const flagged = counted.filter(
+    (metric) => metric.status === "regression" || metric.status === "missing",
+  ).length;
+  const improved = counted.filter(
+    (metric) => metric.status === "improved",
+  ).length;
+  const changed = counted.filter(
+    (metric) => metric.delta !== null && metric.delta !== 0,
+  ).length;
+  const parts = [];
+  if (flagged) parts.push(`${flagged} flagged`);
+  if (improved) parts.push(`${improved} improved`);
+  if (changed - improved - flagged > 0)
+    parts.push(`${changed - improved - flagged} changed within threshold`);
+  if (counted.some((metric) => metric.status === "new")) parts.push("new");
+  return parts.length ? parts.join(", ") : "no change";
+}
+
 export function formatMarkdownReport(comparison) {
+  const core = comparison.metrics.filter((metric) => !metric.capability);
   const lines = [
     REPORT_MARKER,
     "# Library Performance Report",
     "",
     resultLine(comparison),
     "",
-    "Compares `main` to this PR on the bundle a page downloads and common paths in `packages/playhtml/bench/` and `packages/react/bench/`: sync traffic, renders, drags, presence, idle server traffic and init. Lower is better. Server time awake counts how long one tab keeps its rooms' servers running, which is what the server bill charges for. Counts are stable between runs, so a change past the threshold is real. Timings are info only.",
+    "Compares `main` to this PR on the bundle a page downloads and common paths in `packages/playhtml/bench/` and `packages/react/bench/`: sync traffic, renders, drags, presence, idle server traffic and init, plus per-capability scenarios. Lower is better. Server time awake counts how long one tab keeps its rooms' servers running, which is what the server bill charges for. Counts are stable between runs, so a change past the threshold is real. Timings are info only.",
     "",
-    "| Metric | main | This PR | Change | Flag if | Status |",
-    "| --- | ---: | ---: | ---: | --- | --- |",
+    ...TABLE_HEADER,
+    ...core.map(metricRow),
   ];
-  for (const metric of comparison.metrics) {
-    const status =
-      metric.status === "regression" ? "**flagged**" : metric.status;
+  const capabilities = [
+    ...new Set(
+      comparison.metrics.map((metric) => metric.capability).filter(Boolean),
+    ),
+  ];
+  if (capabilities.length > 0) {
     lines.push(
-      `| ${metric.label} | ${formatValue(metric, metric.base)} | ${formatValue(
-        metric,
-        metric.head,
-      )} | ${formatChange(metric)} | ${formatThreshold(metric)} | ${status} |`,
+      "",
+      "## Per capability",
+      "",
+      "Scenarios per capability from `packages/playhtml/bench/capabilities/`. A capability opens when something in it moved.",
+    );
+  }
+  for (const name of capabilities) {
+    const metrics = comparison.metrics.filter(
+      (metric) => metric.capability === name,
+    );
+    const moved = metrics.some(hasMoved);
+    lines.push(
+      "",
+      `<details${moved ? " open" : ""}><summary><b>${name}</b>: ${capabilitySummary(metrics)}</summary>`,
+      "",
+      ...TABLE_HEADER,
+      ...metrics.map(metricRow),
+      "",
+      "</details>",
     );
   }
   return `${lines.join("\n")}\n`;

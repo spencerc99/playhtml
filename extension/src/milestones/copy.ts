@@ -33,5 +33,3 @@ export const MILESTONE_COPY = {
     "this place knows you",
   ],
 } as const;
-
-export type MilestoneCopyKey = keyof typeof MILESTONE_COPY;

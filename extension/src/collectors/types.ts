@@ -42,26 +42,6 @@ export interface CursorEventData {
 }
 
 /**
- * Click-specific payload
- */
-export interface ClickEventData {
-  x: number;        // 0-1 normalized position
-  y: number;        // 0-1 normalized position
-  button: number;   // Mouse button (0=left, 1=middle, 2=right)
-  t?: string;       // Target element selector
-}
-
-/**
- * Scroll-specific payload
- */
-export interface ScrollEventData {
-  x: number;        // Scroll X position
-  y: number;        // Scroll Y position
-  dx: number;       // Delta X
-  dy: number;       // Delta Y
-}
-
-/**
  * Navigation event types
  */
 export type NavigationEventType = 'focus' | 'blur' | 'popstate' | 'beforeunload';
@@ -199,14 +179,6 @@ export type ScrapEventData =
   | SvgIconScrapData
   | HeadingScrapData
   | CursorScrapData;
-
-/**
- * Collector configuration
- */
-export interface CollectorConfig {
-  enabled: boolean;
-  sampleRate?: number;  // ms between samples (for continuous collectors)
-}
 
 /**
  * Collector status information

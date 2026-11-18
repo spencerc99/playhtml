@@ -10,13 +10,13 @@ import type {
 } from '@playhtml/extension-types';
 import type { Env } from '../lib/supabase';
 
-const { handleRecent, loadRecentParticipantIds } = vi.hoisted(() => ({
-  handleRecent: vi.fn(),
+const { loadRecentEvents, loadRecentParticipantIds } = vi.hoisted(() => ({
+  loadRecentEvents: vi.fn(),
   loadRecentParticipantIds: vi.fn(),
 }));
 
 vi.mock('../routes/recent', () => ({
-  handleRecent,
+  loadRecentEvents,
   loadRecentParticipantIds,
 }));
 
@@ -90,17 +90,14 @@ describe('handleCommute', () => {
     clearCommuteResponseMemo();
     loadRecentParticipantIds.mockReset();
     loadRecentParticipantIds.mockResolvedValue(['private-participant-id']);
-    handleRecent.mockReset();
-    handleRecent.mockImplementation(async (request: Request) => {
-      const type = new URL(request.url).searchParams.get('type');
-      const events =
-        type === 'navigation'
+    loadRecentEvents.mockReset();
+    loadRecentEvents.mockImplementation(async (_env: Env, query: { type: string | null }) => ({
+      events:
+        query.type === 'navigation'
           ? [event('navigation', 'https://public.example/article')]
-          : [event('keyboard', 'https://private.example/account')];
-      return new Response(JSON.stringify(events), {
-        headers: { 'Content-Type': 'application/json' },
-      });
-    });
+          : [event('keyboard', 'https://private.example/account')],
+      error: null,
+    }));
   });
 
   afterEach(async () => {
@@ -116,10 +113,10 @@ describe('handleCommute', () => {
     const payload = (await response.json()) as CommuteResponse;
 
     expect(response.status).toBe(200);
-    expect(handleRecent).toHaveBeenCalledTimes(1);
+    expect(loadRecentEvents).toHaveBeenCalledTimes(1);
     expect(
-      new URL(handleRecent.mock.calls[0][0].url).searchParams.get('type'),
-    ).toBe('navigation');
+      loadRecentEvents.mock.calls[0][1],
+    ).toMatchObject({ type: 'navigation', limit: 2000, requireTitle: true });
     expect(loadRecentParticipantIds).toHaveBeenCalledTimes(1);
     expect(payload.destinations).toEqual([
       expect.objectContaining({
@@ -154,7 +151,7 @@ describe('handleCommute', () => {
       headers: { Origin: 'https://wewere.online' },
     }), env);
     expect(response.status).toBe(401);
-    expect(handleRecent).not.toHaveBeenCalled();
+    expect(loadRecentEvents).not.toHaveBeenCalled();
     const authenticated = await handleCommuteReview(new Request('https://worker.example/commute/review', {
       headers: { Authorization: 'Bearer test-admin-key' },
     }), env);
@@ -188,20 +185,20 @@ describe('handleCommute', () => {
         handleCommute(request(), env),
         getCommuteResponse(env),
       ]);
-      expect(handleRecent).toHaveBeenCalledTimes(1);
+      expect(loadRecentEvents).toHaveBeenCalledTimes(1);
       expect(loadRecentParticipantIds).toHaveBeenCalledTimes(1);
       expect(((await first.json()) as CommuteResponse).generatedAt).toBe(1_000_000);
       expect(((await second.json()) as CommuteResponse).generatedAt).toBe(1_000_000);
 
       vi.setSystemTime(1_020_000);
       const cached = (await (await handleCommute(request(), env)).json()) as CommuteResponse;
-      expect(handleRecent).toHaveBeenCalledTimes(1);
+      expect(loadRecentEvents).toHaveBeenCalledTimes(1);
       expect(cached.generatedAt).toBe(1_020_000);
       expect(cached.destinations).toHaveLength(1);
 
       vi.setSystemTime(1_030_000);
       await handleCommute(request(), env);
-      expect(handleRecent).toHaveBeenCalledTimes(2);
+      expect(loadRecentEvents).toHaveBeenCalledTimes(2);
       expect(loadRecentParticipantIds).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
@@ -221,13 +218,13 @@ describe('handleCommute', () => {
   it('builds the admin review feed fresh instead of reading the public route', async () => {
     env.ADMIN_KEY = 'test-admin-key';
     await handleCommute(new Request('https://worker.example/commute/recent'), env);
-    expect(handleRecent).toHaveBeenCalledTimes(1);
+    expect(loadRecentEvents).toHaveBeenCalledTimes(1);
     const review = await handleCommuteReview(new Request('https://worker.example/commute/review', {
       headers: { Authorization: 'Bearer test-admin-key' },
     }), env);
     expect(review.status).toBe(200);
-    expect(handleRecent).toHaveBeenCalledTimes(2);
-    expect(new URL(handleRecent.mock.calls[1][0].url).searchParams.get('limit')).toBe('10000');
+    expect(loadRecentEvents).toHaveBeenCalledTimes(2);
+    expect(loadRecentEvents.mock.calls[1][1]).toMatchObject({ limit: 10000, requireTitle: true });
     const body = (await review.json()) as { destinations: Array<{ review?: unknown }> };
     expect(body.destinations[0].review).toBeDefined();
   });
@@ -370,10 +367,10 @@ describe('handleCommute', () => {
     await env.WWO_ADMIN_DB.prepare(
       "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('page', 'https://public.example/', 'hidden', '')",
     ).run();
-    handleRecent.mockImplementation(async () => new Response(JSON.stringify([
+    loadRecentEvents.mockImplementation(async () => ({ events: [
       event('navigation', 'https://public.example/'),
       event('navigation', 'https://public.example/article'),
-    ]), { headers: { 'Content-Type': 'application/json' } }));
+    ], error: null }));
     const run = useClef('regular', 'hidden');
     await suggestCommuteDestinations(env);
     expect(run.names).toHaveBeenCalledTimes(1);

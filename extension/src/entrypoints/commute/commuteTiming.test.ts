@@ -3,36 +3,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  getCommuteRouteDurationSeconds,
+  crossesCommuteClockSecond,
   getSlowModePlatformPhase,
   getSlowModePresentationTiming,
-  getSlowModeProgress,
   getCommuteTiming,
   SLOW_MODE_DURATIONS,
 } from "./commuteTiming";
 
 describe("getCommuteTiming", () => {
-  it("counts a stop after the train reaches it", () => {
-    expect(
-      getSlowModeProgress(
-        { atOrigin: true, phase: "stopped", stopIndex: 0 },
-        4,
-      ),
-    ).toEqual({ completedIndex: -1, stopsLeft: 3 });
-    expect(
-      getSlowModeProgress(
-        { atOrigin: false, phase: "riding", stopIndex: 0 },
-        4,
-      ),
-    ).toEqual({ completedIndex: -1, stopsLeft: 3 });
-    expect(
-      getSlowModeProgress(
-        { atOrigin: false, phase: "stopped", stopIndex: 0 },
-        4,
-      ),
-    ).toEqual({ completedIndex: 0, stopsLeft: 2 });
-  });
-
   it("uses the Slow Mode platform, leg, and dwell durations", () => {
     expect(getCommuteTiming(8, 3, SLOW_MODE_DURATIONS)).toMatchObject({
       phase: "stopped",
@@ -195,13 +173,20 @@ describe("getCommuteTiming", () => {
     });
   });
 
-  it("includes the synchronized return home in the finite route duration", () => {
-    expect(getCommuteRouteDurationSeconds(2)).toBe(68);
-  });
-
   it("rejects an empty route", () => {
     expect(() => getCommuteTiming(0, 0)).toThrow(
       "Internet Commute requires at least one stop",
     );
+  });
+});
+
+describe("crossesCommuteClockSecond", () => {
+  it("ignores ticks that stay inside the same second for every anchor", () => {
+    expect(crossesCommuteClockSecond(10_000, 10_750, [0, -100])).toBe(false);
+  });
+
+  it("detects a second boundary on any anchor", () => {
+    expect(crossesCommuteClockSecond(10_000, 10_250, [0, 10_250])).toBe(true);
+    expect(crossesCommuteClockSecond(10_999, 11_000, [0])).toBe(true);
   });
 });

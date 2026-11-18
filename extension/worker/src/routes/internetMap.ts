@@ -34,7 +34,7 @@ export function internetMapObjectKey(path: string): string | null {
   if (!match) return null;
   const [, bundle, file] = match;
   if (!BUNDLE_NAME.test(bundle) || bundle.startsWith('.')) return null;
-  if (!(file in BUNDLE_FILES)) return null;
+  if (!Object.hasOwn(BUNDLE_FILES, file)) return null;
   return `${bundle}/${file}`;
 }
 

@@ -1,4 +1,5 @@
-import { withSharedState } from "@playhtml/react";
+import { usePeople, withSharedState } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import randomColor from "randomcolor";
 import React, { useEffect, useState } from "react";
 import "./events.scss";
@@ -144,6 +145,7 @@ export const Guestbook = withSharedState(
   { defaultData: [] as GuestbookEntry[] },
   ({ data, setData }, { name, from }: { name?: string; from?: string }) => {
     const [message, setMessage] = React.useState("");
+    const { me } = usePeople();
 
     const handleSubmit = () => {
       if (message.trim()) {
@@ -152,7 +154,7 @@ export const Guestbook = withSharedState(
           {
             name: name,
             from,
-            color: window?.cursors?.color || undefined,
+            color: playhtml.people.me.color || undefined,
             message,
             timestamp: Date.now(),
           },
@@ -174,7 +176,7 @@ export const Guestbook = withSharedState(
           <span>
             <b
               style={{
-                color: window.cursors?.color || "black",
+                color: me.color || "black",
               }}
             >
               {name || "Anonymous"}
@@ -261,8 +263,8 @@ export const URLChat = withSharedState(
       e.preventDefault();
       const newUrl: SharedURL = {
         url: inputUrl,
-        userName: window.cursors?.name || "Anonymous",
-        userColor: window.cursors?.color || "#000000",
+        userName: playhtml.people.me.name || "Anonymous",
+        userColor: playhtml.people.me.color || "#000000",
         timestamp: Date.now(),
       };
 

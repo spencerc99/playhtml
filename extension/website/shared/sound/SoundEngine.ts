@@ -7942,10 +7942,34 @@ export class SoundEngine {
     }
     this.layerBuses.clear();
     this.cantus = null;
+    // Unhook the shared chain so nothing the engine scheduled can still reach
+    // a caller's context, which outlives the engine.
+    for (const node of [
+      this.masterGain,
+      this.reverbSendBus,
+      this.bedSendGain,
+      this.reverbGain,
+      this.convolver,
+      this.compressor,
+    ]) {
+      try { node?.disconnect(); } catch { /* already disconnected */ }
+    }
+    this.masterGain = null;
+    this.reverbSendBus = null;
+    this.bedSendGain = null;
+    this.reverbGain = null;
+    this.convolver = null;
+    this.compressor = null;
     if (this.ctx) {
       // Only a context the engine opened is its to close. An injected one
-      // belongs to the caller, which may still be rendering from it.
-      if (!this.providedCtx) this.ctx.close();
+      // belongs to the caller, which may still be rendering from it. dispose
+      // stays synchronous for unmount cleanups, so a failed close is reported
+      // rather than left as an unhandled rejection.
+      if (!this.providedCtx) {
+        this.ctx.close().catch((err: unknown) => {
+          console.warn("[SoundEngine] closing the audio context failed:", err);
+        });
+      }
       this.ctx = null;
     }
   }

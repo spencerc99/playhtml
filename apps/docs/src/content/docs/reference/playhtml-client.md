@@ -185,7 +185,7 @@ await playhtml.setupPlayElementForTag(el, "can-move");
 
 Detaches the element's handler (listeners, timers, observers) but **keeps shared data**. Use when the DOM node is removed but may come back.
 
-To delete shared data too, use [`deleteElementData`](#deleteelementdata).
+To delete shared data too, use [`deleteElementData`](#deleteelementdatatag-elementid).
 
 ```js
 playhtml.removePlayElement(document.getElementById("card-1"));

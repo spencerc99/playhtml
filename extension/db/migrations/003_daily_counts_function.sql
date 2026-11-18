@@ -1,5 +1,5 @@
 -- ABOUTME: SQL function returning event counts grouped by day for the calendar heatmap.
--- ABOUTME: Supports optional type and date range filters; uses idx_events_type_ts index.
+-- ABOUTME: Supports optional type and date range filters; 005 drops idx_events_type_ts, so no type/ts index backs it.
 
 CREATE OR REPLACE FUNCTION daily_event_counts(
   event_type TEXT DEFAULT NULL,

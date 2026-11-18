@@ -144,6 +144,7 @@ describe("background scrap queries", () => {
           sendMessage: vi.fn().mockResolvedValue(undefined),
         },
         alarms: {
+          get: vi.fn().mockResolvedValue(undefined),
           create: vi.fn(),
           onAlarm: { addListener: vi.fn() },
         },
@@ -295,6 +296,7 @@ describe("background scrap queries", () => {
           sendMessage: vi.fn().mockResolvedValue(undefined),
         },
         alarms: {
+          get: vi.fn().mockResolvedValue(undefined),
           create: vi.fn(),
           onAlarm: { addListener: vi.fn() },
         },
@@ -368,6 +370,7 @@ describe("background scrap queries", () => {
           sendMessage: vi.fn().mockResolvedValue(undefined),
         },
         alarms: {
+          get: vi.fn().mockResolvedValue(undefined),
           create: vi.fn(),
           onAlarm: { addListener: vi.fn() },
         },
@@ -417,6 +420,7 @@ describe("background scrap queries", () => {
           sendMessage: vi.fn().mockResolvedValue(undefined),
         },
         alarms: {
+          get: vi.fn().mockResolvedValue(undefined),
           create: vi.fn(),
           onAlarm: { addListener: vi.fn() },
         },

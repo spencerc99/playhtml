@@ -1,39 +1,21 @@
 // ABOUTME: Serves recent browsing events filtered by domain for the historical overlay.
-// ABOUTME: Public endpoint that queries Supabase using the domain index for fast lookups.
+// ABOUTME: Public endpoint that pages through Supabase collection_events newest first.
 // ABOUTME: Navigation events have titles stripped at ingest (stored in page_metadata_history);
 // ABOUTME: this handler re-joins them by page_ref before returning.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import { loadParticipantColors } from '../lib/participantColors';
-import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
-import { canonicalizeUrl, buildPageRef } from '../../../src/utils/pageMetadata';
-
-/**
- * Extract domain from URL, matching frontend logic
- * Removes 'www.' prefix and returns hostname
- */
-function extractDomain(url: string | null): string {
-  if (!url) return '';
-  try {
-    const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
-    return urlObj.hostname.replace('www.', '');
-  } catch {
-    return '';
-  }
-}
+import { getEarlierEventFilter } from '../lib/eventCursorFilter';
+import { parseOptionalIsoDate, parseOptionalPositiveInt } from '../lib/requestInput';
+import {
+  buildPageRef,
+  canonicalizeUrl,
+  type CollectionEvent,
+  type EventMeta,
+} from '@playhtml/extension-types';
 
 /** Supabase/PostgREST returns at most 1000 rows per request; we paginate to satisfy larger limits. */
 const SUPABASE_PAGE_SIZE = 1000;
-
-function quoteEventCursorValue(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-}
-
-export function getEarlierEventFilter(ts: string, id: string): string {
-  const quotedTs = quoteEventCursorValue(ts);
-  const quotedId = quoteEventCursorValue(id);
-  return `ts.lt.${quotedTs},and(ts.eq.${quotedTs},id.lt.${quotedId})`;
-}
 
 interface RecentEventCursor {
   ts: string;
@@ -123,9 +105,14 @@ export async function loadRecentParticipantIds(
 
 type PageMeta = { title?: string; favicon_url?: string };
 
+/** page_refs per .in() call, to stay within PostgREST URL length limits. */
+const PAGE_META_CHUNK_SIZE = 200;
+/** page_metadata_history requests in flight at once. */
+const PAGE_META_CONCURRENCY = 4;
+
 /**
  * Fetch the most-recently-observed title and favicon for each page_ref from page_metadata_history.
- * Batches the .in() call to stay within PostgREST URL length limits.
+ * Splits the refs into chunks and runs up to PAGE_META_CONCURRENCY chunk queries at once.
  */
 async function fetchMetaByPageRef(
   supabase: ReturnType<typeof createSupabaseClient>,
@@ -134,14 +121,20 @@ async function fetchMetaByPageRef(
   const metaByRef = new Map<string, PageMeta>();
   if (pageRefs.length === 0) return metaByRef;
 
-  const CHUNK_SIZE = 200;
-  for (let i = 0; i < pageRefs.length; i += CHUNK_SIZE) {
-    const chunk = pageRefs.slice(i, i + CHUNK_SIZE);
-    const { data: metaRows } = await supabase
+  const chunks: string[][] = [];
+  for (let i = 0; i < pageRefs.length; i += PAGE_META_CHUNK_SIZE) {
+    chunks.push(pageRefs.slice(i, i + PAGE_META_CHUNK_SIZE));
+  }
+
+  const loadChunk = async (chunk: string[]) => {
+    const { data: metaRows, error } = await supabase
       .from('page_metadata_history')
       .select('page_ref, title, favicon_url')
       .in('page_ref', chunk)
       .is('valid_to_ts', null); // current (most recent) entry per page_ref
+    if (error) {
+      throw new Error(`Page metadata lookup failed: ${error.message}`);
+    }
 
     for (const row of metaRows ?? []) {
       if (row.page_ref && (row.title || row.favicon_url)) {
@@ -151,6 +144,10 @@ async function fetchMetaByPageRef(
         });
       }
     }
+  };
+
+  for (let i = 0; i < chunks.length; i += PAGE_META_CONCURRENCY) {
+    await Promise.all(chunks.slice(i, i + PAGE_META_CONCURRENCY).map(loadChunk));
   }
 
   return metaByRef;
@@ -234,6 +231,65 @@ export async function toCollectionEvents(
   });
 }
 
+export interface RecentEventQuery {
+  /** Event type to return; null returns every type. */
+  type: string | null;
+  /** Maximum number of rows to read before the require_title filter. */
+  limit: number;
+  domain: string | null;
+  pid: string | null;
+  /** Inclusive ISO lower bound on ts. */
+  from: string | null;
+  /** Inclusive ISO upper bound on ts. */
+  to: string | null;
+  /** Drops events with no title in page_metadata_history. */
+  requireTitle: boolean;
+}
+
+export type RecentEvents =
+  | { events: CollectionEvent[]; error: null }
+  | { events: null; error: { message: string } };
+
+/**
+ * Newest-first events matching `query`, with navigation titles, favicons, and
+ * cursor colors re-attached. A failed collection_events page returns its
+ * error; failed metadata or color lookups throw.
+ */
+export async function loadRecentEvents(
+  env: Env,
+  query: RecentEventQuery,
+): Promise<RecentEvents> {
+  const supabase = createSupabaseClient(env);
+  const { rows, error } = await loadRecentEventRows(query.limit, async (cursor, pageSize) => {
+    let request = supabase
+      .from('collection_events')
+      .select('*');
+
+    if (query.type !== null) request = request.eq('type', query.type);
+    if (query.domain) request = request.eq('domain', query.domain);
+    if (query.pid) request = request.eq('participant_id', query.pid);
+    if (query.from) request = request.gte('ts', query.from);
+    if (query.to) request = request.lte('ts', query.to);
+    if (cursor) request = request.or(getEarlierEventFilter(cursor.ts, cursor.id));
+
+    return request
+      .order('ts', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(pageSize);
+  });
+
+  if (error) return { events: null, error };
+
+  const allEvents = await toCollectionEvents(supabase, rows);
+
+  // Applied after the page_metadata_history join: drops events with no
+  // metadata row (e.g. older events ingested before page_metadata_history existed).
+  const events = query.requireTitle
+    ? allEvents.filter((e) => !!((e.data as Record<string, unknown>).title))
+    : allEvents;
+  return { events, error: null };
+}
+
 /**
  * GET /events/recent
  * Get recent events for live artwork rendering
@@ -241,9 +297,9 @@ export async function toCollectionEvents(
  *
  * Query parameters:
  * - type: Event type filter (default: 'cursor'; 'all' disables the filter)
- * - limit: Maximum number of events (default: 1000, max: 20000). Pagination is used internally.
+ * - limit: Maximum number of events, a positive integer (default: 1000, max: 20000). Pagination is used internally.
  * - domain: Domain filter (optional) - filters events by URL domain
- * - pid: Participant ID filter (optional) - restore-from-server flow uses this
+ * - pid: Participant ID filter (optional)
  * - from: ISO date string, inclusive lower bound on ts (optional)
  * - to: ISO date string, inclusive upper bound on ts (optional)
  * - require_title: 'true' to omit events for which no title exists in page_metadata_history (optional)
@@ -254,74 +310,51 @@ export async function handleRecent(
   request: Request,
   env: Env
 ): Promise<Response> {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+  };
   try {
     const url = new URL(request.url);
-    const typeFilter = getRecentEventTypeFilter(url);
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 20000);
-    const domainFilter = url.searchParams.get('domain') || null;
-    const pidFilter = url.searchParams.get('pid') || null;
-    const requireTitle = url.searchParams.get('require_title') === 'true';
-
-    const supabase = createSupabaseClient(env);
-    const { rows, error } = await loadRecentEventRows(limit, async (cursor, pageSize) => {
-      let query = supabase
-        .from('collection_events')
-        .select('*');
-
-      if (typeFilter !== null) {
-        query = query.eq('type', typeFilter);
-      }
-
-      if (domainFilter) {
-        query = query.eq('domain', domainFilter);
-      }
-      if (pidFilter) {
-        query = query.eq('participant_id', pidFilter);
-      }
-
-      const fromDate = url.searchParams.get('from');
-      const toDate = url.searchParams.get('to');
-      if (fromDate) query = query.gte('ts', fromDate);
-      if (toDate) query = query.lte('ts', toDate);
-      if (cursor) query = query.or(getEarlierEventFilter(cursor.ts, cursor.id));
-
-      return query
-        .order('ts', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(pageSize);
+    const limit = parseOptionalPositiveInt(url.searchParams, 'limit');
+    if (!limit.ok) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid limit (expected a positive integer)' }),
+        { status: 400, headers }
+      );
+    }
+    const from = parseOptionalIsoDate(url.searchParams, 'from');
+    const to = parseOptionalIsoDate(url.searchParams, 'to');
+    if (!from.ok || !to.ok) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid from/to (expected an ISO date)' }),
+        { status: 400, headers }
+      );
+    }
+    const { events, error } = await loadRecentEvents(env, {
+      type: getRecentEventTypeFilter(url),
+      limit: Math.min(limit.value ?? 1000, 20000),
+      domain: url.searchParams.get('domain') || null,
+      pid: url.searchParams.get('pid') || null,
+      from: from.value,
+      to: to.value,
+      requireTitle: url.searchParams.get('require_title') === 'true',
     });
 
     if (error) {
       console.error('Supabase query error:', error);
       return new Response(
         JSON.stringify({ error: 'Failed to fetch events', details: error.message }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        { status: 500, headers }
       );
     }
 
-    const allEvents = await toCollectionEvents(supabase, rows);
-
-    // Apply require_title filter after the join — drops events where no metadata
-    // row exists (e.g. older events ingested before page_metadata_history existed).
-    const events = requireTitle
-      ? allEvents.filter((e) => !!((e.data as Record<string, unknown>).title))
-      : allEvents;
-    
-    return new Response(
-      JSON.stringify(events),
-      { 
-        status: 200,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
-      }
-    );
+    return new Response(JSON.stringify(events), { status: 200, headers });
   } catch (error) {
     console.error('Recent events error:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers }
     );
   }
 }

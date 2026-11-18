@@ -3,7 +3,7 @@
 import type { RunnableRecipe } from "./types";
 
 // Images are pulled from the live playhtml.fun deployment.
-// Why: the iframe is sandboxed without allow-same-origin (spec §4.2,
+// Why: the iframe is sandboxed without allow-same-origin (for
 // security). Astro's dev server blocks cross-origin subresource requests
 // from sandboxed iframes for same-host paths. Pointing at playhtml.fun
 // — a different origin — bypasses that block entirely. The same files
