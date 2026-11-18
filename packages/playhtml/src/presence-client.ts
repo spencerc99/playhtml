@@ -24,7 +24,7 @@ import {
   unwrapPagePresenceValue,
   wrapPagePresenceValue,
 } from "./presence-utils";
-import { ALL_PRESENCE_CHANNELS } from "./people";
+import { ALL_PRESENCE_CHANNELS, presenceFingerprint } from "./people";
 
 type PresenceClientOptions = {
   transport: RealtimePresenceTransport;
@@ -263,16 +263,16 @@ export class PresenceClient implements PresenceAPI {
    * not count as a change and re-fire subscribers. */
   private channelFingerprint(channel: string): string {
     if (channel === ALL_PRESENCE_CHANNELS) return this.allChannelsFingerprint();
-    const parts: string[] = [`self-identity:${safeStringify(this.getIdentity())}`];
+    const parts: string[] = [`self-identity:${presenceFingerprint(this.getIdentity())}`];
     if (this.localChannels.has(channel)) {
-      parts.push(`self:${safeStringify(this.localChannels.get(channel))}`);
+      parts.push(`self:${presenceFingerprint(this.localChannels.get(channel))}`);
     }
     const wireChannel = toPagePresenceChannel(channel);
     for (const connectionId of Array.from(this.peers.keys()).sort()) {
       const channels = this.peers.get(connectionId)!;
       const folded = channels[wireChannel];
       if (folded === undefined) continue;
-      parts.push(`${connectionId}:${safeStringify(channels.identity)}:${safeStringify(unwrapPagePresenceValue(folded))}`);
+      parts.push(`${connectionId}:${presenceFingerprint(channels.identity)}:${presenceFingerprint(unwrapPagePresenceValue(folded))}`);
     }
     return parts.join("|");
   }
@@ -280,8 +280,8 @@ export class PresenceClient implements PresenceAPI {
   /** Fingerprint of every page presence channel (cursor excluded) plus identities. */
   private allChannelsFingerprint(): string {
     const parts: string[] = [
-      `self-identity:${safeStringify(this.getIdentity())}`,
-      `self:${safeStringify(Array.from(this.localChannels.entries()))}`,
+      `self-identity:${presenceFingerprint(this.getIdentity())}`,
+      `self:${presenceFingerprint(Array.from(this.localChannels.entries()))}`,
     ];
     for (const connectionId of Array.from(this.peers.keys()).sort()) {
       const channels = this.peers.get(connectionId)!;
@@ -291,7 +291,7 @@ export class PresenceClient implements PresenceAPI {
         values.push([channel, unwrapPagePresenceValue(value)]);
       }
       values.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-      parts.push(`${connectionId}:${safeStringify(channels.identity)}:${safeStringify(values)}`);
+      parts.push(`${connectionId}:${presenceFingerprint(channels.identity)}:${presenceFingerprint(values)}`);
     }
     return parts.join("|");
   }
@@ -379,13 +379,5 @@ export class PresenceClient implements PresenceAPI {
         isMe: stableId === selfPublicKey,
       });
     }
-  }
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value ?? null);
-  } catch {
-    return "null";
   }
 }

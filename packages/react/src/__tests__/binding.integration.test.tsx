@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { elementHandlers, playhtml, resetPlayHTML, TagType } from "playhtml";
 import {
+  CanHoverElement,
   CanMoveElement,
   PlayProvider,
   usePresenceRoom,
@@ -149,6 +150,23 @@ describe("CanPlayElement binding lifecycle", () => {
     expect(errorSpy).not.toHaveBeenCalledWith(
       expect.stringContaining("update and updateElement are mutually exclusive"),
     );
+  });
+
+  it("sets up CanHoverElement without a console error", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <CanHoverElement standalone>
+        <div id="hover-card">hover me</div>
+      </CanHoverElement>,
+    );
+
+    await waitFor(() => {
+      expect(
+        elementHandlers.get(TagType.CanHover)?.get("hover-card"),
+      ).toBeDefined();
+    });
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });
 

@@ -43,10 +43,11 @@ const quarantineKvStub = {
   },
 };
 
-// getAdminAuthError now fails closed on a missing ADMIN_TOKEN, so every admin
+// getAdminAuthError fails closed on a missing ADMIN_TOKEN, so every admin
 // route exercised below needs both a configured token and a matching one on
-// the request (see the `?token=` suffix on each admin URL below).
+// the request, sent in the Authorization header.
 const ADMIN_TOKEN = "test-admin-token";
+const ADMIN_AUTH_HEADERS = { Authorization: `Bearer ${ADMIN_TOKEN}` };
 
 const workerEnv: Record<string, unknown> = {
   QUARANTINE_CONTROL: quarantineKvStub,
@@ -176,6 +177,7 @@ function buildRoom(storage: FakeStorage, name: string, doc?: Y.Doc) {
     realtimeSyncStarted: { value: true, writable: true },
     documentLoadCompleted: { value: false, writable: true },
     documentMaintenanceInProgress: { value: false, writable: true },
+    committedSnapshotAwaitingLoad: { value: false, writable: true },
     documentWriteTail: { value: Promise.resolve(), writable: true },
     documentGeneration: { value: 0, writable: true },
     persistenceObserverAttached: { value: false, writable: true },
@@ -256,8 +258,9 @@ function adminPost(
 ): Promise<Response> {
   return room.adminHandler.handleRequest(
     new Request(
-      `https://example.com/parties/main/example-room/admin/${endpoint}?token=${ADMIN_TOKEN}`,
+      `https://example.com/parties/main/example-room/admin/${endpoint}`,
       {
+        headers: ADMIN_AUTH_HEADERS,
         method: "POST",
         body: JSON.stringify(body),
       }
@@ -341,8 +344,8 @@ describe("admin mutations use the authoritative live document", () => {
 
     const responsePromise = room.onRequest(
       new Request(
-        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
-        { method: "POST" }
+        `https://example.com/parties/main/example-room/admin/force-save-live`,
+        { headers: ADMIN_AUTH_HEADERS, method: "POST" }
       )
     );
     await Promise.resolve();
@@ -374,8 +377,8 @@ describe("admin mutations use the authoritative live document", () => {
     try {
       response = await room.onRequest(
         new Request(
-          `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
-          { method: "POST" }
+          `https://example.com/parties/main/example-room/admin/force-save-live`,
+          { headers: ADMIN_AUTH_HEADERS, method: "POST" }
         )
       );
     } finally {
@@ -786,8 +789,8 @@ describe("hydration write guards", () => {
 
     const response = await room.onRequest(
       new Request(
-        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
-        { method: "POST" }
+        `https://example.com/parties/main/example-room/admin/force-save-live`,
+        { headers: ADMIN_AUTH_HEADERS, method: "POST" }
       )
     );
 
@@ -811,8 +814,8 @@ describe("hydration write guards", () => {
     });
     const adminResponse = await room.onRequest(
       new Request(
-        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
-        { method: "POST" }
+        `https://example.com/parties/main/example-room/admin/force-save-live`,
+        { headers: ADMIN_AUTH_HEADERS, method: "POST" }
       )
     );
 
@@ -1033,8 +1036,8 @@ describe("load path", () => {
 
     const response = await room.onRequest(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${ADMIN_TOKEN}`,
-        { method: "GET" }
+        `https://example.com/parties/main/example-room/admin/quarantine-status`,
+        { headers: ADMIN_AUTH_HEADERS, method: "GET" }
       )
     );
 
@@ -1052,8 +1055,8 @@ describe("load path", () => {
 
     const response = await room.onRequest(
       new Request(
-        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
-        { method: "POST" }
+        `https://example.com/parties/main/example-room/admin/force-save-live`,
+        { headers: ADMIN_AUTH_HEADERS, method: "POST" }
       )
     );
 
@@ -1071,8 +1074,9 @@ describe("load path", () => {
 
     const response = await room.onRequest(
       new Request(
-        `https://example.com/parties/main/example-room/admin/quarantine-set?token=${ADMIN_TOKEN}`,
+        `https://example.com/parties/main/example-room/admin/quarantine-set`,
         {
+          headers: ADMIN_AUTH_HEADERS,
           method: "POST",
           body: JSON.stringify({ reason: "operator intervention" }),
         }
@@ -1991,10 +1995,11 @@ describe("hardening", () => {
 
 describe("admin quarantine endpoints", () => {
   function adminRequest(path: string, init?: RequestInit) {
-    const separator = path.includes("?") ? "&" : "?";
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${ADMIN_TOKEN}`);
     return new Request(
-      `https://example.com/parties/main/example-room/admin/${path}${separator}token=${ADMIN_TOKEN}`,
-      init
+      `https://example.com/parties/main/example-room/admin/${path}`,
+      { ...init, headers }
     );
   }
 
@@ -2907,8 +2912,8 @@ describe("quarantine data safety", () => {
 
     const response = await room.onRequest(
       new Request(
-        `https://example.com/parties/main/example-room/admin/force-save-live?token=${ADMIN_TOKEN}`,
-        { method: "POST" }
+        `https://example.com/parties/main/example-room/admin/force-save-live`,
+        { headers: ADMIN_AUTH_HEADERS, method: "POST" }
       )
     );
 
@@ -3042,6 +3047,88 @@ describe("quarantine data safety", () => {
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
   });
 
+  test("an admin play-data edit keeps saves blocked when epoch storage fails after commit", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.document.getMap("play").set("greeting", "stale live value");
+    const originalPut = storage.put.bind(storage);
+    let epochStorageAvailable = false;
+    storage.put = async (key: string, value: unknown) => {
+      if (key === "resetEpoch" && !epochStorageAvailable) {
+        throw new Error("epoch storage unavailable");
+      }
+      await originalPut(key, value);
+    };
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+
+    try {
+      await expect(
+        room.mutateAdminPlayData((playData: Record<string, any>) => {
+          playData.greeting = "admin edit";
+          return { kind: "commit", result: null };
+        })
+      ).rejects.toThrow("epoch storage unavailable");
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(
+      errors.some((line) => line.includes("epoch storage unavailable"))
+    ).toBe(true);
+    expect(upsertCalls).toHaveLength(1);
+    const committedDocument = persistedRow.document;
+    expect(room.documentMaintenanceInProgress).toBe(true);
+    expect(room.roomState()).toBe("save-paused");
+
+    await room.onSave();
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).toBe(committedDocument);
+
+    epochStorageAvailable = true;
+    await room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true });
+
+    expect(room.documentMaintenanceInProgress).toBe(false);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+
+    // A later edit that changes nothing must not bring the pause back.
+    await room.mutateAdminPlayData(() => ({ kind: "skip", result: null }));
+
+    expect(room.documentMaintenanceInProgress).toBe(false);
+    expect(room.roomState()).not.toBe("save-paused");
+  });
+
+  test("an admin play-data edit releases the save lock when it fails before committing", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    upsertError = new Error("database unavailable");
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+
+    try {
+      await expect(
+        room.mutateAdminPlayData((playData: Record<string, any>) => {
+          playData.greeting = "admin edit";
+          return { kind: "commit", result: null };
+        })
+      ).rejects.toThrow("database unavailable");
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(
+      errors.some((line) => line.includes("Database save failed"))
+    ).toBe(true);
+    expect(room.documentMaintenanceInProgress).toBe(false);
+  });
+
   test("a hard reset refuses to run while quarantined", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room } = createRoom();
@@ -3066,8 +3153,8 @@ describe("quarantine data safety", () => {
 
     const response = await room.onRequest(
       new Request(
-        `https://example.com/parties/main/example-room/admin/hard-reset?token=${ADMIN_TOKEN}`,
-        { method: "POST" }
+        `https://example.com/parties/main/example-room/admin/hard-reset`,
+        { headers: ADMIN_AUTH_HEADERS, method: "POST" }
       )
     );
 

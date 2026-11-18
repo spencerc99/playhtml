@@ -2,7 +2,7 @@
 
 A react provider for [`playhtml`](https://github.com/spencerc99/playhtml).
 
-`@playhtml/react` gives you a hooks-like interface for creating realt-ime interactive and persistent elements. It manages all the state syncing for you, so you can reactively render your component based on whatever data is coming in.
+`@playhtml/react` gives you a hooks-like interface for creating real-time interactive and persistent elements. It manages all the state syncing for you, so you can reactively render your component based on whatever data is coming in.
 
 Install by using your preferred package manager
 
@@ -17,7 +17,7 @@ npm install playhtml @playhtml/react # or
 
 ## Usage
 
-First, wrap your app in the `PlayProvider` component. This will handling initializing the `playhtml` client and setting up the connection to the server. You can specify the same `initOptions` to `PlayProvider` as you would when initializing the client directly.
+First, wrap your app in the `PlayProvider` component. This handles initializing the `playhtml` client and setting up the connection to the server. You can specify the same `initOptions` to `PlayProvider` as you would when initializing the client directly.
 
 ```tsx
 import { PlayProvider } from "@playhtml/react";
@@ -38,7 +38,7 @@ export default function App() {
 }
 ```
 
-Then, use `withSharedState` to wrap your components in a higher order component to enhance them with live, shared data. `withSharedState` takes in a `defaultData` along with other configuration and a norma functional component definition, to which it will pass through the data and a callback to change that data `setData`.
+Then, use `withSharedState` to wrap your components in a higher order component to enhance them with live, shared data. `withSharedState` takes in a `defaultData` along with other configuration and a normal functional component definition, to which it will pass through the data and a callback to change that data `setData`.
 
 For example, to create a rectangle that switches between on and off states (designated by the background), you can use the following code:
 
@@ -54,7 +54,11 @@ export const ToggleSquare = withSharedState(
         style={{
           ...(data.on ? { background: "green" } : { background: "red" }),
         }}
-        onClick={() => setData({ on: !data.on })}
+        onClick={() =>
+          setData((draft) => {
+            draft.on = !draft.on;
+          })
+        }
       />
     );
   }
@@ -63,38 +67,38 @@ export const ToggleSquare = withSharedState(
 
 https://github.com/spencerc99/playhtml/assets/14796580/beff368e-b659-4db0-b314-16d10b09c31f
 
-A more complex example uses `awareness` to show the number of people on the page and their associated color:
+A more complex example uses element presence to show everyone on the page and their chosen color. Presence is per-person state that syncs live but clears when the person leaves:
 
 ```tsx
 export const OnlineIndicator = withSharedState(
-  { defaultData: {}, myDefaultAwareness: "#008000", id: "online-indicator" },
-  ({ myAwareness, setMyAwareness, awareness }) => {
-    const myAwarenessIdx = myAwareness ? awareness.indexOf(myAwareness) : -1;
-    return (
-      <>
-        {awareness.map((val, idx) => (
-          <div
-            key={idx}
-            style={{
-              width: "50px",
-              height: "50px",
-              borderRadius: "50%",
-              background: val,
-              boxShadow:
-                idx === myAwarenessIdx
-                  ? "0px 0px 30px 10px rgb(245, 169, 15)"
-                  : undefined,
-            }}
-          ></div>
-        ))}
-        <input
-          type="color"
-          onChange={(e) => setMyAwareness(e.target.value)}
-          value={myAwareness}
+  {
+    defaultData: {},
+    defaultPresence: { color: "#008000" },
+    id: "online-indicator",
+  },
+  ({ everyone, me, setMyPresence }) => (
+    <>
+      {everyone.map((person) => (
+        <div
+          key={person.pid}
+          style={{
+            width: "50px",
+            height: "50px",
+            borderRadius: "50%",
+            background: person.presence.color,
+            boxShadow: person.isMe
+              ? "0px 0px 30px 10px rgb(245, 169, 15)"
+              : undefined,
+          }}
         />
-      </>
-    );
-  }
+      ))}
+      <input
+        type="color"
+        onChange={(e) => setMyPresence({ color: e.target.value })}
+        value={me.presence.color}
+      />
+    </>
+  ),
 );
 ```
 
@@ -220,7 +224,7 @@ https://github.com/spencerc99/playhtml/assets/14796580/bd8ecfaf-73ab-4aa2-9312-8
 
 ### Cursors
 
-Playhtml includes built-in cursor tracking and presence awareness. Enable cursors through `PlayProvider`:
+Playhtml includes built-in cursor tracking and presence. Enable cursors through `PlayProvider`:
 
 ```tsx
 <PlayProvider
@@ -239,37 +243,32 @@ Playhtml includes built-in cursor tracking and presence awareness. Enable cursor
 </PlayProvider>
 ```
 
-Access cursor data in your components using `usePlayContext()`:
+Read who is on the page with `usePeople()`. Each person has a `pid`, `name`, `color`, `isMe`, and their page `presence` (cursor positions are at `person.presence.cursor`):
 
 ```tsx
-import { usePlayContext } from "@playhtml/react";
+import { usePeople } from "@playhtml/react";
 
-function UserCount() {
-  const { cursors } = usePlayContext();
+function PeopleCount() {
+  const { everyone } = usePeople();
 
-  return (
-    <div>👥 {cursors.allColors.length} users online</div>
-  );
+  return <div>{everyone.length} people online</div>;
 }
 ```
 
-The `cursors` object provides:
-- `cursors.allColors` - Array of all user colors in the room
-- `cursors.color` - Your current cursor color
-- `cursors.name` - Your current name
-
-You can also access the global `window.cursors` API for setting values:
+To change your own name or color, assign to `playhtml.people.me`:
 
 ```tsx
-function CursorSettings() {
-  const { getMyPlayerIdentity } = usePlayContext();
+import { playhtml, usePeople } from "@playhtml/react";
+
+function ColorPicker() {
+  const { me } = usePeople();
 
   return (
     <input
       type="color"
-      value={getMyPlayerIdentity().color}
+      value={me.color}
       onChange={(e) => {
-        window.cursors.color = e.target.value;
+        playhtml.people.me.color = e.target.value;
       }}
     />
   );
@@ -309,32 +308,19 @@ The `cursors.container` ref ensures cursor DOM mounts inside an element you cont
 
 See the full [navigation guide](https://playhtml.fun/docs/advanced/navigation/) for htmx, Astro, and other framework specifics.
 
-For full configuration, see the interface below.
+## API reference
+
+The render function passed to `withSharedState` receives:
 
 ```tsx
-interface CanPlayElementProps<T extends object, V extends object> {
-  id?: string; // the id of this element, required if the top-level child is a React Fragment. Defaults to the id of the top-level child or a hash of the contents of the children if not specified.
-  defaultData: T; // the default data for this element
-  myDefaultAwareness?: V; // the default awareness for this element
-  children: (props: ReactElementEventHandlerData<T, V>) => React.ReactNode;
-}
-
-// callback props
-interface ReactElementEventHandlerData<T extends object, V extends object> {
-  data: T; // the data for this element
-  setData: (data: T) => void; // sets the data for this element
-  awareness: V[]; // the awareness values of all clients (including self)
-  myAwareness?: V; // the specific awareness of this client
-  setMyAwareness: (data: V) => void; // sets "myAwareness" to the given value and syncs it to other clients
+interface ReactElementEventHandlerData<T, V> {
+  data: T; // this element's shared, persisted data
+  setData: (data: T | ((draft: T) => void)) => void; // replace the data, or edit a draft
+  everyone: Person<V>[]; // { pid, name, color, isMe, presence } for everyone on this element
+  me: Person<V>; // you; your presence is me.presence
+  setMyPresence: (next: V | ((draft: V) => V | void)) => void; // set your presence
+  ref: React.RefObject<HTMLElement>;
 }
 ```
 
-Refer to `packages/react/example.tsx` for a full list of examples.
-
-## Open considerations
-
-- how to best handle configuring how persistence works? (e.g. none vs. locally vs. globally)?
-  - Currently the separate configurations are managed by housing the data in completely separate stores and function abstractions. `setAwareness` is used for no persistence, there is no configuration for only local persistence, and `setData` persists the data globally.
-  - Maybe this would be better if it was a per-data-key configuration option? Likely a `persistenceOptions` object with an enum value for `none`, `local`, and `global` for each key. It wouldn't allow for nested configuration.
-- `awareness` should probably be separated into `myAwareness` and `othersAwareness`.
-- is it more ergonomic to make a hooks-esque interface and use some sort of callback from `PlayProvider` to get/set data? Hard to do this without requiring the user to specify some "id" for the data though.
+See the [React API reference](https://playhtml.fun/docs/reference/react-api/) for every component, hook, and option, and `packages/react/examples` for more examples.

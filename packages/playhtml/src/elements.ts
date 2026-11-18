@@ -15,15 +15,6 @@ import {
   observeElementChanges,
 } from "@playhtml/common";
 
-// @ts-ignore
-const debounce = (fn: Function, ms = 300) => {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  return function (this: any, ...args: any[]) {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn.apply(this, args), ms);
-  };
-};
-
 type ElementDataWrite<T> = T | ((draft: T) => void);
 
 interface ElementHandlerOptions<V> {
@@ -50,7 +41,6 @@ export class ElementHandler<T = any, U = any, V = any> {
   _data: T;
   onChange: (data: T) => void;
   onAwarenessChange: (data: V) => void;
-  debouncedOnChange: (data: T) => void;
   resetShortcut?: ModifierKey;
   // TODO: change this to receive the delta instead of the whole data object so you don't have to maintain
   // internal state for expressing the delta.
@@ -120,11 +110,9 @@ export class ElementHandler<T = any, U = any, V = any> {
       view,
       updateElementAwareness,
       onMount,
-      debounceMs,
       triggerAwarenessUpdate,
       devMode,
     } = elementData;
-    // console.log("🔨 constructing ", element.id);
     this.scheduleSetupDataWrite = options.scheduleSetupDataWrite;
     this.getUsers = options.getUsers ?? (() => []);
     this.getMeFor = options.getMe;
@@ -140,7 +128,6 @@ export class ElementHandler<T = any, U = any, V = any> {
         : (defaultLocalData as U);
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
-    this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
     this.update = update ?? updateElement;
     this.updateElementAwareness = updateElementAwareness;
@@ -220,13 +207,11 @@ export class ElementHandler<T = any, U = any, V = any> {
     onDrag,
     onDragStart,
     resetShortcut,
-    debounceMs,
     triggerAwarenessUpdate,
     devMode,
   }: ElementData<T, U, V>) {
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
-    this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
     this.update = update ?? updateElement;
     this.view = view;
@@ -263,7 +248,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     // Handle advanced settings
     if (resetShortcut && !this.resetShortcutListener) {
       // @ts-ignore
-      element.reset = this.reset;
+      element.reset = this.reset.bind(this);
 
       this.resetShortcutListener = (e) => {
         switch (this.resetShortcut) {
@@ -597,23 +582,19 @@ export class ElementHandler<T = any, U = any, V = any> {
    *
    * Semantics:
    * - Mutator form: setData((draft) => { ... })
-   *   When data is backed by SyncedStore/Yjs (dataMode = "syncedstore"),
-   *   the draft is a live CRDT proxy. You can mutate nested arrays/objects
-   *   and the change will be merged across clients without conflicts.
-   *   Example:
+   *   The draft is a live SyncedStore/Yjs proxy. You can mutate nested
+   *   arrays/objects and the change will be merged across clients without
+   *   conflicts. Example:
    *     setData(d => { d.list.push(item); });
    *
    * - Value form: setData(value)
    *   Replaces the entire data snapshot. Use this when you need canonical
-   *   replacement semantics (e.g., snapshot from a mirror) or when running
-   *   in legacy plain mode. Example:
+   *   replacement semantics (e.g., snapshot from a mirror). Example:
    *     setData({ on: true });
    *
    * Notes:
-   * - In plain mode, only the value form results in a sync; mutating draft
-   *   is a no-op. Prefer the mutator form for merge-friendly edits.
-   * - Directly mutating eventData.data may work in SyncedStore mode, but the
-   *   recommended portable pattern is setData(draft => { ... }).
+   * - eventData.data is a plain snapshot; mutating it does not sync. Write
+   *   through setData(draft => { ... }).
    */
   setData(data: ElementDataWrite<T>): void {
     // Writing shared data from inside a view render is a re-render loop:
@@ -651,10 +632,9 @@ export class ElementHandler<T = any, U = any, V = any> {
 
     this.selfAwareness = data;
     this.onAwarenessChange(data);
-    // Render our own awareness change locally right away. The awareness "change"
-    // observer also fires (onAwarenessChange writes a fresh state object, so
-    // y-protocols detects the change and broadcasts it), but that path reflects
-    // the write back asynchronously; updating here keeps the local view immediate.
+    // Render our own awareness change locally right away. onAwarenessChange
+    // publishes the value to peers; calling triggerAwarenessUpdate here keeps
+    // the local view immediate whatever the caller's awareness pipeline does.
     this.triggerAwarenessUpdate?.();
   }
 
@@ -666,10 +646,6 @@ export class ElementHandler<T = any, U = any, V = any> {
   /** @deprecated Use `setMyPresence`. */
   setMyAwareness(data: V): void {
     this.replaceMyPresence(data, "setMyAwareness");
-  }
-
-  setDataDebounced(data: T) {
-    this.debouncedOnChange(data);
   }
 
   /**

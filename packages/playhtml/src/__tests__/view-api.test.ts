@@ -167,6 +167,49 @@ describe("rail 2: lifecycle & guards", () => {
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
+  it("runs the onMount cleanup and stops binding descendants on deleteElementData()", async () => {
+    const el = document.createElement("div");
+    el.id = "deleted-lifecycle";
+    document.body.appendChild(el);
+
+    const cleanup = vi.fn();
+    playhtml.register("deleted-lifecycle", {
+      defaultData: {},
+      view: () => html`<span>hi</span>`,
+      onMount: () => cleanup,
+    });
+    await tick();
+    expect(cleanup).not.toHaveBeenCalled();
+
+    // While the element is live, its descendant observer sets up a capability
+    // child as soon as it is added.
+    const before = document.createElement("div");
+    before.id = "deleted-lifecycle-child-before";
+    before.setAttribute("can-toggle", "");
+    el.appendChild(before);
+    await tick();
+    expect(
+      elementHandlers.get("can-toggle")?.has("deleted-lifecycle-child-before"),
+    ).toBe(true);
+
+    playhtml.deleteElementData("can-play", "deleted-lifecycle");
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(elementHandlers.get("can-play")?.has("deleted-lifecycle")).toBe(
+      false,
+    );
+
+    // After the delete, the observer is disconnected and the same stimulus
+    // sets nothing up.
+    const after = document.createElement("div");
+    after.id = "deleted-lifecycle-child-after";
+    after.setAttribute("can-toggle", "");
+    el.appendChild(after);
+    await tick();
+    expect(
+      elementHandlers.get("can-toggle")?.has("deleted-lifecycle-child-after"),
+    ).toBe(false);
+  });
+
   it("rejects setLocalData called during render (no infinite recursion)", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const el = document.createElement("div");

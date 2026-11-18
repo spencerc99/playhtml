@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { CollectionEvent } from "../types";
 import { RECENT_EVENTS_URL } from "../config";
+import { oldestTs } from "../utils/eventUtils";
 
 const PAGE_SIZE = 20000;
 
@@ -58,8 +59,7 @@ export function useCursorEventPool(
 
         setDeepening(true);
         while (!cancelled && all.length < maxEvents) {
-          const oldestTs = Math.min(...all.map((e) => e.ts));
-          const page = await fetchPage(oldestTs);
+          const page = await fetchPage(oldestTs(all));
           if (cancelled) return;
           if (page.length === 0) break;
           all = [...all, ...page];

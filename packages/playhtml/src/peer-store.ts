@@ -94,6 +94,9 @@ export class PeerStore {
   // dropped, unless a later sync or update brings it back first.
   private absentPeerDeadlines = new Map<string, number>();
   private absentPeerTimer: ReturnType<typeof setTimeout> | null = null;
+  // Incremented on every change to the folded peer map, so views can cache
+  // values derived from it until the next change.
+  private revision = 0;
 
   constructor(
     source: PeerMessageSource,
@@ -115,6 +118,11 @@ export class PeerStore {
   /** Remote peers keyed by connection id. Local state belongs to each view. */
   getPeers(): Map<string, PeerChannels> {
     return this.peers;
+  }
+
+  /** Changes whenever the folded peer map returned by getPeers() changes. */
+  getRevision(): number {
+    return this.revision;
   }
 
   /**
@@ -166,6 +174,7 @@ export class PeerStore {
   }
 
   private applySync(snapshot: PresenceSnapshot): void {
+    this.revision++;
     const now = Date.now();
     for (const connectionId of this.peers.keys()) {
       if (connectionId in snapshot) continue;
@@ -206,6 +215,7 @@ export class PeerStore {
       const channels = this.peers.get(connectionId);
       if (!channels) continue;
       this.peers.delete(connectionId);
+      this.revision++;
       for (const channel of Object.keys(channels)) {
         touched.add(namespaceOf(channel));
       }
@@ -216,6 +226,7 @@ export class PeerStore {
 
   private applyChanges(message: PresenceChangesMessage): Set<PeerNamespace> {
     const touched = new Set<PeerNamespace>();
+    this.revision++;
 
     for (const [connectionId, channels] of Object.entries(message.updates)) {
       if (connectionId === this.localConnectionId) {
@@ -307,11 +318,13 @@ export class PeerStore {
           namespaceOf(channel) === "cursor" ? CURSOR_STALE_MS : PRESENCE_STALE_MS;
         if (isLiveChannel(value, now, maxAgeMs)) continue;
         delete channels[channel];
+        this.revision++;
         touched.add(namespaceOf(channel));
       }
       if (Object.keys(channels).length === 0) {
         this.peers.delete(connectionId);
         this.absentPeerDeadlines.delete(connectionId);
+        this.revision++;
       }
     }
     return touched;

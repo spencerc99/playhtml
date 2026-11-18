@@ -8,9 +8,12 @@ const Agentation = import.meta.env.DEV
   : null;
 import { createRoot } from "react-dom/client";
 import "../../styles/popup.scss";
+import "@fontsource/martian-mono/latin-400.css";
+import "@fontsource/martian-mono/latin-500.css";
+import "@fontsource/martian-mono/latin-600.css";
+import "@fontsource/martian-mono/latin-700.css";
 import "../../styles/touchTargets.scss";
 import browser from "webextension-polyfill";
-import { Inventory } from "../../components/Inventory";
 import { InternetPortraitHome } from "../../components/InternetPortraitHome";
 import { refreshFeatureAccess } from "../../features/featureAccess";
 import { useFeatureState } from "../../features/useFeatureAccess";
@@ -19,7 +22,7 @@ import {
   showPageObjectsOnSite,
   siteOriginFromUrl,
 } from "../../features/inventory/siteVisibility";
-import { PlayerIdentity, GameInventory, InventoryItem } from "../../types";
+import { PlayerIdentity } from "../../types";
 import { findOpenCommuteTab, openOrFocusCommute } from "./commuteNavigation";
 
 const PUBLIC_CHANGELOG_URL = "https://wewere.online/changelog/";
@@ -31,12 +34,6 @@ function PlayHTMLPopup() {
   const [discoveredSites, setDiscoveredSites] = useState<string[]>([]);
   const [currentTab, setCurrentTab] = useState<browser.Tabs.Tab | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [inventory, setInventory] = useState<GameInventory>({
-    items: [],
-    totalItems: 0,
-    lastUpdated: 0,
-  });
-  const [currentView, setCurrentView] = useState<"main" | "inventory">("main");
   const commuteEnabled = useFeatureState("COMMUTE").enabled;
   const [commuteIsOpen, setCommuteIsOpen] = useState(false);
   const [hiddenSite, setHiddenSite] = useState<{
@@ -114,74 +111,10 @@ function PlayHTMLPopup() {
         Array.isArray(profile?.discoveredSites) ? profile.discoveredSites : [],
       );
 
-      // Load inventory
-      await loadInventory();
-
       setIsLoading(false);
     } catch (error) {
       console.error("Failed to load player data:", error);
       setIsLoading(false);
-    }
-  };
-
-  const loadInventory = async () => {
-    try {
-      const result = await browser.storage.local.get(["gameInventory"]);
-      const storedInventory = result.gameInventory;
-
-      if (storedInventory) {
-        setInventory(storedInventory);
-      } else {
-        // Initialize empty inventory
-        const emptyInventory: GameInventory = {
-          items: [],
-          totalItems: 0,
-          lastUpdated: Date.now(),
-        };
-        await browser.storage.local.set({ gameInventory: emptyInventory });
-        setInventory(emptyInventory);
-      }
-    } catch (error) {
-      console.error("Failed to load inventory:", error);
-    }
-  };
-
-  const removeFromInventory = async (itemId: string) => {
-    try {
-      const updatedInventory: GameInventory = {
-        ...inventory,
-        items: inventory.items.filter(
-          (item: InventoryItem) => item.id !== itemId,
-        ),
-        totalItems: Math.max(0, inventory.totalItems - 1),
-        lastUpdated: Date.now(),
-      };
-
-      setInventory(updatedInventory);
-      await browser.storage.local.set({ gameInventory: updatedInventory });
-    } catch (error) {
-      console.error("Failed to remove item from inventory:", error);
-    }
-  };
-
-  const clearInventory = async () => {
-    if (
-      confirm(
-        "Are you sure you want to clear your entire inventory? This cannot be undone.",
-      )
-    ) {
-      try {
-        const emptyInventory: GameInventory = {
-          items: [],
-          totalItems: 0,
-          lastUpdated: Date.now(),
-        };
-
-        setInventory(emptyInventory);
-        await browser.storage.local.set({ gameInventory: emptyInventory });
-      } catch (error) {
-        console.error("Failed to clear inventory:", error);
-      }
     }
   };
 
@@ -246,17 +179,6 @@ function PlayHTMLPopup() {
           </button>
         </main>
       </div>
-    );
-  }
-
-  if (currentView === "inventory") {
-    return (
-      <Inventory
-        inventory={inventory}
-        onBack={() => setCurrentView("main")}
-        onRemoveItem={removeFromInventory}
-        onClearInventory={clearInventory}
-      />
     );
   }
 

@@ -2,23 +2,27 @@
 // ABOUTME: Stores attendee details and connects the page to playhtml cursors.
 import ReactDOM from "react-dom";
 import { PlayProvider } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import { useStickyState } from "../../hooks/useStickyState";
 import { Cursors, PlayhtmlToolBox, Guestbook } from "../events";
-import React from "react";
 
 function Main() {
   const [name, setName] = useStickyState<string | null>(
     "username",
     null,
     (newName) => {
-      // Cursor identity is exposed through settable properties, not methods.
-      if (window.cursors) window.cursors.name = newName ?? "";
+      // Nothing saved or typed yet: keep the name playhtml already has.
+      if (newName == null) return;
+      // Your name only saves once playhtml has connected.
+      playhtml.ready.then(() => {
+        playhtml.people.me.name = newName ?? "";
+      });
     },
   );
-  const [from, setFrom] = useStickyState<string | null>("from", null);
+  const [from] = useStickyState<string | null>("from", null);
 
   return (
-    <PlayProvider>
+    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <Cursors />
       <div id="workshopContent">
         <PlayhtmlToolBox />

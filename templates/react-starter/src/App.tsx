@@ -1,7 +1,7 @@
 // ABOUTME: React starter app showcasing the main playhtml capabilities.
-// ABOUTME: Demonstrates persistent data, presence, events, and built-in elements.
+// ABOUTME: Same sections as the HTML starter and the playground at playhtml.fun/docs/play.
 
-import React, { useState, useEffect, useContext, useRef } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import {
   PlayProvider,
   PlayContext,
@@ -11,380 +11,167 @@ import {
   CanGrowElement,
   CanHoverElement,
   CanDuplicateElement,
-  usePageData,
   withSharedState,
-  usePeople,
 } from "@playhtml/react";
 
-const ShootingStarEventType = "shootingStar";
+// Shared data: one color everyone sees.
+const ColorBox = withSharedState(
+  { defaultData: { color: "white" } },
+  ({ data, setData }) => (
+    <section id="colorBox">
+      <input readOnly style={{ backgroundColor: data.color }} />
+      <button
+        onClick={() =>
+          setData((draft) => {
+            draft.color = draft.color === "red" ? "green" : "red";
+          })
+        }
+      >
+        change color
+      </button>
+    </section>
+  ),
+);
 
-// Custom hook for shooting star events
-function useShootingStar() {
-  const {
-    registerPlayEventListener,
-    removePlayEventListener,
-    dispatchPlayEvent,
-  } = useContext(PlayContext);
-  const [isAnimating, setIsAnimating] = useState(false);
+// Shared data as a list: appended entries appear for everyone.
+const Guestbook = withSharedState(
+  { defaultData: { entries: [] as string[] } },
+  ({ data, setData }) => {
+    const [value, setValue] = useState("");
+    const sayHi = () => {
+      if (!value) return;
+      setData((draft) => {
+        draft.entries.push(value);
+      });
+      setValue("");
+    };
+    return (
+      <div id="guestbook">
+        <section>
+          <input
+            placeholder="say hi..."
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+          <button onClick={sayHi}>say hi</button>
+        </section>
+        <ul>
+          {data.entries.map((entry, i) => (
+            <li key={i}>{entry}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  },
+);
+
+// Events: a one-off moment everyone sees, nothing saved.
+function ShootingStar() {
+  const { registerPlayEventListener, removePlayEventListener, dispatchPlayEvent } =
+    useContext(PlayContext);
+  const star = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const id = registerPlayEventListener(ShootingStarEventType, {
+    const id = registerPlayEventListener("shootingStar", {
       onEvent: () => {
-        setIsAnimating(true);
-        setTimeout(() => setIsAnimating(false), 2000);
+        star.current?.animate(
+          [
+            { transform: "translate(100vw, 100vh) rotate(0deg)" },
+            { transform: "translate(-10vw, -10vh) rotate(360deg)" },
+          ],
+          { duration: 2000 },
+        );
       },
     });
-
-    return () => removePlayEventListener(ShootingStarEventType, id);
+    return () => removePlayEventListener("shootingStar", id);
   }, [registerPlayEventListener, removePlayEventListener]);
-
-  return {
-    isAnimating,
-    trigger: () => dispatchPlayEvent({ type: ShootingStarEventType }),
-  };
-}
-
-// Shooting star component - triggers animation for all users via events
-function ShootingStar() {
-  const { isAnimating, trigger } = useShootingStar();
 
   return (
     <>
-      <div
-        style={{
-          position: "fixed",
-          top: "-36px",
-          left: "-36px",
-          fontSize: "36px",
-          textShadow: "0 0 4px yellow",
-          animation: isAnimating ? "shootingstar 2s ease-in-out" : "none",
-          pointerEvents: "none",
-        }}
-      >
-        💫
+      <button onClick={() => dispatchPlayEvent({ type: "shootingStar" })}>
+        shooting star!
+      </button>
+      <div id="shootingStar" ref={star}>
+        ★
       </div>
-      <button onClick={trigger}>shooting star!</button>
     </>
   );
 }
 
-function PeopleHere() {
-  const { everyone } = usePeople();
-
-  return (
-    <section style={{ color: "#2800ff" }}>
-      <h2>people here</h2>
-      <p>{everyone.length === 1 ? "1 person here" : `${everyone.length} people here`}</p>
-      <ul>
-        {everyone.map((person) => (
-          <li key={person.pid} style={{ color: person.color }}>
-            {person.name ?? "anonymous"}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-// withSharedState is the React API for custom collaborative elements.
-// Vanilla HTML uses playhtml.register(elementOrId, initializer) for the same role.
+// withSharedState: your own shared element with custom data.
 const ReactionButton = withSharedState(
-  ({ initialCount }: { initialCount: number }) => ({
-    defaultData: { count: initialCount },
-    defaultPresence: { hovering: false },
-  }),
-  ({ data, everyone, setData, setMyPresence, ref }) => {
-    const [hasReacted, setHasReacted] = useState(false);
-
-    useEffect(() => {
-      if (ref.current) {
-        setHasReacted(Boolean(localStorage.getItem(ref.current.id)));
-      }
-    }, [ref.current?.id]);
-
+  { defaultData: { count: 0 } },
+  ({ data, setData }) => {
+    const [hasReacted, setHasReacted] = useState(() =>
+      Boolean(localStorage.getItem("reacted")),
+    );
+    const react = () => {
+      setData((draft) => {
+        draft.count += hasReacted ? -1 : 1;
+      });
+      if (hasReacted) localStorage.removeItem("reacted");
+      else localStorage.setItem("reacted", "1");
+      setHasReacted(!hasReacted);
+    };
     return (
-      <button
-        id="reaction-button"
-        onPointerEnter={() => setMyPresence({ hovering: true })}
-        onPointerLeave={() => setMyPresence({ hovering: false })}
-        onClick={() => {
-          if (hasReacted) {
-            setData((draft) => {
-              draft.count -= 1;
-            });
-            if (ref.current) {
-              localStorage.removeItem(ref.current.id);
-            }
-            setHasReacted(false);
-          } else {
-            setData((draft) => {
-              draft.count += 1;
-            });
-            if (ref.current) {
-              localStorage.setItem(ref.current.id, "true");
-            }
-            setHasReacted(true);
-          }
-        }}
-        className={`reaction ${hasReacted ? "reacted" : ""}`}
-        style={{ fontSize: "24px", padding: "10px 20px", margin: "10px 0" }}
-      >
-        💖 <span>{data.count}</span> · {everyone.filter((person) => person.presence.hovering).length} here
+      <button id="reactionBtn" className={hasReacted ? "reacted" : ""} onClick={react}>
+        react {data.count}
       </button>
     );
-  }
+  },
 );
 
-function VisitCounter() {
-  const [count, setCount] = usePageData("visit-count", 0);
-
-  return (
-    <button onClick={() => setCount((value) => value + 1)}>
-      {count} visits
-    </button>
-  );
-}
-
 function App() {
-  const [highlightedCapability, setHighlightedCapability] = useState<string | null>(null);
-  const starTemplateRef = useRef<HTMLDivElement>(null);
-  const starContainerRef = useRef<HTMLDivElement>(null);
-
-  const capabilities = [
-    "can-play",
-    "can-move",
-    "can-mirror",
-    "can-toggle",
-    "can-duplicate",
-    "can-spin",
-    "can-grow",
-    "can-hover",
-  ];
+  const star = useRef<HTMLSpanElement>(null);
 
   return (
     <PlayProvider
       initOptions={{
-        cursors: {
-          enabled: true,
-          room: "page",
-        },
+        developmentMode: true,
+        cursors: { enabled: true, room: "page" },
       }}
     >
-      <div style={{ fontFamily: "HK Grotesk, sans-serif", backgroundColor: "#69f7be", minHeight: "100vh", padding: "2rem" }}>
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-          <h1 style={{ color: "#2800ff", fontSize: "100px", textAlign: "center", marginTop: "2em" }}>
-            Hello World!
-          </h1>
+      <h1>Hello World!</h1>
+      <p>Everything below is shared with everyone on this page.</p>
 
-          <PeopleHere />
+      {/* Built-in capabilities: wrap an element that has an id. */}
+      <section>
+        <CanSpinElement>
+          <img id="illustration" src="/illustration.svg" alt="Spin me" />
+        </CanSpinElement>
+        <CanMoveElement>
+          <img id="openSign" src="/open-sign.gif" alt="Drag me" style={{ width: "auto" }} />
+        </CanMoveElement>
+        <CanToggleElement>
+          <img id="lamp" src="/lamp.png" alt="Toggle me" />
+        </CanToggleElement>
+        <CanToggleElement>
+          <img id="catOrDog" src="/cat.jpg" alt="Toggle me" />
+        </CanToggleElement>
+        <CanGrowElement>
+          <img id="plant" src="/plant.png" alt="Grow me" />
+        </CanGrowElement>
+        <CanHoverElement>
+          <div id="hoverBox" />
+        </CanHoverElement>
+        <span id="star" ref={star} style={{ fontSize: "32px" }}>
+          ★
+        </span>
+        <CanDuplicateElement elementToDuplicate={star}>
+          <button id="duplicateBtn">add a star</button>
+        </CanDuplicateElement>
+      </section>
 
-          <CanSpinElement>
-            <img
-              id="illustration"
-              src="/illustration.svg"
-              alt="Editor illustration"
-              style={{ maxWidth: "300px", display: "block", margin: "2rem auto", cursor: "pointer" }}
-            />
-          </CanSpinElement>
+      <ColorBox />
 
-          <div style={{ marginBottom: "2em" }}>
-            <CanMoveElement>
-              <img
-                id="open-sign"
-                src="https://media2.giphy.com/media/lL7A3Li0YtFHq/giphy.gif"
-                alt="Open sign"
-                style={{ cursor: "move", display: "block" }}
-              />
-            </CanMoveElement>
+      <h2>guestbook</h2>
+      <Guestbook />
 
-            <CanToggleElement>
-              <img
-                id="lamp"
-                src="https://png.pngtree.com/png-vector/20230909/ourmid/pngtree-paper-lamp-paper-png-image_9211580.png"
-                alt="Lamp"
-                style={{ width: "200px", position: "absolute", top: 0, right: "-16px" }}
-                className="lamp"
-              />
-            </CanToggleElement>
-          </div>
+      <h2>events</h2>
+      <ShootingStar />
 
-          <div style={{ marginBottom: "2em", display: "flex", gap: "2em", flexWrap: "wrap", alignItems: "center" }}>
-            <CanToggleElement>
-              <img
-                src="https://media.istockphoto.com/id/1443562748/photo/cute-ginger-cat.jpg?s=612x612&w=0&k=20&c=vvM97wWz-hMj7DLzfpYRmY2VswTqcFEKkC437hxm3Cg="
-                alt="Cat or Dog"
-                style={{ width: "200px", cursor: "pointer" }}
-                id="catOrDog"
-              />
-            </CanToggleElement>
-
-            <CanGrowElement>
-              <img
-                src="https://cdn.glitch.global/c493b77a-3c7d-4240-9aee-94519099c30c/44a715b5-bdb1-4e2e-b4ee-ea1b0821178b.image.png?v=1727411734991"
-                alt="Plant"
-                style={{ width: "200px", cursor: "pointer" }}
-                id="plant"
-              />
-            </CanGrowElement>
-
-            <CanHoverElement>
-              <div
-                style={{
-                  width: "100px",
-                  height: "100px",
-                  background: "red",
-                  borderRadius: "8px",
-                }}
-                id="hoverBox"
-              />
-            </CanHoverElement>
-
-            <div>
-              {/* Template element to clone, and the container clones land in. */}
-              <div
-                id="star-template"
-                ref={starTemplateRef}
-                style={{ fontSize: "32px", display: "inline-block", margin: "0 4px" }}
-              >
-                🌟
-              </div>
-              <div
-                id="star-container"
-                ref={starContainerRef}
-                style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "8px" }}
-              />
-              <CanDuplicateElement
-                elementToDuplicate={starTemplateRef}
-                canDuplicateTo={starContainerRef}
-              >
-                <button style={{ fontSize: "24px", padding: "10px 20px", cursor: "pointer" }}>
-                  🌟 Click to clone me!
-                </button>
-              </CanDuplicateElement>
-            </div>
-          </div>
-
-          <h2 style={{ color: "#2800ff" }}>playhtml getting started</h2>
-          <p>
-            This is the playhtml React starter. You can use it to build your own tiny social network.
-            Check out the code and hover over the capabilities below to see which elements have them.
-          </p>
-
-          <ol style={{ position: "relative" }}>
-            {capabilities.map((cap) => (
-              <li
-                key={cap}
-                onMouseEnter={() => setHighlightedCapability(cap)}
-                onMouseLeave={() => setHighlightedCapability(null)}
-                style={{
-                  width: "fit-content",
-                  cursor: "zoom-in",
-                  textShadow: highlightedCapability === cap ? "0px 0px 4px rgb(245, 169, 15)" : "none",
-                }}
-              >
-                {cap}
-              </li>
-            ))}
-          </ol>
-
-          <p>
-            For all the details about these capabilities and more, see the{" "}
-            <a href="https://github.com/spencerc99/playhtml#plug-and-play-capabilities">
-              playhtml docs
-            </a>
-          </p>
-
-          <div style={{ marginTop: "2rem" }}>
-            <p>Here's a playhtml event. It triggers a shooting star for everyone</p>
-            <ShootingStar />
-          </div>
-
-          <div style={{ marginTop: "2rem" }}>
-            <p>Here's a reaction button! Everyone can see how many people have reacted</p>
-            <ReactionButton initialCount={0} />
-          </div>
-
-          <div style={{ marginTop: "2rem" }}>
-            <p>Here's a page-level visit counter!</p>
-            <VisitCounter />
-          </div>
-
-          <hr style={{ margin: "3rem 0", border: "none", borderTop: "4px solid #fff" }} />
-
-          <div style={{ textAlign: "center", padding: "2rem 0" }}>
-            <p style={{ marginBottom: "1rem" }}>
-              Want to see more examples? Check out the{" "}
-              <a
-                href="https://github.com/spencerc99/playhtml/tree/main/packages/react/examples"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                examples folder
-              </a>{" "}
-              in the playhtml repo for components like:
-            </p>
-            <ul style={{ listStyle: "none", padding: 0, display: "flex", flexWrap: "wrap", gap: "0.5em", justifyContent: "center" }}>
-              <li>📊 Poll</li>
-              <li>💬 Live Chat</li>
-              <li>⏱️ Shared Timer</li>
-              <li>🎰 Random Spinner</li>
-              <li>🎉 Confetti Zone</li>
-              <li>🎨 Shared Slider</li>
-              <li>👥 Visitor Count</li>
-              <li>and more!</li>
-            </ul>
-          </div>
-        </div>
-
-        <style>
-          {`
-            @keyframes shootingstar {
-              0% {
-                transform: translate(100vw, 100vh) rotate(0deg);
-              }
-              100% {
-                transform: translate(-10vw, -10vh) rotate(360deg);
-              }
-            }
-
-            .lamp.clicked {
-              filter: brightness(1.2) saturate(1.6) drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
-            }
-
-            .hoverBox.hovered {
-              background: blue !important;
-              transform: scale(1.1);
-            }
-
-            #catOrDog.clicked {
-              content: url("https://images.rawpixel.com/image_png_800/czNmcy1wcml2YXRlL3Jhd3BpeGVsX2ltYWdlcy93ZWJzaXRlX2NvbnRlbnQvcHUyMzMxNzg4LWltYWdlLXJtNTAzLTAxXzEtbDBqOXFyYzMucG5n.png");
-            }
-
-            .reaction {
-              transition: all 0.2s ease;
-              cursor: pointer;
-            }
-
-            .reaction.reacted {
-              background: #ff6b6b;
-              transform: scale(1.05);
-              box-shadow: 0 5px 15px rgba(255, 107, 107, 0.3);
-            }
-
-            @font-face {
-              font-family: HK Grotesk;
-              src: url("https://cdn.glitch.me/605e2a51-d45f-4d87-a285-9410ad350515%2FHKGrotesk-Regular.otf?v=1603136326027")
-                format("opentype");
-            }
-            @font-face {
-              font-family: HK Grotesk;
-              font-weight: bold;
-              src: url("https://cdn.glitch.me/605e2a51-d45f-4d87-a285-9410ad350515%2FHKGrotesk-Bold.otf?v=1603136323437")
-                format("opentype");
-            }
-          `}
-        </style>
-      </div>
+      <h2>custom elements</h2>
+      <ReactionButton />
     </PlayProvider>
   );
 }

@@ -1,5 +1,6 @@
 // ABOUTME: Authenticates PartyServer room-to-room HTTP bridge requests.
 // ABOUTME: Builds bridge requests with the deployment's shared credential.
+import { secretMatches } from "./secretMatch";
 
 export const BRIDGE_SECRET_HEADER = "x-playhtml-bridge-secret";
 
@@ -10,10 +11,10 @@ function requireBridgeSecret(configuredSecret: string | undefined): string {
   return configuredSecret;
 }
 
-export function getBridgeAuthFailure(
+export async function getBridgeAuthFailure(
   request: Request,
-  configuredSecret: string | undefined
-): Response | null {
+  configuredSecret: string | undefined,
+): Promise<Response | null> {
   if (typeof configuredSecret !== "string" || configuredSecret.length === 0) {
     return new Response("Bridge authentication unavailable", { status: 503 });
   }
@@ -22,7 +23,7 @@ export function getBridgeAuthFailure(
   if (credential === null) {
     return new Response("Unauthorized", { status: 401 });
   }
-  if (credential !== configuredSecret) {
+  if (!(await secretMatches(credential, configuredSecret))) {
     return new Response("Forbidden", { status: 403 });
   }
   return null;
@@ -31,7 +32,7 @@ export function getBridgeAuthFailure(
 export function createBridgeRequest(
   path: string,
   body: unknown,
-  configuredSecret: string | undefined
+  configuredSecret: string | undefined,
 ): Request {
   const credential = requireBridgeSecret(configuredSecret);
   return new Request(`http://internal${path}`, {

@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef, memo } from "react";
 import { TimelineState, TimelineNode, TimelineEdge } from "../types";
+import { hashString } from "../utils/styleUtils";
 
 interface AnimatedNavigationProps {
   timelineState: TimelineState;
@@ -84,16 +85,6 @@ function generateWobblyPath(
   
   points.push(target);
   return points;
-}
-
-// Hash string for seeding
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
 }
 
 // Format URL for label

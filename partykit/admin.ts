@@ -4,12 +4,10 @@ import { Buffer } from "node:buffer";
 import { env } from "cloudflare:workers";
 import * as Y from "yjs";
 import { supabase } from "./db";
-import { PartyServer } from "./party";
+import type { PartyServer } from "./party";
 import { docToJson } from "./docUtils";
 import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 import { getAdminAuthError } from "./adminAuth";
-
-export { getAdminAuthError } from "./adminAuth";
 
 function compareKeys(
   obj1: any,
@@ -132,7 +130,7 @@ export class AdminHandler {
     }
   }
 
-  private checkAdminAuth(request: Request): Response | null {
+  private checkAdminAuth(request: Request): Promise<Response | null> {
     return getAdminAuthError(request, env.ADMIN_TOKEN);
   }
 
@@ -141,7 +139,7 @@ export class AdminHandler {
   }
 
   private async handleAdminInspect(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -190,11 +188,27 @@ export class AdminHandler {
       try {
         // Create fresh Y.Doc and load data directly (same as debug reconstruction)
         const yDoc = new Y.Doc();
-        const { data: docData } = await supabase
+        const { data: docData, error: docError } = await supabase
           .from("documents")
           .select("name, document, created_at")
           .eq("name", this.context.name)
           .maybeSingle();
+        if (docError) {
+          return new Response(
+            JSON.stringify({
+              error: "Failed to inspect room",
+              message: docError.message,
+              roomId: this.context.name,
+            }),
+            {
+              status: 500,
+              headers: {
+                "content-type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        }
 
         if (docData?.document) {
           // Calculate document size (base64 length)
@@ -281,7 +295,7 @@ export class AdminHandler {
   }
 
   private async handleAdminRawData(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -347,17 +361,29 @@ export class AdminHandler {
   }
 
   private async handleAdminLiveCompare(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
       // Method 1: Direct Y.Doc approach (what admin console uses)
       const directYDoc = new Y.Doc();
-      const { data: docData } = await supabase
+      const { data: docData, error: docError } = await supabase
         .from("documents")
         .select("document")
         .eq("name", this.context.name)
         .maybeSingle();
+      if (docError) {
+        return new Response(
+          JSON.stringify({
+            error: "Failed to compare data methods",
+            message: docError.message,
+          }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
 
       let directData = null;
       if (docData?.document) {
@@ -401,7 +427,7 @@ export class AdminHandler {
             hasData: directData && Object.keys(directData).length > 0,
           },
           live: {
-            description: "Document from y-partykit (live server method)",
+            description: "Document from the running room (live server method)",
             data: liveData,
             hasData:
               liveData && !liveData.error && Object.keys(liveData).length > 0,
@@ -442,7 +468,7 @@ export class AdminHandler {
    * This manually triggers a save without waiting for the background autosave.
    */
   private async handleAdminForceSaveLive(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
@@ -479,7 +505,7 @@ export class AdminHandler {
   private async handleAdminForceReloadLive(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     // Reloading the persisted document into the live doc is the exact operation
     // that OOMs a quarantined room, and it is a tempting thing to reach for
@@ -537,7 +563,7 @@ export class AdminHandler {
    * Save edited JSON data as the authoritative room snapshot.
    */
   private async handleAdminSaveEditedData(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
@@ -587,7 +613,7 @@ export class AdminHandler {
   }
 
   private async handleModerationRemove(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
@@ -662,12 +688,8 @@ export class AdminHandler {
   private async handleAdminRemoveSubscriber(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
-
-    if (request.method !== "POST") {
-      return new Response("Method Not Allowed", { status: 405 });
-    }
 
     try {
       const body = (await request.json()) as any;
@@ -722,7 +744,7 @@ export class AdminHandler {
    * }
    */
   private async handleAdminCleanupOrphans(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
@@ -898,16 +920,15 @@ export class AdminHandler {
    * 5. Reload the live server from this new snapshot
    */
   private async handleAdminHardReset(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     const persistenceError = this.checkPersistenceWriteAvailable();
     if (persistenceError) return persistenceError;
 
     const roomId = this.context.name;
-    console.log(`[Hard Reset] Starting for room: ${roomId}`);
 
     try {
-      // Use the centralized performHardReset method
+      // performHardReset logs its own progress and failures.
       const result = await this.context.performHardReset();
 
       const sizeReduction = result.beforeSize - result.afterSize;
@@ -939,13 +960,6 @@ export class AdminHandler {
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
-
-      console.error(
-        `[Hard Reset] Failed for room ${roomId}:`,
-        errorMessage,
-        errorStack || error
-      );
 
       return new Response(
         JSON.stringify({
@@ -970,7 +984,7 @@ export class AdminHandler {
   private async handleAdminRestoreRawDocument(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
     // Quarantine also runs the room in transient mode, but this endpoint is how
     // an oversized document gets replaced with a repaired one, so it stays open
@@ -1128,7 +1142,7 @@ export class AdminHandler {
   private async handleAdminQuarantineStatus(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -1151,7 +1165,7 @@ export class AdminHandler {
   // persistence entirely, so nothing automatic reaches for it except as a last
   // resort after the retry backoff is exhausted.
   private async handleAdminQuarantineSet(request: Request): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     let body: { reason?: string } | null = null;
@@ -1228,7 +1242,7 @@ export class AdminHandler {
   private async handleAdminQuarantineClear(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
@@ -1282,7 +1296,7 @@ export class AdminHandler {
   private async handleAdminCompactionRetry(
     request: Request
   ): Promise<Response> {
-    const authError = this.checkAdminAuth(request);
+    const authError = await this.checkAdminAuth(request);
     if (authError) return authError;
 
     try {
