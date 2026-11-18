@@ -285,11 +285,6 @@ function getSvgForCursor(color: string): string {
   </svg>`;
 }
 
-function getCursorStyleForUser(color: string): string {
-  const userCursorSvgEncoded = encodeSVG(getSvgForCursor(color));
-  return `url("data:image/svg+xml,${userCursorSvgEncoded}"), auto`;
-}
-
 /**
  * Convert a camelCase CSS property (e.g. "backgroundColor") to kebab-case
  * (e.g. "background-color") for use with CSSStyleDeclaration.setProperty /
@@ -406,6 +401,14 @@ export class CursorClientAwareness {
   } | null = null;
   private cursorEventCleanups: Array<() => void> = [];
   private ownCursorSvgCache: { color: string; svg: string } | null = null;
+  private lastDocumentCursor: string | null = null;
+  // The page's own inline cursor before this client first wrote one, and the
+  // value as the browser stored our latest write. destroy() restores the
+  // former only while the page still shows the latter.
+  private pageCursorBeforeClient: string | null = null;
+  private appliedDocumentCursor: string | null = null;
+  // The object this client installed as window.cursors.
+  private globalApi: NonNullable<Window["cursors"]> | null = null;
   private visibilityThreshold: number | undefined;
   private isStylesAdded: boolean = false;
   private globalApiListeners = new Map<keyof CursorEvents, Set<Function>>();
@@ -497,6 +500,20 @@ export class CursorClientAwareness {
     return storageToClientCoordinates(x, y, this.coordinateMode);
   }
 
+  // The viewport point a zone-relative cursor is drawn at, from the zone's
+  // live bounding rect. Null when the zone is not registered on this page.
+  private resolveZoneClientPoint(
+    zone: CursorZonePosition,
+  ): { x: number; y: number } | null {
+    const zoneEntry = this.zones.get(zone.zoneId);
+    if (!zoneEntry || !document.contains(zoneEntry.element)) return null;
+    const rect = zoneEntry.element.getBoundingClientRect();
+    return {
+      x: rect.left + zone.relX * rect.width,
+      y: rect.top + zone.relY * rect.height,
+    };
+  }
+
   private zones: Map<string, { element: HTMLElement; options?: CursorZoneOptions }> = new Map();
   private currentZone: CursorZonePosition | null = null;
   private cursorZoneState: Map<string, string | null> = new Map(); // stableId -> previous zoneId
@@ -570,7 +587,7 @@ export class CursorClientAwareness {
   private handleSelfIdentityChange(): void {
     this.ownCursorSvgCache = null;
     const nextColor = getPrimaryColor(this.playerIdentity);
-    document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
+    this.setDocumentCursor(this.getOwnCursorStyle());
     this.updateCursorAwareness();
 
     const nextName = this.playerIdentity.name;
@@ -605,9 +622,7 @@ export class CursorClientAwareness {
     this.setupPresenceTransportHandling();
 
     // Set initial cursor style (throws if identity has no primary color)
-    document.documentElement.style.cursor = getCursorStyleForUser(
-      getPrimaryColor(this.playerIdentity),
-    );
+    this.setDocumentCursor(this.getOwnCursorStyle());
   }
 
   private setupPresenceTransportHandling(): void {
@@ -1003,6 +1018,29 @@ export class CursorClientAwareness {
     return this.ownCursorSvgCache.svg;
   }
 
+  private getOwnCursorStyle(): string {
+    return `url("data:image/svg+xml,${this.getOwnCursorSvg()}"), auto`;
+  }
+
+  // Skips the write while the page still shows the value last written, so
+  // pointer frames do not rewrite an unchanged data URL. If the page has
+  // changed or cleared the root cursor since, the write puts ours back.
+  private setDocumentCursor(style: string): void {
+    const rootStyle = document.documentElement.style;
+    if (
+      style === this.lastDocumentCursor &&
+      rootStyle.cursor === this.appliedDocumentCursor
+    ) {
+      return;
+    }
+    if (this.pageCursorBeforeClient === null) {
+      this.pageCursorBeforeClient = rootStyle.cursor;
+    }
+    this.lastDocumentCursor = style;
+    rootStyle.cursor = style;
+    this.appliedDocumentCursor = rootStyle.cursor;
+  }
+
   private addCursorEventListener(
     target: EventTarget,
     type: string,
@@ -1071,13 +1109,9 @@ export class CursorClientAwareness {
         }
       }
 
-      if (pointer === "mouse") {
-        document.documentElement.style.cursor = getCursorStyleForUser(
-          getPrimaryColor(this.playerIdentity),
-        );
-      } else {
-        document.documentElement.style.cursor = "auto";
-      }
+      this.setDocumentCursor(
+        pointer === "mouse" ? this.getOwnCursorStyle() : "auto",
+      );
     }
 
     const storageCoords = this.clientToStorage(sample.clientX, sample.clientY);
@@ -1395,7 +1429,6 @@ export class CursorClientAwareness {
         cursor.pointer,
         cursorData.message,
         stableId,
-        cursorData,
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(stableId, cursorElement);
@@ -1416,18 +1449,16 @@ export class CursorClientAwareness {
     let targetCoords: { x: number; y: number };
     let inZone = false;
 
+    const zonePoint = zone ? this.resolveZoneClientPoint(zone) : null;
     if (zone) {
-      const zoneEntry = this.zones.get(zone.zoneId);
-      if (zoneEntry && document.contains(zoneEntry.element)) {
-        // Resolve zone-relative (0-1) to viewport pixels via live bounding rect
-        const rect = zoneEntry.element.getBoundingClientRect();
+      if (zonePoint) {
         // Center the cursor element on the target point by offsetting
         // by half its rendered dimensions.
         const cursorEl = this.cursors.get(stableId);
         const offsetX = cursorEl ? cursorEl.offsetWidth / 2 : 0;
         const offsetY = cursorEl ? cursorEl.offsetHeight / 2 : 0;
-        const zoneViewportX = rect.left + zone.relX * rect.width - offsetX;
-        const zoneViewportY = rect.top + zone.relY * rect.height - offsetY;
+        const zoneViewportX = zonePoint.x - offsetX;
+        const zoneViewportY = zonePoint.y - offsetY;
         if (this.coordinateMode === "absolute") {
           // getBoundingClientRect returns viewport coords; convert to document
           // coords since absolute-mode cursors use position:absolute.
@@ -1498,11 +1529,14 @@ export class CursorClientAwareness {
 
     // Handle visibility based on distance from our cursor
     if (this.currentCursor) {
-      // Convert our cursor to client coordinates for distance calculation
+      // Compare both cursors in viewport pixels, the same space
+      // updateAllCursorVisibility uses. targetCoords can be document or
+      // container-local coordinates, so it is not used here.
       const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
-      // Use target coordinates for distance (viewport pixels)
+      const theirClientCoords =
+        zonePoint ?? this.storageToClient(cursor.x, cursor.y);
       const distance = calculateDistance(
-        { x: targetCoords.x, y: targetCoords.y, pointer: cursor.pointer },
+        { x: theirClientCoords.x, y: theirClientCoords.y, pointer: cursor.pointer },
         {
           x: ourClientCoords.x,
           y: ourClientCoords.y,
@@ -1532,7 +1566,6 @@ export class CursorClientAwareness {
     pointer: string = "mouse",
     message?: string | null,
     pid?: string,
-    cursorData?: CursorPresence,
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "playhtml-cursor-other playhtml-cursor-fade-in";
@@ -1572,12 +1605,6 @@ export class CursorClientAwareness {
     // Add message and name if present
     this.updateCursorMessage(element, playerIdentity, message);
     this.updateCursorName(element, playerIdentity);
-
-    // Apply custom cursor styles if provided
-    if (this.options.getCursorStyle && cursorData) {
-      const customStyles = this.options.getCursorStyle(cursorData);
-      Object.assign(element.style, customStyles);
-    }
 
     return element;
   }
@@ -1678,7 +1705,7 @@ export class CursorClientAwareness {
 
     // Identity fields delegate to the users module, which owns mutation and
     // persistence; this client only reacts via onSelfChange.
-    window.cursors = {
+    this.globalApi = {
       get allColors() {
         return selectAllColors(self.users.getAll());
       },
@@ -1707,6 +1734,7 @@ export class CursorClientAwareness {
         }
       },
     };
+    window.cursors = this.globalApi;
   }
 
   private emitGlobalEvent<K extends keyof CursorEvents>(
@@ -1909,8 +1937,13 @@ export class CursorClientAwareness {
       const cursorData = gridItems.find((item) => item.id === stableId)?.data;
 
       if (cursorData && cursorData.cursor) {
-        // Convert to viewport coordinates for distance calculation
-        const theirClientCoords = this.storageToClient(cursorData.cursor.x, cursorData.cursor.y);
+        // Measure from where the cursor is drawn, in viewport coordinates
+        const zonePoint = cursorData.zone
+          ? this.resolveZoneClientPoint(cursorData.zone)
+          : null;
+        const theirClientCoords =
+          zonePoint ??
+          this.storageToClient(cursorData.cursor.x, cursorData.cursor.y);
         const distance = calculateDistance(
           { ...ourClientCoords, pointer: this.currentCursor!.pointer },
           { ...theirClientCoords, pointer: cursorData.cursor.pointer },
@@ -2056,6 +2089,21 @@ export class CursorClientAwareness {
     this.presenceTransportUnsubscribe?.();
     this.presenceTransportUnsubscribe = null;
     this.presenceTransport.clear("cursor");
+
+    // Release page-global state this client installed, unless something newer
+    // (another client, or the page itself) has replaced it since.
+    if (this.globalApi && window.cursors === this.globalApi) {
+      delete window.cursors;
+    }
+    this.globalApi = null;
+    if (
+      this.appliedDocumentCursor !== null &&
+      document.documentElement.style.cursor === this.appliedDocumentCursor
+    ) {
+      document.documentElement.style.cursor = this.pageCursorBeforeClient ?? "";
+    }
+    this.appliedDocumentCursor = null;
+    this.lastDocumentCursor = null;
   }
 
   // Debug method to inspect spatial partitioning efficiency
