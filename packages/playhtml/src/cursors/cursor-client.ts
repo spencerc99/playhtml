@@ -1022,11 +1022,17 @@ export class CursorClientAwareness {
     return `url("data:image/svg+xml,${this.getOwnCursorSvg()}"), auto`;
   }
 
-  // Writes the page cursor only when the value differs from the last one
-  // written, so pointer frames do not rewrite an unchanged data URL.
+  // Skips the write while the page still shows the value last written, so
+  // pointer frames do not rewrite an unchanged data URL. If the page has
+  // changed or cleared the root cursor since, the write puts ours back.
   private setDocumentCursor(style: string): void {
-    if (style === this.lastDocumentCursor) return;
     const rootStyle = document.documentElement.style;
+    if (
+      style === this.lastDocumentCursor &&
+      rootStyle.cursor === this.appliedDocumentCursor
+    ) {
+      return;
+    }
     if (this.pageCursorBeforeClient === null) {
       this.pageCursorBeforeClient = rootStyle.cursor;
     }
