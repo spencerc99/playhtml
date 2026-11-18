@@ -141,6 +141,7 @@ if ! grep -q "idx_events_urlhash_type_ts exists but is INVALID" <<<"$invalid_out
   exit 1
 fi
 run_sql "update pg_index set indisvalid = true where indexrelid = 'public.idx_events_urlhash_type_ts'::regclass" >/dev/null
+echo "index migration: absent -> built holding $absent_locks lock(s); valid -> 0 locks; invalid -> refused"
 
 docker cp "$migration_path" "$container:/page_events_page.sql"
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d playhtml -f /page_events_page.sql >/dev/null
