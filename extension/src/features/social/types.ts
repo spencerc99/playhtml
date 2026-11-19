@@ -11,6 +11,10 @@ export interface GlobalFeatureDeps {
   playerColor: string;
   playerPid: string;
   inventory: InventoryAPI;
+  /** Turn an element that now carries a capability attribute into a live playhtml element. */
+  setupPlayElement?: (element: HTMLElement) => void;
+  /** Stop syncing an element (used when an animation is undone). */
+  removePlayElement?: (element: HTMLElement) => void;
 }
 
 export interface SocialExperiment {
