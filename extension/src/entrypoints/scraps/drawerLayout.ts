@@ -5,6 +5,7 @@ import {
   headingDisplayFontSize,
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
+import { buttonNaturalSize } from "./pieceLettering";
 
 /** A placed thumbnail: which column it went in and where it sits. */
 export interface DrawerCell {
@@ -31,6 +32,23 @@ const CELL_GAP = 6;
  * to a column's width, which would make a 16px icon absurd.
  */
 const SMALL_BOX = 72;
+
+/** Room around a button inside its drawer slot. */
+export const BUTTON_SLOT_PADDING = 6;
+
+/**
+ * How much a button is shrunk to sit in a column: never enlarged, so a small
+ * button reads at the size it really was.
+ */
+export function buttonThumbScale(
+  size: { width: number; height: number },
+  columnWidth: number,
+): number {
+  return Math.min(
+    1,
+    Math.max(1, columnWidth - BUTTON_SLOT_PADDING * 2) / size.width,
+  );
+}
 
 /**
  * How a run of words turns into a box. The advance is an average character
@@ -71,10 +89,12 @@ export function thumbnailHeight(item: ScrapItem, columnWidth: number): number {
       const box = Math.min(SMALL_BOX, columnWidth);
       return (box * height) / width;
     }
-    case "button":
-      // A button is a wide, short thing; its reconstruction is measured on
-      // screen but this is the room it is given.
-      return Math.min(columnWidth * 0.42, 64);
+    case "button": {
+      // A button is shown as itself, shrunk to the column if it is wider, so
+      // the drawer previews the shape it will have once placed.
+      const size = buttonNaturalSize(item);
+      return size.height * buttonThumbScale(size, columnWidth) + BUTTON_SLOT_PADDING * 2;
+    }
     case "heading": {
       // A heading is words, so its room is however many lines those words take
       // at the size the shared renderer will actually draw them in this column.

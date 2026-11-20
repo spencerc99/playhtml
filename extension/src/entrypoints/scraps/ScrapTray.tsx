@@ -23,7 +23,8 @@ import {
   defaultDrawerWidth,
   drawerColumns,
 } from "./drawerPreference";
-import { cellLeft, layOutDrawer } from "./drawerLayout";
+import { buttonThumbScale, cellLeft, layOutDrawer } from "./drawerLayout";
+import { buttonNaturalSize } from "./pieceLettering";
 import { ProvenanceLines } from "./ProvenancePeek";
 import {
   backingForKind,
@@ -370,13 +371,17 @@ export function ScrapTray({
                       : undefined
                   }
                 >
-                  <ScrapContent
-                    item={item}
-                    loaded={true}
-                    onLoad={() => {}}
-                    onError={() => {}}
-                    tileWidth={layout.columnWidth}
-                  />
+                  {item.kind === "button" ? (
+                    <ButtonThumb item={item} columnWidth={layout.columnWidth} />
+                  ) : (
+                    <ScrapContent
+                      item={item}
+                      loaded={true}
+                      onLoad={() => {}}
+                      onError={() => {}}
+                      tileWidth={layout.columnWidth}
+                    />
+                  )}
                 </span>
               </button>
             );
@@ -426,5 +431,37 @@ export function ScrapTray({
       />
       )}
     </aside>
+  );
+}
+
+/**
+ * A button drawn at its own size and type, then shrunk as a whole to the slot,
+ * so the drawer shows the same shape the button takes once placed.
+ */
+function ButtonThumb({
+  item,
+  columnWidth,
+}: {
+  item: Extract<ScrapItem, { kind: "button" }>;
+  columnWidth: number;
+}) {
+  const size = buttonNaturalSize(item);
+  const scale = buttonThumbScale(size, columnWidth);
+  return (
+    <span
+      className="collage-tray__button"
+      style={{
+        width: size.width,
+        height: size.height,
+        transform: `translate(-50%, -50%) scale(${scale})`,
+      }}
+    >
+      <ScrapContent
+        item={item}
+        loaded={true}
+        onLoad={() => {}}
+        onError={() => {}}
+      />
+    </span>
   );
 }
