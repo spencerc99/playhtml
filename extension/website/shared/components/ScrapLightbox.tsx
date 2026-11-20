@@ -913,13 +913,17 @@ export function ScrapLightbox({
               </div>
             )}
           </div>
-          {item.kind === "image" && item.sources && item.sources.length > 0 && (
+          {item.sources && item.sources.length > 0 && (
             <section
               className="scrap-lightbox__places"
-              aria-label="Places this photo was found"
+              aria-label={`Places this ${item.kind === "image" ? "photo" : "scrap"} was found`}
             >
               <h3>Encounter history</h3>
-              <p>Newest first · one saved visit per place per day</p>
+              <p>
+                {item.kind === "image"
+                  ? "Newest first · one saved visit per place per day"
+                  : "Newest first · one saved visit per day"}
+              </p>
               <div
                 className="scrap-lightbox__timeline"
                 tabIndex={0}

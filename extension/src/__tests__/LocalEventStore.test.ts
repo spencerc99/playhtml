@@ -2052,6 +2052,26 @@ describe("LocalEventStore scrap deduplication", () => {
     ]);
   });
 
+  it("keeps a button once per day, on any page, so repeat days count", async () => {
+    const store = createStore();
+    const day = Date.UTC(2026, 10, 19, 20);
+
+    await store.addEvents([
+      { ...buttonScrapEvent("monday"), ts: day },
+      {
+        ...buttonScrapEvent("monday-other-page", "https://example.com/other"),
+        ts: day + 60_000,
+      },
+      { ...buttonScrapEvent("tuesday"), ts: day + 86_400_000 },
+    ]);
+
+    const scraps = await store.queryByType("element");
+    expect(scraps.map((storedEvent) => storedEvent.id).sort()).toEqual([
+      "monday",
+      "tuesday",
+    ]);
+  });
+
   it("serializes concurrent canonical checks and writes", async () => {
     const store = createStore();
 
