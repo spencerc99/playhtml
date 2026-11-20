@@ -1,5 +1,5 @@
-// ABOUTME: Groups identical photos for display while retaining distinct source pages.
-// ABOUTME: Uses exact fingerprints when available and URL identity for unchecked photos.
+// ABOUTME: Folds repeat encounters of one scrap into a single item, keeping each source page and day.
+// ABOUTME: Photos match by exact fingerprint or URL; other kinds match by the identity the caller passes.
 
 import {
   canonicalImageKey,
@@ -31,24 +31,40 @@ type PhotoEncounter = SourcePage & {
   sources?: ScrapSource[];
 };
 
-export function groupPhotoEncounters<T extends PhotoEncounter>(
+/**
+ * Folds the stored encounters of each scrap into one item: the newest record,
+ * with every source page it was met on and the days it was met there. Photos
+ * are matched by their fingerprint or URL. Other kinds are matched only when
+ * `identify` names them, by the identity it returns; without it they pass
+ * through untouched.
+ */
+export function groupScrapEncounters<T extends PhotoEncounter>(
   items: T[],
+  identify?: (item: T) => string | undefined,
 ): T[] {
-  const photos = new Map<string, T>();
+  const groups = new Map<string, T>();
   const sourcesByKey = new Map<string, Map<string, ScrapSource>>();
   const otherItems: T[] = [];
   for (const original of items) {
-    if (original.kind !== "image" || !original.src) {
-      otherItems.push(original);
-      continue;
+    let item = original;
+    let key: string;
+    if (original.kind === "image" && original.src) {
+      const hash = isImageContentHash(original.contentHash)
+        ? original.contentHash
+        : undefined;
+      if (hash) item = { ...original, key: `image:sha256:${hash}` };
+      key = hash ? `image:sha256:${hash}` : canonicalImageKey(original.src);
+    } else {
+      const identity =
+        original.kind === "image" ? undefined : identify?.(original);
+      if (identity === undefined) {
+        otherItems.push(original);
+        continue;
+      }
+      key = `${original.kind}\u0000${identity}`;
     }
-    const hash = isImageContentHash(original.contentHash)
-      ? original.contentHash
-      : undefined;
-    const item = hash ? { ...original, key: `image:sha256:${hash}` } : original;
-    const key = hash ? `image:sha256:${hash}` : canonicalImageKey(original.src);
-    const current = photos.get(key);
-    if (!current || item.ts > current.ts) photos.set(key, item);
+    const current = groups.get(key);
+    if (!current || item.ts > current.ts) groups.set(key, item);
     let sources = sourcesByKey.get(key);
     if (!sources) {
       sources = new Map();
@@ -98,8 +114,8 @@ export function groupPhotoEncounters<T extends PhotoEncounter>(
     }
   }
   for (const [key, sources] of sourcesByKey) {
-    photos.set(key, {
-      ...photos.get(key)!,
+    groups.set(key, {
+      ...groups.get(key)!,
       sources: [...sources.values()].sort((a, b) => b.ts - a.ts),
       encounterCount: [...sources.values()].reduce(
         (total, source) => total + source.encounterCount,
@@ -108,5 +124,12 @@ export function groupPhotoEncounters<T extends PhotoEncounter>(
     });
   }
 
-  return [...otherItems, ...photos.values()];
+  return [...otherItems, ...groups.values()];
+}
+
+/** Folds repeat encounters of photos only; other kinds pass through untouched. */
+export function groupPhotoEncounters<T extends PhotoEncounter>(
+  items: T[],
+): T[] {
+  return groupScrapEncounters(items);
 }

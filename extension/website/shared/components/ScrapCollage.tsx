@@ -44,9 +44,17 @@ import {
 } from "../utils/scrapIdentity";
 
 import {
-  groupPhotoEncounters,
+  groupScrapEncounters,
   type ScrapSource,
 } from "../utils/scrapPhotoGroups";
+import {
+  orderScrapArchive,
+  SCRAP_GROUP_OPTIONS,
+  SCRAP_SORT_OPTIONS,
+  scrapEncounters,
+  type ScrapGroupBy,
+  type ScrapSort,
+} from "../utils/scrapArchiveOrder";
 
 /**
  * Where a scrap sat on the page it was taken from: its centre in document
@@ -148,14 +156,50 @@ export type ScrapView = "drift" | "archive";
 export type ScrapDisplay = "pile" | "grid";
 /** The collage always piles its scraps; the layout helpers still accept "grid". */
 const COLLAGE_DISPLAY: ScrapDisplay = "pile";
-const SOURCES_STORAGE_KEY = "scraps-archive-sources";
-function readShowSources(): boolean {
+const GROUP_STORAGE_KEY = "scraps-archive-group";
+const SORT_STORAGE_KEY = "scraps-archive-sort";
+/** Outlines that were turned on before grouping existed meant by site. */
+const LEGACY_SOURCES_STORAGE_KEY = "scraps-archive-sources";
+function readGroupBy(): ScrapGroupBy {
   try {
-    return localStorage.getItem(SOURCES_STORAGE_KEY) === "on";
+    const stored = localStorage.getItem(GROUP_STORAGE_KEY);
+    if (SCRAP_GROUP_OPTIONS.includes(stored as ScrapGroupBy)) {
+      return stored as ScrapGroupBy;
+    }
+    return localStorage.getItem(LEGACY_SOURCES_STORAGE_KEY) === "on"
+      ? "site"
+      : "none";
   } catch {
-    return false;
+    return "none";
   }
 }
+function readSort(): ScrapSort {
+  try {
+    const stored = localStorage.getItem(SORT_STORAGE_KEY);
+    return SCRAP_SORT_OPTIONS.includes(stored as ScrapSort)
+      ? (stored as ScrapSort)
+      : "newest";
+  } catch {
+    return "newest";
+  }
+}
+function remember(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* The archive still regroups when storage is unavailable. */
+  }
+}
+const GROUP_LABELS: Record<ScrapGroupBy, string> = {
+  none: "no groups",
+  site: "by site",
+  day: "by day",
+  kind: "by kind",
+};
+const SORT_LABELS: Record<ScrapSort, string> = {
+  newest: "newest",
+  "most-seen": "most seen",
+};
 function archiveCell(display: ScrapDisplay) {
   return display === "pile"
     ? { width: 76, height: 74 }
@@ -288,7 +332,9 @@ function compareDomainScraps(a: ScrapItem, b: ScrapItem, seed: number): number {
 }
 
 function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
-  return newestUniqueGroupedScraps(groupPhotoEncounters(items));
+  return newestUniqueGroupedScraps(
+    groupScrapEncounters(items, canonicalScrapKey),
+  );
 }
 
 /** Selects the newest scraps after photo encounters have already been grouped. */
@@ -958,24 +1004,11 @@ const SOURCE_TINTS = [
   "#827a72",
 ] as const;
 
-/**
- * Which visit each archive scrap belongs to: a visit is a run of consecutive
- * scraps, newest first, taken from the same site. Hopping between pages of
- * one site stays one visit, so a site is named once per stretch of browsing.
- */
-export function archiveVisits(items: readonly ScrapItem[]): number[] {
-  const visits: number[] = [];
-  let visit = -1;
-  items.forEach((item, index) => {
-    if (index === 0 || items[index - 1].domain !== item.domain) visit += 1;
-    visits.push(visit);
-  });
-  return visits;
-}
-
-/** One row's stretch of a visit in the archive, outlined in its ink. */
+/** One row's stretch of a group in the archive, outlined in its ink. */
 export interface ArchiveSourceMark {
   key: string;
+  /** The group this stretch belongs to, by its index in the archive order. */
+  group: number;
   x: number;
   y: number;
   width: number;
@@ -999,9 +1032,11 @@ export interface ArchiveSourceMark {
 }
 
 /**
- * Outlines the visits in the archive's visible rows. A visit that wraps onto
- * the next row gets a stretch on each row, and only its first stretch is
- * labelled. Stretches follow the archive's cells, so outlines never overlap.
+ * Outlines the groups in the archive's visible rows. `visits` names each
+ * scrap's group, and a group's scraps sit next to each other. A group that
+ * wraps onto the next row gets a stretch on each row, and only its first
+ * stretch is labelled. Stretches follow the archive's cells, so outlines
+ * never overlap.
  */
 export function buildArchiveSources(
   items: readonly ScrapItem[],
@@ -1048,6 +1083,7 @@ export function buildArchiveSources(
     const labelRepeats = !begins && !continuesAbove;
     marks.push({
       key: `${visit}-${row}`,
+      group: visit,
       x: fromColumn * cellWidth,
       y: row * cell.height,
       width: (end - start + 1) * cellWidth,
@@ -1061,18 +1097,6 @@ export function buildArchiveSources(
     start = end + 1;
   }
   return marks;
-}
-
-let visitTimeFormatter: Intl.DateTimeFormat | undefined;
-
-function formatVisitTime(timestamp: number): string {
-  visitTimeFormatter ??= new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return visitTimeFormatter.format(timestamp);
 }
 
 /**
@@ -1307,21 +1331,60 @@ export const COLLAGE_STYLES = `
     color: #3d3833;
   }
 
-  /* A lone option, so it wears the switch's edge itself. Its words name what
-     a click does; like the collage studio's sources button it carries a chain
-     mark and turns teal while the outlines show. */
-  .scrap-collage__sources-toggle {
+  /* The archive's group and sort picks: pills that wear the switch's edge.
+     Grouping carries the collage studio's chain mark and turns teal while
+     its outlines show. */
+  .scrap-collage__order-pick {
+    position: relative;
     box-sizing: border-box;
-    gap: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     height: 28px;
+    padding: 0 10px;
     border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 999px;
     background: rgba(61, 56, 51, 0.05);
+    color: #5c554e;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
   }
 
-  .scrap-collage__sources-toggle--on {
+  .scrap-collage__order-pick::after {
+    content: "";
+    width: 5px;
+    height: 5px;
+    margin: -3px 0 0 1px;
+    border-right: 1px solid currentColor;
+    border-bottom: 1px solid currentColor;
+    transform: rotate(45deg);
+    pointer-events: none;
+  }
+
+  .scrap-collage__order-pick select {
+    appearance: none;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .scrap-collage__order-pick select:focus {
+    outline: none;
+  }
+
+  .scrap-collage__order-pick:focus-within {
+    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline-offset: 1px;
+  }
+
+  .scrap-collage__order-pick--on {
     border-color: rgba(74, 154, 138, 0.7);
     background: rgba(74, 154, 138, 0.12);
-    box-shadow: none;
     color: #2f6b60;
   }
 
@@ -2147,7 +2210,8 @@ export function ScrapCollage({
   const [controlsFocused, setControlsFocused] = useState(false);
   const [view, setView] = useState<ScrapView>(initialView);
   const display = COLLAGE_DISPLAY;
-  const [showSources, setShowSources] = useState(readShowSources);
+  const [groupBy, setGroupBy] = useState<ScrapGroupBy>(readGroupBy);
+  const [sort, setSort] = useState<ScrapSort>(readSort);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const shufflePreviousKeysRef = useRef(new Set<string>());
@@ -2193,7 +2257,10 @@ export function ScrapCollage({
     targetCount ??
     responsiveTargetCount(containerSize.width, containerSize.height);
 
-  const groupedItems = useMemo(() => groupPhotoEncounters(items), [items]);
+  const groupedItems = useMemo(
+    () => groupScrapEncounters(items, canonicalScrapKey),
+    [items],
+  );
   const uniqueItems = useMemo(
     () => newestUniqueGroupedScraps(groupedItems),
     [groupedItems],
@@ -2227,19 +2294,16 @@ export function ScrapCollage({
     () => newestUniqueGroupedScraps(filteredItems),
     [filteredItems],
   );
-  const archiveScraps = useMemo(
+  const archiveOrder = useMemo(
     () =>
-      [...filteredUniqueItems].sort(
-        (first, second) =>
-          (meaningScores
-            ? (meaningScores.get(second.key) ?? -Infinity) -
-                (meaningScores.get(first.key) ?? -Infinity) || 0
-            : 0) ||
-          second.ts - first.ts ||
-          first.key.localeCompare(second.key),
-      ),
-    [filteredUniqueItems, meaningScores],
+      orderScrapArchive(filteredUniqueItems, {
+        groupBy,
+        sort,
+        rank: meaningScores,
+      }),
+    [filteredUniqueItems, groupBy, sort, meaningScores],
   );
+  const archiveScraps = archiveOrder.items;
   const filtersActive =
     selectedKind.length > 0 ||
     shape.length > 0 ||
@@ -2438,40 +2502,35 @@ export function ScrapCollage({
     return () => prioritizeScrapPreviews([]);
   }, [layout, failedScraps]);
 
-  const visits = useMemo(
-    () => (archiveMode && showSources ? archiveVisits(archiveScraps) : []),
-    [archiveMode, showSources, archiveScraps],
-  );
+  const grouped = archiveMode && groupBy !== "none";
   const sourceMarks = useMemo(() => {
-    if (!archiveMode || !showSources || archiveWindow.layout.length === 0) {
+    if (!grouped || archiveWindow.layout.length === 0) {
       return [];
     }
     const indexes = archiveWindow.layout.map((scrap) => scrap.slotIndex);
     return buildArchiveSources(
       archiveScraps,
-      visits,
+      archiveOrder.groupOf,
       containerSize.width,
       Math.min(...indexes),
       Math.max(...indexes),
       display,
     );
   }, [
-    archiveMode,
-    showSources,
+    grouped,
     archiveWindow.layout,
     archiveScraps,
-    visits,
+    archiveOrder.groupOf,
     containerSize.width,
     display,
   ]);
-  const toggleSources = () => {
-    const next = !showSources;
-    setShowSources(next);
-    try {
-      localStorage.setItem(SOURCES_STORAGE_KEY, next ? "on" : "off");
-    } catch {
-      /* The outlines still toggle when storage is unavailable. */
-    }
+  const chooseGroupBy = (next: ScrapGroupBy) => {
+    setGroupBy(next);
+    remember(GROUP_STORAGE_KEY, next);
+  };
+  const chooseSort = (next: ScrapSort) => {
+    setSort(next);
+    remember(SORT_STORAGE_KEY, next);
   };
 
   const layoutRef = useRef(layout);
@@ -2486,7 +2545,7 @@ export function ScrapCollage({
     setHovered(false);
     setFocused(false);
     setWashingOut((current) => (current.length === 0 ? current : []));
-  }, [archiveMode, selectedKind, shape, places, search, when]);
+  }, [archiveMode, selectedKind, shape, places, search, when, groupBy, sort]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -2994,6 +3053,8 @@ export function ScrapCollage({
               {scrap.item.kind} · {scrap.item.domain}
               <br />
               collected {formatCollectedDate(scrap.item.ts)}
+              {scrapEncounters(scrap.item) > 1 &&
+                ` · seen ${scrapEncounters(scrap.item)} times`}
             </span>
           </span>
         </div>
@@ -3081,52 +3142,78 @@ export function ScrapCollage({
                   </button>
                 </div>
                 {archiveMode && (
-                  <button
-                    type="button"
-                    className={`scrap-collage__view-option scrap-collage__sources-toggle${
-                      showSources ? " scrap-collage__sources-toggle--on" : ""
-                    }`}
-                    title={
-                      showSources
-                        ? "Hide the outlines around each site's scraps"
-                        : "Outline the scraps that came from each site"
-                    }
-                    onClick={toggleSources}
-                  >
-                    {/* Two links of a chain, the collage studio's sources mark. */}
-                    <svg
-                      viewBox="0 0 16 16"
-                      width="12"
-                      height="12"
-                      aria-hidden="true"
+                  <>
+                    <label
+                      className={`scrap-collage__order-pick${
+                        grouped ? " scrap-collage__order-pick--on" : ""
+                      }`}
+                      title="Gather the archive into groups, outlined"
                     >
-                      <path
-                        d="M7 9a3 3 0 0 0 4.2 0l2.3-2.3a3 3 0 0 0-4.2-4.2L8.2 3.6"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M9 7a3 3 0 0 0-4.2 0L2.5 9.3a3 3 0 0 0 4.2 4.2l1.1-1.1"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    {showSources ? "hide sources" : "show sources"}
-                  </button>
+                      {/* Two links of a chain, the collage studio's sources mark. */}
+                      <svg
+                        viewBox="0 0 16 16"
+                        width="12"
+                        height="12"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M7 9a3 3 0 0 0 4.2 0l2.3-2.3a3 3 0 0 0-4.2-4.2L8.2 3.6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M9 7a3 3 0 0 0-4.2 0L2.5 9.3a3 3 0 0 0 4.2 4.2l1.1-1.1"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <select
+                        aria-label="Group scraps"
+                        value={groupBy}
+                        onChange={(event) =>
+                          chooseGroupBy(event.target.value as ScrapGroupBy)
+                        }
+                      >
+                        {SCRAP_GROUP_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {GROUP_LABELS[option]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label
+                      className="scrap-collage__order-pick"
+                      title="Order the archive"
+                    >
+                      <select
+                        aria-label="Sort scraps"
+                        value={sort}
+                        onChange={(event) =>
+                          chooseSort(event.target.value as ScrapSort)
+                        }
+                      >
+                        {SCRAP_SORT_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {SORT_LABELS[option]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
                 )}
                 <span className="scrap-collage__controls-spacer" />
                 {archiveMode ? (
                   <span className="scrap-collage__archive-summary">
                     {meaningScores && meaningScores.size > 0
-                      ? "closest first"
-                      : "newest first"}{" "}
-                    · {archiveScraps.length} of {uniqueItems.length}
+                      ? "closest first · "
+                      : ""}
+                    {archiveScraps.length} of {uniqueItems.length}
                   </span>
                 ) : (
                   <button
@@ -3340,27 +3427,30 @@ export function ScrapCollage({
                   } as React.CSSProperties & { "--source-tint": string }
                 }
               >
-                {mark.labelFor && (
+                {mark.labelFor && archiveOrder.groups[mark.group] && (
                   <span className="scrap-collage__source-label">
-                    {!failedFavicons.has(mark.labelFor.domain) && (
-                      <img
-                        className="scrap-collage__source-mark"
-                        src={
-                          mark.labelFor.faviconUrl ||
-                          `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
-                            mark.labelFor.domain,
-                          )}&sz=32`
-                        }
-                        alt=""
-                        onError={() => markFaviconFailed(mark.labelFor!.domain)}
-                      />
-                    )}
+                    {groupBy === "site" &&
+                      !failedFavicons.has(mark.labelFor.domain) && (
+                        <img
+                          className="scrap-collage__source-mark"
+                          src={
+                            mark.labelFor.faviconUrl ||
+                            `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
+                              mark.labelFor.domain,
+                            )}&sz=32`
+                          }
+                          alt=""
+                          onError={() =>
+                            markFaviconFailed(mark.labelFor!.domain)
+                          }
+                        />
+                      )}
                     <span className="scrap-collage__source-text">
                       <span className="scrap-collage__source-domain">
-                        {mark.labelFor.domain}
+                        {archiveOrder.groups[mark.group].label}
                       </span>
                       {!mark.labelRepeats &&
-                        ` · ${formatVisitTime(mark.labelFor.ts)}`}
+                        ` · ${archiveOrder.groups[mark.group].count}`}
                     </span>
                   </span>
                 )}

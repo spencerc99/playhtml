@@ -1,12 +1,8 @@
-// ABOUTME: Verifies how the archive groups scraps into per-site visits and outlines them by row.
-// ABOUTME: Covers visit splits, wrapped rows, labels on the first stretch only, and distinct inks.
+// ABOUTME: Verifies how the archive outlines its groups of scraps row by row.
+// ABOUTME: Covers wrapped rows, labels on the first stretch only, and distinct inks.
 
 import { describe, expect, it } from "vitest";
-import {
-  archiveVisits,
-  buildArchiveSources,
-  type ScrapItem,
-} from "../ScrapCollage";
+import { buildArchiveSources, type ScrapItem } from "../ScrapCollage";
 
 function scrap(index: number, domain: string, page = "/"): ScrapItem {
   return {
@@ -22,17 +18,14 @@ function scrap(index: number, domain: string, page = "/"): ScrapItem {
   };
 }
 
-describe("archiveVisits", () => {
-  it("keeps a site's run together across its pages and splits on a new site", () => {
-    const items = [
-      scrap(0, "a.example", "/one"),
-      scrap(1, "a.example", "/two"),
-      scrap(2, "b.example"),
-      scrap(3, "a.example"),
-    ];
-    expect(archiveVisits(items)).toEqual([0, 0, 1, 2]);
+/** Each run of one site is a group, the way grouping by site lays them out. */
+function archiveVisits(items: readonly ScrapItem[]): number[] {
+  let group = -1;
+  return items.map((item, index) => {
+    if (index === 0 || items[index - 1].domain !== item.domain) group += 1;
+    return group;
   });
-});
+}
 
 describe("buildArchiveSources", () => {
   // The pile's archive cell is 76 wide, so 380px holds five columns a row.

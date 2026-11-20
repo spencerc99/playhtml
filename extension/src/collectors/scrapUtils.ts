@@ -305,7 +305,13 @@ export function getCanonicalScrapKey(
   }
 }
 
-/** Identifies an image encounter on a source page and capture-local day. */
+/**
+ * Identifies one stored encounter of a scrap. A photo is kept once per source
+ * page and capture-local day, so its timeline names each page it was on. Every
+ * other kind is kept once per capture-local day, since a site's buttons and
+ * headings repeat on most of its pages and a record per page would mostly be
+ * the same scrap again.
+ */
 export function getScrapEncounterKey(
   domain: string,
   data: unknown,
@@ -314,19 +320,16 @@ export function getScrapEncounterKey(
   timeZone: string,
 ): string | undefined {
   const key = getCanonicalScrapKey(domain, data);
+  if (key === undefined) return undefined;
+  const day = scrapEncounterDay(timestamp, timeZone);
   if (
-    key === undefined ||
     typeof data !== "object" ||
     data === null ||
     !("kind" in data) ||
     data.kind !== "image"
   )
-    return key;
-  return JSON.stringify([
-    key,
-    canonicalScrapPageUrl(pageUrl),
-    scrapEncounterDay(timestamp, timeZone),
-  ]);
+    return JSON.stringify([key, day]);
+  return JSON.stringify([key, canonicalScrapPageUrl(pageUrl), day]);
 }
 
 function getUseReference(use: SVGUseElement): string | null {

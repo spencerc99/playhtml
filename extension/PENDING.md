@@ -14,3 +14,5 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
+
+- Beta: Group your scraps archive by site, day or kind, sort by the ones you see most, and see how many times you came across each button, heading and icon.

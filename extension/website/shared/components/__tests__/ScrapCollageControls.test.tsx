@@ -184,7 +184,7 @@ describe("ScrapCollage controls", () => {
   });
 
   it.each(["button", "svg-icon", "cursor"] as const)(
-    "finds earlier %s occurrences before deduplication",
+    "finds a %s by an earlier encounter and shows it folded into one",
     (kind) => {
       const content =
         kind === "button"
@@ -239,7 +239,7 @@ describe("ScrapCollage controls", () => {
         search.dispatchEvent(new Event("input", { bubbles: true }));
       });
       expect(tiles()).toHaveLength(1);
-      expect(tiles()[0].dataset.scrapKey).toBe("earlier");
+      expect(tiles()[0].dataset.scrapKey).toBe("later");
       act(() =>
         container
           .querySelector<HTMLButtonElement>('[aria-label="Clear search"]')!
@@ -268,7 +268,7 @@ describe("ScrapCollage controls", () => {
           ),
       );
       expect(tiles()).toHaveLength(1);
-      expect(tiles()[0].dataset.scrapKey).toBe("earlier");
+      expect(tiles()[0].dataset.scrapKey).toBe("later");
     },
   );
 
@@ -351,7 +351,7 @@ describe("ScrapCollage controls", () => {
 
     expect(drift?.getAttribute("aria-pressed")).toBe("false");
     expect(archive?.getAttribute("aria-pressed")).toBe("true");
-    expect(container.textContent).toContain("newest first · 500");
+    expect(container.textContent).toContain("500 of 500");
     expect(
       container.querySelector('[aria-label="Number of scraps shown"]'),
     ).toBeNull();
