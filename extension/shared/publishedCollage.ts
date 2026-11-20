@@ -95,6 +95,7 @@ export const PUBLISHED_STYLE_PROPERTIES = [
   "textTransform",
   "lineHeight",
   "boxShadow",
+  "columnGap",
   "border",
   "borderTopWidth",
   "borderTopStyle",
@@ -161,6 +162,8 @@ export type PublishedPieceContent =
       styles: PublishedStyles;
       /** The icon inside the button, as inline SVG markup. */
       innerSvg?: string;
+      /** The icon after the button's text, as inline SVG markup. */
+      trailingSvg?: string;
       /** The color the button sat on, as a CSS color. */
       backdropColor?: string;
     }
@@ -542,7 +545,7 @@ function parseContent(value: unknown, where: string): PublishedPieceContent {
     case "button": {
       onlyKeys(
         value,
-        ["kind", "text", "styles", "innerSvg", "backdropColor"],
+        ["kind", "text", "styles", "innerSvg", "trailingSvg", "backdropColor"],
         at,
       );
       const content: PublishedPieceContent = {
@@ -552,6 +555,9 @@ function parseContent(value: unknown, where: string): PublishedPieceContent {
       };
       if (value.innerSvg !== undefined) {
         content.innerSvg = markupText(value, "innerSvg", at);
+      }
+      if (value.trailingSvg !== undefined) {
+        content.trailingSvg = markupText(value, "trailingSvg", at);
       }
       if (value.backdropColor !== undefined) {
         if (!isSafeStyleValue(value.backdropColor)) {

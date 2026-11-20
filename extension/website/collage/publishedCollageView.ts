@@ -179,6 +179,9 @@ function contentScrap(
       const innerSvg = content.innerSvg
         ? sanitizeSvgMarkup(content.innerSvg)
         : "";
+      const trailingSvg = content.trailingSvg
+        ? sanitizeSvgMarkup(content.trailingSvg)
+        : "";
       const backdropColor = sanitizeColor(content.backdropColor);
       return {
         ...base,
@@ -186,6 +189,7 @@ function contentScrap(
         text: content.text,
         styles: sanitizeStyles(content.styles),
         ...(innerSvg ? { innerSvg } : {}),
+        ...(trailingSvg ? { trailingSvg } : {}),
         ...(backdropColor ? { backdropColor } : {}),
       };
     }

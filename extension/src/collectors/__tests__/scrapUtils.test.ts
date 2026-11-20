@@ -1,8 +1,19 @@
-// ABOUTME: Tests the pure scrap helpers for color alpha and bare-text button detection.
+// ABOUTME: Tests the pure scrap helpers for color alpha and whether a control paints a button face.
 // ABOUTME: Covers the CSS Color 4 syntaxes and each chrome signal that keeps a control.
 
 import { describe, expect, it } from "vitest";
-import { colorAlpha, isBareTextButton } from "../scrapUtils";
+import {
+  colorAlpha,
+  hasButtonFace,
+  hasPrivateUseCharacter,
+  hasVisibleShadow,
+  isIconFontFamily,
+} from "../scrapUtils";
+
+/** A control with no face reads as words or a bare icon, not a button. */
+function isBare(styles: Record<string, string>, backdrop?: string): boolean {
+  return !hasButtonFace(styles, backdrop);
+}
 
 /** The styles a plain text control tagged `role="button"` reports. */
 const BARE_STYLES: Record<string, string> = {
@@ -81,112 +92,165 @@ describe("colorAlpha", () => {
   });
 });
 
-describe("isBareTextButton", () => {
+describe("hasButtonFace", () => {
   it("skips a control with no background, border, shadow or icon", () => {
-    expect(isBareTextButton(BARE_STYLES, false)).toBe(true);
+    expect(isBare(BARE_STYLES)).toBe(true);
   });
 
   it("keeps a control with an opaque background", () => {
-    expect(
-      isBareTextButton(
-        { ...BARE_STYLES, backgroundColor: "rgb(204, 0, 0)" },
-        false,
-      ),
-    ).toBe(false);
+    expect(isBare({ ...BARE_STYLES, backgroundColor: "rgb(204, 0, 0)" })).toBe(
+      false,
+    );
   });
 
   it("keeps a control with a merely tinted background", () => {
     expect(
-      isBareTextButton(
-        { ...BARE_STYLES, backgroundColor: "rgba(204, 0, 0, 0.08)" },
-        false,
-      ),
+      isBare({ ...BARE_STYLES, backgroundColor: "rgba(204, 0, 0, 0.08)" }),
     ).toBe(false);
   });
 
   it("keeps a control with a captured gradient", () => {
     expect(
-      isBareTextButton(
-        {
-          ...BARE_STYLES,
-          backgroundImage: "linear-gradient(rgb(1, 2, 3), rgb(4, 5, 6))",
-        },
-        false,
-      ),
+      isBare({
+        ...BARE_STYLES,
+        backgroundImage: "linear-gradient(rgb(1, 2, 3), rgb(4, 5, 6))",
+      }),
     ).toBe(false);
   });
 
   it("keeps a control with a shadow", () => {
     expect(
-      isBareTextButton(
-        { ...BARE_STYLES, boxShadow: "rgba(0, 0, 0, 0.2) 0px 2px 6px 0px" },
-        false,
-      ),
+      isBare({
+        ...BARE_STYLES,
+        boxShadow: "rgba(0, 0, 0, 0.2) 0px 2px 6px 0px",
+      }),
     ).toBe(false);
   });
 
   it("keeps a control whose border shorthand draws something", () => {
     expect(
-      isBareTextButton(
-        { ...BARE_STYLES, border: "1.5px solid rgb(91, 141, 184)" },
-        false,
-      ),
+      isBare({ ...BARE_STYLES, border: "1.5px solid rgb(91, 141, 184)" }),
     ).toBe(false);
   });
 
-  it("keeps a control bordered on a single side only", () => {
+  it("skips a control bordered on a single side only, like a tab", () => {
     const { border: _border, ...sides } = BARE_STYLES;
     expect(
-      isBareTextButton(
-        {
-          ...sides,
-          borderTopWidth: "0px",
-          borderTopStyle: "none",
-          borderRightWidth: "0px",
-          borderRightStyle: "none",
-          borderBottomWidth: "2px",
-          borderBottomStyle: "solid",
-          borderBottomColor: "rgb(91, 141, 184)",
-          borderLeftWidth: "0px",
-          borderLeftStyle: "none",
-        },
-        false,
-      ),
-    ).toBe(false);
+      isBare({
+        ...sides,
+        borderTopWidth: "0px",
+        borderTopStyle: "none",
+        borderRightWidth: "0px",
+        borderRightStyle: "none",
+        borderBottomWidth: "2px",
+        borderBottomStyle: "solid",
+        borderBottomColor: "rgb(91, 141, 184)",
+        borderLeftWidth: "0px",
+        borderLeftStyle: "none",
+      }),
+    ).toBe(true);
   });
 
   it("treats a fully transparent border as no border", () => {
     expect(
-      isBareTextButton(
-        { ...BARE_STYLES, border: "1px solid rgba(0, 0, 0, 0)" },
-        false,
-      ),
+      isBare({ ...BARE_STYLES, border: "1px solid rgba(0, 0, 0, 0)" }),
     ).toBe(true);
     const { border: _border, ...sides } = BARE_STYLES;
     expect(
-      isBareTextButton(
-        {
-          ...sides,
-          borderBottomWidth: "2px",
-          borderBottomStyle: "solid",
-          borderBottomColor: "rgba(0, 0, 0, 0)",
-        },
-        false,
-      ),
+      isBare({
+        ...sides,
+        borderBottomWidth: "2px",
+        borderBottomStyle: "solid",
+        borderBottomColor: "rgba(0, 0, 0, 0)",
+      }),
     ).toBe(true);
   });
 
   it("treats a styled but zero-width border as no border", () => {
+    expect(isBare({ ...BARE_STYLES, border: "0px solid rgb(6, 6, 6)" })).toBe(
+      true,
+    );
+  });
+
+  it("keeps a control bordered on three sides", () => {
+    const { border: _border, ...sides } = BARE_STYLES;
+    const side = (width: string) => ({
+      width,
+      style: "solid",
+      color: "rgb(0, 0, 0)",
+    });
+    const styles: Record<string, string> = { ...sides };
+    for (const [name, width] of [
+      ["Top", "1px"],
+      ["Right", "1px"],
+      ["Bottom", "1px"],
+      ["Left", "0px"],
+    ] as const) {
+      const { style, color } = side(width);
+      styles[`border${name}Width`] = width;
+      styles[`border${name}Style`] = style;
+      styles[`border${name}Color`] = color;
+    }
+    expect(isBare(styles)).toBe(false);
+  });
+
+  it("skips a fill that matches the color behind it", () => {
     expect(
-      isBareTextButton(
-        { ...BARE_STYLES, border: "0px solid rgb(6, 6, 6)" },
-        false,
+      isBare(
+        { ...BARE_STYLES, backgroundColor: "rgb(255, 255, 255)" },
+        "rgb(255, 255, 255)",
+      ),
+    ).toBe(true);
+    expect(
+      isBare(
+        { ...BARE_STYLES, backgroundColor: "rgb(250, 250, 250)" },
+        "rgb(255, 255, 255)",
       ),
     ).toBe(true);
   });
 
-  it("keeps an icon-only control that has no other chrome", () => {
-    expect(isBareTextButton(BARE_STYLES, true)).toBe(false);
+  it("keeps a fill that stands out from the color behind it", () => {
+    expect(
+      isBare(
+        { ...BARE_STYLES, backgroundColor: "rgb(41, 82, 227)" },
+        "rgb(255, 255, 255)",
+      ),
+    ).toBe(false);
+    expect(
+      isBare(
+        { ...BARE_STYLES, backgroundColor: "rgb(255, 255, 255)" },
+        "rgb(240, 236, 228)",
+      ),
+    ).toBe(false);
+  });
+
+  it("weighs a tinted fill by what it does to the color behind it", () => {
+    // 3% of black on white moves each channel by under 8: invisible.
+    expect(
+      isBare(
+        { ...BARE_STYLES, backgroundColor: "rgba(0, 0, 0, 0.03)" },
+        "rgb(255, 255, 255)",
+      ),
+    ).toBe(true);
+    expect(
+      isBare(
+        { ...BARE_STYLES, backgroundColor: "rgba(0, 0, 0, 0.08)" },
+        "rgb(255, 255, 255)",
+      ),
+    ).toBe(false);
+  });
+
+  it("skips the invisible shadow layers utility CSS stacks on everything", () => {
+    expect(
+      isBare({
+        ...BARE_STYLES,
+        boxShadow:
+          "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      }),
+    ).toBe(true);
+    expect(
+      isBare({ ...BARE_STYLES, boxShadow: "rgb(0, 0, 0) 0px 0px 0px 0px" }),
+    ).toBe(true);
   });
 
   it("skips a control whose modern-syntax background paints nothing", () => {
@@ -196,9 +260,7 @@ describe("isBareTextButton", () => {
       "color(display-p3 0.1 0.2 0.3 / 0%)",
       "#facade00",
     ]) {
-      expect(isBareTextButton({ ...BARE_STYLES, backgroundColor }, false)).toBe(
-        true,
-      );
+      expect(isBare({ ...BARE_STYLES, backgroundColor })).toBe(true);
     }
   });
 
@@ -209,36 +271,60 @@ describe("isBareTextButton", () => {
       "color(display-p3 0.1 0.2 0.3 / 0.2)",
       "#facade33",
     ]) {
-      expect(isBareTextButton({ ...BARE_STYLES, backgroundColor }, false)).toBe(
-        false,
-      );
+      expect(isBare({ ...BARE_STYLES, backgroundColor })).toBe(false);
     }
   });
 
   it("keeps a control whose background cannot be read rather than dropping it", () => {
     expect(
-      isBareTextButton(
-        { ...BARE_STYLES, backgroundColor: "var(--brand-surface)" },
-        false,
-      ),
+      isBare({ ...BARE_STYLES, backgroundColor: "var(--brand-surface)" }),
     ).toBe(false);
   });
 
   it("treats a modern-syntax transparent border as no border", () => {
-    expect(
-      isBareTextButton(
-        { ...BARE_STYLES, border: "1px solid rgb(0 0 0 / 0)" },
-        false,
-      ),
-    ).toBe(true);
+    expect(isBare({ ...BARE_STYLES, border: "1px solid rgb(0 0 0 / 0)" })).toBe(
+      true,
+    );
   });
 
   it("keeps a control whose modern-syntax border paints something", () => {
     expect(
-      isBareTextButton(
-        { ...BARE_STYLES, border: "1px solid oklch(0.6 0.1 250 / 0.4)" },
-        false,
-      ),
+      isBare({ ...BARE_STYLES, border: "1px solid oklch(0.6 0.1 250 / 0.4)" }),
     ).toBe(false);
+  });
+});
+
+describe("hasVisibleShadow", () => {
+  it("finds the one visible layer in a stack", () => {
+    expect(
+      hasVisibleShadow(
+        "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.18) 0px 2px 8px 0px",
+      ),
+    ).toBe(true);
+  });
+
+  it("reads an inset ring as visible", () => {
+    expect(hasVisibleShadow("rgb(209, 213, 219) 0px 0px 0px 1px inset")).toBe(
+      true,
+    );
+  });
+
+  it("reads none as nothing", () => {
+    expect(hasVisibleShadow("none")).toBe(false);
+    expect(hasVisibleShadow(undefined)).toBe(false);
+  });
+});
+
+describe("icon glyph detection", () => {
+  it("recognizes common icon font families", () => {
+    expect(isIconFontFamily('"Material Icons"')).toBe(true);
+    expect(isIconFontFamily('"Material Symbols Outlined"')).toBe(true);
+    expect(isIconFontFamily('"Font Awesome 6 Free"')).toBe(true);
+    expect(isIconFontFamily("Inter, system-ui, sans-serif")).toBe(false);
+  });
+
+  it("recognizes private use characters", () => {
+    expect(hasPrivateUseCharacter("\uf004")).toBe(true);
+    expect(hasPrivateUseCharacter("Like")).toBe(false);
   });
 });

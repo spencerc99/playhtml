@@ -1,6 +1,8 @@
 // ABOUTME: Builds the SVG document a non-image scrap is drawn from when baking.
 // ABOUTME: Escapes text for XML and refuses markup an XML parser cannot read.
 
+import { buttonIconStyle } from "@movement/utils/buttonIcon";
+
 /** Escapes a value for use as XML text or inside a double-quoted attribute. */
 export function escapeXml(value: string): string {
   return value
@@ -94,6 +96,7 @@ export interface ButtonScrapShape {
   text: string;
   styles: Record<string, string>;
   innerSvg?: string;
+  trailingSvg?: string;
   /** The color the scrap was read against, painted behind it as a patch. */
   backdropColor?: string;
 }
@@ -118,6 +121,25 @@ function withBackdrop(body: string, backdropColor?: string): string {
   return `<span style="${escapeXml(patch)}">${body}</span>`;
 }
 
+/** Inline declarations for the box around one of a button's icons. */
+function buttonIconDeclarations(
+  markup: string,
+  side: "leading" | "trailing",
+  scrap: ButtonScrapShape,
+): string {
+  const box = buttonIconStyle(
+    markup,
+    side,
+    scrap.text.length > 0,
+    scrap.styles,
+  );
+  // An older capture keeps the pixel size its markup names, as it always
+  // baked; only the spacing beside it is shared with the tray.
+  delete box.width;
+  delete box.height;
+  return styleDeclarations(box);
+}
+
 /** The HTML a button scrap bakes as, with every value escaped for XML. */
 export function buttonBodyMarkup(scrap: ButtonScrapShape): string {
   const declarations = [
@@ -135,11 +157,18 @@ export function buttonBodyMarkup(scrap: ButtonScrapShape): string {
   ]
     .filter((part) => part.length > 0)
     .join(";");
-  const icon = scrap.innerSvg
-    ? requireXmlFragment(scrap.innerSvg, "The button's icon")
-    : "";
+  const icon = (
+    markup: string | undefined,
+    side: "leading" | "trailing",
+    what: string,
+  ) => {
+    if (!markup) return "";
+    const fragment = requireXmlFragment(markup, what);
+    return `<span style="${escapeXml(buttonIconDeclarations(markup, side, scrap))}">${fragment}</span>`;
+  };
+  const text = scrap.text ? `<span>${escapeXml(scrap.text)}</span>` : "";
   return withBackdrop(
-    `<span style="${escapeXml(declarations)}">${icon}${escapeXml(scrap.text)}</span>`,
+    `<span style="${escapeXml(declarations)}">${icon(scrap.innerSvg, "leading", "The button's icon")}${text}${icon(scrap.trailingSvg, "trailing", "The button's trailing icon")}</span>`,
     scrap.backdropColor,
   );
 }

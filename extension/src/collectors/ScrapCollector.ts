@@ -6,7 +6,9 @@ import {
   colorAlpha,
   getCanonicalScrapKey,
   getScrapEncounterKey,
-  isBareTextButton,
+  hasButtonFace,
+  hasPrivateUseCharacter,
+  isIconFontFamily,
   serializeSvg,
 } from "./scrapUtils";
 import {
@@ -910,30 +912,45 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       return;
     }
 
-    const inlineSvg = button.querySelector("svg");
-    const text = this.getButtonText(button);
-    if (
-      (!inlineSvg && text.length < MIN_BUTTON_TEXT_LENGTH) ||
-      text.length > MAX_BUTTON_TEXT_LENGTH
-    ) {
-      return;
-    }
-
     const computedStyle = getComputedStyle(button);
     if (!isEffectivelyVisible(button, computedStyle)) return;
 
-    const styles = this.pickButtonStyles(computedStyle);
-    const innerSvg = inlineSvg
-      ? this.serializeButtonSvg(inlineSvg as SVGSVGElement)
+    // Text a site merely tagged as a button, or an icon floating on the page,
+    // is not an object once torn out of it. Checked before the cap so a page
+    // of them still leaves room for real ones.
+    const face = findButtonFace(button, computedStyle);
+    if (!face) return;
+    const faceStyle = face === button ? computedStyle : getComputedStyle(face);
+
+    const content = readButtonContent(face, faceStyle);
+    if (!content) return;
+    const text = [content.prefix, this.getButtonText(face), content.suffix]
+      .filter((part) => part.length > 0)
+      .join(" ");
+    if (text.length > MAX_BUTTON_TEXT_LENGTH) return;
+
+    const styles = this.pickButtonStyles(faceStyle);
+    const fontSize = Number.parseFloat(faceStyle.fontSize) || 16;
+    const innerSvg = content.leading
+      ? this.serializeButtonSvg(content.leading, fontSize)
       : undefined;
-    if (!text && !innerSvg) return;
-    // Plain text a site merely tagged as a button is prose, not an object.
-    // Checked before the cap so a page of them still leaves room for real ones.
-    if (isBareTextButton(styles, innerSvg !== undefined)) return;
+    const trailingSvg = content.trailing
+      ? this.serializeButtonSvg(content.trailing, fontSize)
+      : undefined;
+    // An icon that will not serialize would leave the button without it.
+    if ((content.leading && !innerSvg) || (content.trailing && !trailingSvg)) {
+      return;
+    }
+    if (text.length < MIN_BUTTON_TEXT_LENGTH && !innerSvg && !trailingSvg) {
+      return;
+    }
+    if (text && content.gap !== undefined && (innerSvg || trailingSvg)) {
+      styles.columnGap = `${content.gap}px`;
+    }
 
     const backdropColor = this.backdropFor(
-      button,
-      computedStyle.backgroundColor,
+      face,
+      faceStyle.backgroundColor,
       styles.backgroundImage !== undefined,
     );
     const data: ButtonScrapData = {
@@ -941,6 +958,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       text,
       styles,
       ...(innerSvg ? { innerSvg } : {}),
+      ...(trailingSvg ? { trailingSvg } : {}),
       ...(backdropColor ? { backdropColor } : {}),
       pageTitle: document.title,
       position: this.elementPosition(bounds),
@@ -993,12 +1011,23 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     return styles;
   }
 
-  private serializeButtonSvg(svg: SVGSVGElement): string | undefined {
+  /**
+   * The icon at its measured size, written in ems of the button's text so it
+   * keeps its proportion to the lettering when the scrap is drawn smaller.
+   */
+  private serializeButtonSvg(
+    svg: SVGSVGElement,
+    fontSize: number,
+  ): string | undefined {
     const bounds = svg.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return undefined;
+    const ems = (pixels: number) =>
+      `${Math.round((pixels / fontSize) * 1000) / 1000}em`;
     return serializeSvg(svg, {
       width: bounds.width,
       height: bounds.height,
+      displayWidth: ems(bounds.width),
+      displayHeight: ems(bounds.height),
       color: getComputedStyle(svg).color,
       maxBytes: MAX_BUTTON_SVG_BYTES,
     });
@@ -1369,4 +1398,262 @@ function resolveBackdropColor(element: Element): string | undefined {
     ancestor = ancestor.parentElement;
   }
   return ancestor ? undefined : CANVAS_BACKDROP_COLOR;
+}
+
+/** The paint `hasButtonFace` reads, from a computed style. */
+function faceStyles(style: CSSStyleDeclaration): Record<string, string> {
+  const styles: Record<string, string> = {
+    backgroundColor: style.backgroundColor,
+    boxShadow: style.boxShadow,
+  };
+  if (GRADIENT_PATTERN.test(style.backgroundImage.trim())) {
+    styles.backgroundImage = style.backgroundImage;
+  }
+  if (style.border) {
+    styles.border = style.border;
+  } else {
+    for (const property of BUTTON_BORDER_PROPERTIES) {
+      styles[property] = style[property];
+    }
+  }
+  return styles;
+}
+
+/** How deep inside a bare button to look for the child that paints its face. */
+const MAX_FACE_DEPTH = 3;
+/** The share of the button a child must cover to stand in as its face. */
+const MIN_FACE_COVERAGE = 0.8;
+
+/**
+ * The element that gives a control its look as a button: the control itself
+ * when it paints a face, or else a single child that fills it and does (a
+ * reset `<button>` wrapping a styled `<span>` is common). Undefined when
+ * nothing paints one, so the control reads as words or a bare icon.
+ */
+function findButtonFace(
+  button: Element,
+  buttonStyle: CSSStyleDeclaration,
+): Element | undefined {
+  if (hasButtonFace(faceStyles(buttonStyle), resolveBackdropColor(button))) {
+    return button;
+  }
+  const buttonBounds = button.getBoundingClientRect();
+  const buttonArea = buttonBounds.width * buttonBounds.height;
+  let current: Element = button;
+  for (let depth = 0; depth < MAX_FACE_DEPTH; depth++) {
+    const wrapper = soleVisibleChild(current);
+    if (!wrapper) return undefined;
+    const bounds = wrapper.getBoundingClientRect();
+    if (bounds.width * bounds.height < buttonArea * MIN_FACE_COVERAGE) {
+      return undefined;
+    }
+    const style = getComputedStyle(wrapper);
+    if (hasButtonFace(faceStyles(style), resolveBackdropColor(wrapper))) {
+      return wrapper;
+    }
+    current = wrapper;
+  }
+  return undefined;
+}
+
+/** The element's only shown child, when it has no text of its own beside it. */
+function soleVisibleChild(element: Element): Element | undefined {
+  let sole: Element | undefined;
+  for (const node of Array.from(element.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if ((node.textContent ?? "").trim()) return undefined;
+      continue;
+    }
+    if (!(node instanceof Element)) continue;
+    if (styleHides(getComputedStyle(node))) continue;
+    if (sole) return undefined;
+    sole = node;
+  }
+  return sole;
+}
+
+interface ButtonContent {
+  leading?: SVGSVGElement;
+  trailing?: SVGSVGElement;
+  /** Pixels between the icon and the text, as the page laid them out. */
+  gap?: number;
+  /** Words a `::before` / `::after` on the face itself adds. */
+  prefix: string;
+  suffix: string;
+}
+
+/** How many elements inside a button to read before giving up on it. */
+const MAX_BUTTON_DESCENDANTS = 40;
+const UNCARRYABLE_ELEMENTS = new Set([
+  "img",
+  "picture",
+  "canvas",
+  "video",
+  "object",
+  "embed",
+  "iframe",
+]);
+
+/**
+ * What a button shows beside its text, or undefined when it shows something a
+ * scrap cannot carry: a raster or `<img>` icon, an icon-font glyph, a CSS
+ * image or mask icon, or more than one icon to a side. Skipping those keeps
+ * every saved button whole rather than missing the part that made it.
+ */
+function readButtonContent(
+  face: Element,
+  faceStyle: CSSStyleDeclaration,
+): ButtonContent | undefined {
+  const content: ButtonContent = { prefix: "", suffix: "" };
+  const icons: SVGSVGElement[] = [];
+  const textNodes: Text[] = [];
+
+  const before = pseudoText(face, "::before");
+  const after = pseudoText(face, "::after");
+  if (before === undefined || after === undefined) return undefined;
+  content.prefix = before;
+  content.suffix = after;
+  // The face's own fill painted by a URL image would be lost.
+  if (/url\(/i.test(faceStyle.backgroundImage)) return undefined;
+  if (hasMaskImage(faceStyle)) return undefined;
+
+  let visited = 0;
+  const walk = (parent: Element): boolean => {
+    for (const node of Array.from(parent.childNodes)) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        if ((node.textContent ?? "").trim()) {
+          if (isIconFontFamily(getComputedStyle(parent).fontFamily))
+            return false;
+          if (hasPrivateUseCharacter(node.textContent ?? "")) return false;
+          textNodes.push(node as Text);
+        }
+        continue;
+      }
+      if (!(node instanceof Element)) continue;
+      if (++visited > MAX_BUTTON_DESCENDANTS) return false;
+      const style = getComputedStyle(node);
+      if (styleHides(style)) continue;
+      const bounds = node.getBoundingClientRect();
+      if (
+        bounds.width <= 0 &&
+        bounds.height <= 0 &&
+        node.childNodes.length === 0
+      ) {
+        continue;
+      }
+      const tag = node.tagName.toLowerCase();
+      if (node instanceof SVGSVGElement) {
+        if (bounds.width > 0 && bounds.height > 0) icons.push(node);
+        continue;
+      }
+      if (UNCARRYABLE_ELEMENTS.has(tag)) return false;
+      if (/url\(/i.test(style.backgroundImage) || hasMaskImage(style)) {
+        return false;
+      }
+      // An empty `<i>` or `<span>` drawing its glyph from a pseudo-element.
+      // Words added this way inside the button would be lost as well.
+      if (pseudoText(node, "::before") !== "") return false;
+      if (pseudoText(node, "::after") !== "") return false;
+      if (!walk(node)) return false;
+    }
+    return true;
+  };
+  if (!walk(face)) return undefined;
+  if (icons.length === 0) return content;
+
+  const textBounds = textNodesBounds(textNodes);
+  if (!textBounds) {
+    // An icon-only button: its one icon is the whole face.
+    if (icons.length > 1) return undefined;
+    content.leading = icons[0];
+    return content;
+  }
+  const textCenter = textBounds.left + textBounds.width / 2;
+  for (const icon of icons) {
+    const bounds = icon.getBoundingClientRect();
+    const isLeading = bounds.left + bounds.width / 2 < textCenter;
+    if (isLeading) {
+      if (content.leading) return undefined;
+      content.leading = icon;
+      content.gap ??= Math.max(
+        0,
+        Math.round(textBounds.left - (bounds.left + bounds.width)),
+      );
+    } else {
+      if (content.trailing) return undefined;
+      content.trailing = icon;
+      content.gap ??= Math.max(
+        0,
+        Math.round(bounds.left - (textBounds.left + textBounds.width)),
+      );
+    }
+  }
+  return content;
+}
+
+/** The box around a run of text nodes, or undefined when none is laid out. */
+function textNodesBounds(nodes: Text[]): DOMRect | undefined {
+  if (nodes.length === 0) return undefined;
+  const range = document.createRange();
+  // A range spanning an icon between two words would cover the icon too, so
+  // only the text nodes' own boxes are joined.
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const node of nodes) {
+    range.selectNodeContents(node);
+    // Without range geometry, the element holding the words stands in.
+    const bounds =
+      typeof range.getBoundingClientRect === "function"
+        ? range.getBoundingClientRect()
+        : node.parentElement?.getBoundingClientRect();
+    if (!bounds) continue;
+    if (bounds.width <= 0 && bounds.height <= 0) continue;
+    left = Math.min(left, bounds.left);
+    right = Math.max(right, bounds.left + bounds.width);
+    top = Math.min(top, bounds.top);
+    bottom = Math.max(bottom, bounds.top + bounds.height);
+  }
+  range.detach();
+  if (!Number.isFinite(left)) return undefined;
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+function hasMaskImage(style: CSSStyleDeclaration): boolean {
+  const mask =
+    style.maskImage ||
+    (style as CSSStyleDeclaration & { webkitMaskImage?: string })
+      .webkitMaskImage ||
+    "none";
+  return /url\(|gradient\(/i.test(mask);
+}
+
+/**
+ * The words a pseudo-element adds: an empty string when it draws nothing, or
+ * undefined when it draws something a scrap cannot carry (an image, a mask,
+ * or an icon-font glyph).
+ */
+function pseudoText(
+  element: Element,
+  pseudo: "::before" | "::after",
+): string | undefined {
+  const style = getComputedStyle(element, pseudo);
+  const content = (style.content ?? "").trim();
+  if (!content || content === "none" || content === "normal") return "";
+  if (/url\(|image-set\(/i.test(content)) return undefined;
+  if (/url\(/i.test(style.backgroundImage) || hasMaskImage(style)) {
+    return undefined;
+  }
+  const quoted = /^(["'])([\s\S]*)\1$/.exec(content);
+  // `counter()`, `attr()` and the like are not something to reproduce.
+  if (!quoted) return "";
+  const text = quoted[2]!.replace(/\\([0-9a-f]{1,6})\s?/gi, (_, hex: string) =>
+    String.fromCodePoint(Number.parseInt(hex, 16)),
+  );
+  if (!text.trim()) return "";
+  if (hasPrivateUseCharacter(text) || isIconFontFamily(style.fontFamily)) {
+    return undefined;
+  }
+  return text.replace(/\s+/g, " ").trim();
 }

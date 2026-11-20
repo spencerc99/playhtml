@@ -109,8 +109,10 @@ function clampAlpha(alpha: number): number {
 function hexAlpha(digits: string): ColorAlpha {
   if (!/^[0-9a-f]+$/i.test(digits)) return undefined;
   if (digits.length === 3 || digits.length === 6) return 1;
-  if (digits.length === 4) return clampAlpha(parseInt(digits[3]!.repeat(2), 16) / 255);
-  if (digits.length === 8) return clampAlpha(parseInt(digits.slice(6), 16) / 255);
+  if (digits.length === 4)
+    return clampAlpha(parseInt(digits[3]!.repeat(2), 16) / 255);
+  if (digits.length === 8)
+    return clampAlpha(parseInt(digits.slice(6), 16) / 255);
   return undefined;
 }
 
@@ -168,45 +170,158 @@ function borderSideShows(
   return alpha === undefined || alpha > 0;
 }
 
-/** Whether any side of the element draws a border a reader could see. */
-function hasVisibleBorder(styles: Record<string, string>): boolean {
+/** How many sides of the element draw a border a reader could see. */
+function visibleBorderSides(styles: Record<string, string>): number {
   const shorthand = styles.border?.trim();
   if (shorthand) {
     // The shorthand reads "<width> <style> [<color>]", and only appears when
     // every side agrees, so one read settles the whole box.
     const [width, style, ...rest] = shorthand.split(/\s+(?![^(]*\))/);
     const color = rest.length > 0 ? rest.join(" ") : undefined;
-    return borderSideShows(width, style, color);
+    return borderSideShows(width, style, color) ? BORDER_SIDES.length : 0;
   }
 
-  return BORDER_SIDES.some((side) =>
+  return BORDER_SIDES.filter((side) =>
     borderSideShows(
       styles[`border${side}Width`],
       styles[`border${side}Style`],
       styles[`border${side}Color`],
     ),
+  ).length;
+}
+
+interface Rgba {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
+/**
+ * Reads the `rgb()` / `rgba()` form browsers report computed colors in. Any
+ * other syntax returns undefined, which callers treat as "cannot tell".
+ */
+export function parseRgb(color: string): Rgba | undefined {
+  const match = /^rgba?\(([^)]*)\)$/i.exec(color.trim());
+  if (!match) return undefined;
+  const parts = match[1]!
+    .split(/[\s,/]+/)
+    .filter((part) => part.length > 0)
+    .map((part) =>
+      part.endsWith("%")
+        ? Number.parseFloat(part) / 100
+        : Number.parseFloat(part),
+    );
+  if (parts.length < 3 || parts.some((part) => !Number.isFinite(part))) {
+    return undefined;
+  }
+  const [r, g, b, a = 1] = parts as [number, number, number, number?];
+  return { r, g, b, a: clampAlpha(a) };
+}
+
+/**
+ * How far apart two colors look once the first is laid over the second, on
+ * the 0-255 scale of the largest channel difference. Undefined when either
+ * color is a syntax this reader does not know.
+ */
+function paintedDistance(paint: string, backdrop: string): number | undefined {
+  const top = parseRgb(paint);
+  const bottom = parseRgb(backdrop);
+  if (!top || !bottom) return undefined;
+  const blend = (front: number, back: number) =>
+    front * top.a + back * (1 - top.a);
+  return Math.max(
+    Math.abs(blend(top.r, bottom.r) - bottom.r),
+    Math.abs(blend(top.g, bottom.g) - bottom.g),
+    Math.abs(blend(top.b, bottom.b) - bottom.b),
   );
 }
 
 /**
- * Whether a control is plain text a site merely tagged as a button. Such an
- * element has none of the chrome that makes a button read as an object once it
- * is torn out of its page, so collecting it would gather a site's prose rather
- * than its buttons. Anything with a background, gradient, border, shadow, or an
- * icon of its own still counts as a button.
+ * The smallest channel difference a fill needs from the color behind it to
+ * read as a shape. A faint 6% tint on white clears it; a fill that matches
+ * its page does not.
  */
-export function isBareTextButton(
+const MIN_FACE_CONTRAST = 10;
+
+/** Splits a comma-separated CSS list, ignoring commas inside functions. */
+function splitCssList(value: string): string[] {
+  return value.split(/,(?![^(]*\))/).map((part) => part.trim());
+}
+
+/**
+ * Whether any layer of a computed `box-shadow` draws something. Utility CSS
+ * often stacks invisible layers (`0 0 #0000`), which name a shadow without
+ * painting one.
+ */
+export function hasVisibleShadow(boxShadow: string | undefined): boolean {
+  const value = (boxShadow ?? "none").trim();
+  if (!value || /^none$/i.test(value)) return false;
+  return splitCssList(value).some((layer) => {
+    const color =
+      /(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^)]*\)|#[0-9a-f]{3,8}\b|\b[a-z]+\b(?<!inset)/i.exec(
+        layer,
+      )?.[0];
+    if (color !== undefined) {
+      const alpha = colorAlpha(color);
+      if (alpha === 0) return false;
+    }
+    const lengths = (
+      layer.replace(color ?? "", "").match(/-?[\d.]+(?:px)?/g) ?? []
+    )
+      .map((length) => Number.parseFloat(length))
+      .filter((length) => Number.isFinite(length));
+    // Offsets, blur and spread all zero: the shadow sits exactly under the
+    // box and shows nothing.
+    return lengths.some((length) => length !== 0);
+  });
+}
+
+/**
+ * Whether a control's own paint gives it the face of a button: a fill that
+ * stands out from the color behind it, a gradient, a border around most of
+ * it, or a shadow that shows. Text a site merely tagged as a button, a tab
+ * underlined on one side, or an icon floating on the page has none of these,
+ * so once torn out of its page it reads as words or a bare glyph, not a
+ * button.
+ *
+ * Anything this reader cannot parse counts as paint: better to keep a control
+ * whose fill cannot be read than to throw away a real button.
+ */
+export function hasButtonFace(
   styles: Record<string, string>,
-  hasIcon: boolean,
+  backdropColor?: string,
 ): boolean {
-  if (hasIcon) return false;
-  if (styles.backgroundImage !== undefined) return false;
-  const backgroundAlpha = colorAlpha(styles.backgroundColor ?? "transparent");
-  // An unreadable background counts as chrome for the same reason: better to
-  // keep a control whose fill cannot be read than to throw away a real button.
-  if (backgroundAlpha === undefined || backgroundAlpha > 0) return false;
-  if ((styles.boxShadow ?? "none").trim().toLowerCase() !== "none") return false;
-  return !hasVisibleBorder(styles);
+  if (styles.backgroundImage !== undefined) return true;
+  const fill = styles.backgroundColor ?? "transparent";
+  const fillAlpha = colorAlpha(fill);
+  if (fillAlpha === undefined) return true;
+  if (fillAlpha > 0) {
+    if (!backdropColor) return true;
+    const distance = paintedDistance(fill, backdropColor);
+    if (distance === undefined || distance >= MIN_FACE_CONTRAST) return true;
+  }
+  if (hasVisibleShadow(styles.boxShadow)) return true;
+  // Three sides at least: one rule under a word is a tab or a link.
+  return visibleBorderSides(styles) >= 3;
+}
+
+/**
+ * Font families that draw icons from letters or private code points. Their
+ * glyphs need the page's own font file, which a scrap cannot carry.
+ */
+const ICON_FONT_PATTERN =
+  /material[ -](?:icons|symbols)|font ?awesome|glyphicons|icomoon|bootstrap-icons|remixicon|ionicons|phosphor|feather|lucide|tabler|octicons|\bicons?\b|symbols/i;
+
+export function isIconFontFamily(fontFamily: string | undefined): boolean {
+  return ICON_FONT_PATTERN.test(fontFamily ?? "");
+}
+
+/** Characters in Unicode's private use area, where icon fonts keep glyphs. */
+export function hasPrivateUseCharacter(text: string): boolean {
+  return /[\uE000-\uF8FF]|[\u{F0000}-\u{FFFFD}]|[\u{100000}-\u{10FFFD}]/u.test(
+    text,
+  );
 }
 
 export function hashScrapString(value: string): string {
@@ -229,7 +344,9 @@ export function getScrapKey(data: ScrapEventData): string {
     case "image":
       return data.src;
     case "button":
-      return hashScrapString(`${data.text}\n${serializeScrapStyles(data.styles)}`);
+      return hashScrapString(
+        `${data.text}\n${serializeScrapStyles(data.styles)}`,
+      );
     case "svg-icon":
       return hashScrapString(data.markup);
     case "heading":
@@ -347,10 +464,16 @@ function resolveUseReferences(svg: SVGSVGElement): boolean {
   const resolvedIds = new Set<string>();
 
   for (let pass = 0; pass < 100; pass++) {
-    const unresolvedUse = Array.from(svg.querySelectorAll("use")).find((use) => {
-      const href = getUseReference(use as SVGUseElement);
-      return href !== null && href.startsWith("#") && !hasElementWithId(svg, href.slice(1));
-    });
+    const unresolvedUse = Array.from(svg.querySelectorAll("use")).find(
+      (use) => {
+        const href = getUseReference(use as SVGUseElement);
+        return (
+          href !== null &&
+          href.startsWith("#") &&
+          !hasElementWithId(svg, href.slice(1))
+        );
+      },
+    );
 
     if (!unresolvedUse) break;
     const href = getUseReference(unresolvedUse as SVGUseElement);
@@ -410,7 +533,10 @@ function sanitizeSvgTree(svg: SVGSVGElement): boolean {
 
   for (const element of Array.from(svg.querySelectorAll("*"))) {
     const name = element.localName.toLowerCase();
-    if (!ALLOWED_SVG_ELEMENTS.has(name) || referencesExternalResource(element)) {
+    if (
+      !ALLOWED_SVG_ELEMENTS.has(name) ||
+      referencesExternalResource(element)
+    ) {
       element.remove();
       continue;
     }
@@ -467,11 +593,25 @@ export interface SerializeSvgOptions {
   height: number;
   color: string;
   maxBytes: number;
+  /**
+   * Lengths written as the root's width and height in place of the measured
+   * pixels, such as em sizes that let an icon scale with the text beside it.
+   * The measured pixels still set a missing viewBox.
+   */
+  displayWidth?: string;
+  displayHeight?: string;
 }
 
 export function serializeSvg(
   source: SVGSVGElement,
-  { width, height, color, maxBytes }: SerializeSvgOptions,
+  {
+    width,
+    height,
+    color,
+    maxBytes,
+    displayWidth,
+    displayHeight,
+  }: SerializeSvgOptions,
 ): string | undefined {
   const svg = source.cloneNode(true) as SVGSVGElement;
   if (!resolveUseReferences(svg)) return undefined;
@@ -479,11 +619,11 @@ export function serializeSvg(
   bakeCurrentColor(svg, color);
   if (!sanitizeSvgTree(svg)) return undefined;
 
-  svg.setAttribute("width", String(width));
-  svg.setAttribute("height", String(height));
   if (!svg.hasAttribute("viewBox")) {
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   }
+  svg.setAttribute("width", displayWidth ?? String(width));
+  svg.setAttribute("height", displayHeight ?? String(height));
 
   const markup = new XMLSerializer().serializeToString(svg);
   if (new TextEncoder().encode(markup).byteLength > maxBytes) return undefined;
