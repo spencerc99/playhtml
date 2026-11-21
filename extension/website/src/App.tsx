@@ -1,12 +1,12 @@
 // ABOUTME: Homepage for wewere.online
 // ABOUTME: Single-page landing — hero with downloads, three pull-quote beats with living elements, guestbook
 
+import { useActiveLocations } from "@movement/hooks/useActiveLocations";
 import {
   Suspense,
   lazy,
   useState,
   useEffect,
-  useMemo,
   useRef,
   useCallback,
   type ReactNode,
@@ -16,7 +16,6 @@ import { LiveIndicator } from "@movement/components/LiveIndicator";
 import { WordmarkClock } from "@movement/components/WordmarkClock";
 import { LIVE_CURSOR_CLICK_SETTINGS } from "@movement/components/clickDefaults";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
-import { summarizeActiveLocations } from "@movement/utils/eventUtils";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
 import { useAccumulatedEvents } from "@movement/hooks/useAccumulatedEvents";
 import { PresenceIndicator } from "./components/PresenceIndicator";
@@ -254,7 +253,7 @@ export default function App() {
 
   // Recent activity, from the raw event stream (not the capped drawn trails):
   // how many people, and the geographic spread of their timezones.
-  const activity = useMemo(() => summarizeActiveLocations(events), [events]);
+  const activity = useActiveLocations(events);
 
   const currentPath = window.location.pathname;
 

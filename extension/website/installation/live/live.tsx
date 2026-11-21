@@ -1,6 +1,7 @@
 // ABOUTME: Renders continuous cursor activity or finite visualization chapters for the WWO installation.
 // ABOUTME: Layers archived cursor footage under the live field only while current activity is quiet.
 
+import { useActiveLocations } from "../../shared/hooks/useActiveLocations";
 import "../../shared/portrait-styles.scss";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -17,7 +18,6 @@ import { useCursorArchiveEvents } from "../../shared/hooks/useCursorArchiveEvent
 import { useHybridInstallationEvents } from "../../shared/hooks/useHybridInstallationEvents";
 import { useDailyPageReload } from "../../shared/hooks/useDailyPageReload";
 import { useInstallationReload } from "../../shared/hooks/useInstallationReload";
-import { summarizeActiveLocations } from "../../shared/utils/eventUtils";
 import {
   LIVE_INSTALLATION_VISUALIZATIONS,
   eventsForInstallationScreen,
@@ -153,10 +153,7 @@ const LiveInstallation = () => {
     () => eventsForInstallationScreen(hybrid.liveEvents, screen),
     [hybrid.liveEvents, screen],
   );
-  const activity = useMemo(
-    () => summarizeActiveLocations(hybrid.liveEvents),
-    [hybrid.liveEvents],
-  );
+  const activity = useActiveLocations(hybrid.liveEvents);
   const continuousLiveTrails = profile?.continuousLiveTrails === true;
   const archiveFallback = useCursorArchiveFallback(
     liveScreenEvents,
