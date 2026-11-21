@@ -20,6 +20,7 @@ mock.module("cloudflare:workers", () => ({
   },
   env: {
     SUPABASE_URL: "http://127.0.0.1:54321",
+    DOCUMENTS_TABLE: "documents",
     SUPABASE_KEY: "test-supabase-key",
     ADMIN_TOKEN: "test-admin-token",
     PARTYKIT_BRIDGE_SECRET: SECRET,

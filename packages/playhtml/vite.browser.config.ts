@@ -7,6 +7,10 @@ import { defineConfig } from "vite";
 // field in package.json directly at that URL. Relative chunk imports would
 // resolve against `/npm/` and 404, so this build inlines every dynamic import.
 export default defineConfig({
+  // This file runs in the browser as-is, with no bundler after it to fill in
+  // Node's `process`. A dependency that reads `process.env.NODE_ENV` would
+  // otherwise throw "process is not defined" on load.
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
   build: {
     emptyOutDir: false,
     minify: "terser",

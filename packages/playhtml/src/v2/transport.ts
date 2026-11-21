@@ -1,0 +1,555 @@
+// ABOUTME: Exchanges version 2 room messages over a reconnecting PartySocket.
+// ABOUTME: Validates server messages and resends pending operations after reconnects.
+
+import PartySocket, { type PartySocketOptions } from "partysocket";
+import type {
+  ClientOperationMessage,
+  ClientToServerMessage,
+  JsonValue,
+  Operation,
+  OperationRejectionCode,
+  RelayedPlayEvent,
+  ProtocolPath,
+  PackedSnapshot,
+  RoomSnapshot,
+  ServerOperationMessage,
+  ServerOperationRejectedMessage,
+  ServerSnapshotMessage,
+} from "@playhtml/common";
+import {
+  PENDING_OPERATION_MAX_AGE_MS,
+  PROTOCOL_VERSION,
+  unpackSnapshot,
+} from "@playhtml/common";
+import { pickReconnectionDelay } from "../presence-transport";
+
+export type V2Socket = Pick<PartySocket, "readyState" | "send" | "close"> &
+  Pick<EventTarget, "addEventListener" | "removeEventListener">;
+
+type HandlerPropertySocket = V2Socket & {
+  onmessage: ((event: MessageEvent) => void) | null;
+  onopen: ((event: Event) => void) | null;
+  onclose: ((event: Event) => void) | null;
+  onerror: ((event: Event) => void) | null;
+};
+
+export type V2SocketFactory = (options: PartySocketOptions) => V2Socket;
+
+export type V2TransportConnectOptions = {
+  readonly clientId: string;
+  readonly generation: number;
+  readonly sharedElements?: string;
+  readonly sharedReferences?: string;
+};
+
+export type V2TransportStatusEvent =
+  | { readonly type: "connected" }
+  | { readonly type: "disconnected" }
+  | {
+      readonly type: "write-rejected";
+      readonly rejection: ServerOperationRejectedMessage;
+    };
+
+/** A snapshot message whose array addresses have been rebuilt. */
+export type ReceivedSnapshotMessage = Omit<ServerSnapshotMessage, "snapshot"> & {
+  readonly snapshot: RoomSnapshot;
+};
+
+/** A valid server message, as handed to listeners. */
+export type ReceivedServerMessage =
+  | ServerOperationMessage
+  | ReceivedSnapshotMessage
+  | ServerOperationRejectedMessage;
+
+type MessageListener = (message: ReceivedServerMessage) => void;
+type StatusListener = (event: V2TransportStatusEvent) => void;
+type PlayEventListener = (event: RelayedPlayEvent) => void;
+
+const SOCKET_OPEN_STATE = 1;
+const rejectionCodes = new Set<OperationRejectionCode>([
+  "invalid-message",
+  "invalid-operation",
+  "permission-denied",
+  "room-unavailable",
+  "size-limit",
+  "stale-generation",
+  "unsupported-protocol",
+]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isNonNegativeInteger = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const isPositiveInteger = (value: unknown): value is number =>
+  isNonNegativeInteger(value) && value > 0;
+
+const isJsonValue = (value: unknown): value is JsonValue => {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return isRecord(value) && Object.values(value).every(isJsonValue);
+};
+
+const isPath = (value: unknown): value is ProtocolPath =>
+  Array.isArray(value) &&
+  value.every(
+    (segment) =>
+      typeof segment === "string" ||
+      (isRecord(segment) &&
+        typeof segment.itemId === "string" &&
+        Object.keys(segment).length === 1),
+  );
+
+const hasAddress = (
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & {
+  capability: string;
+  elementId: string;
+  path: ProtocolPath;
+} =>
+  typeof value.capability === "string" &&
+  typeof value.elementId === "string" &&
+  isPath(value.path);
+
+const hasOperationValue = (value: Record<string, unknown>): boolean =>
+  isJsonValue(value.value) &&
+  Array.isArray(value.arrays) &&
+  value.arrays.every(
+    (identity) =>
+      isRecord(identity) &&
+      isPath(identity.path) &&
+      Array.isArray(identity.itemIds) &&
+      identity.itemIds.every((itemId) => typeof itemId === "string"),
+  );
+
+const isOperation = (value: unknown): value is Operation => {
+  if (!isRecord(value) || !hasAddress(value)) return false;
+  switch (value.type) {
+    case "set":
+      return hasOperationValue(value);
+    case "insert":
+      if (!hasOperationValue(value) || !isRecord(value.target)) return false;
+      return value.target.kind === "object"
+        ? typeof value.target.key === "string"
+        : value.target.kind === "array" &&
+            isNonNegativeInteger(value.target.index) &&
+            typeof value.target.itemId === "string";
+    case "remove":
+      if (!isRecord(value.target)) return false;
+      return value.target.kind === "object"
+        ? typeof value.target.key === "string"
+        : value.target.kind === "array" &&
+            typeof value.target.itemId === "string";
+    case "increment":
+      return typeof value.delta === "number" && Number.isFinite(value.delta);
+    case "delete-element":
+      return Array.isArray(value.path) && value.path.length === 0;
+    default:
+      return false;
+  }
+};
+
+const isPackedSnapshot = (value: unknown): value is PackedSnapshot =>
+  isRecord(value) &&
+  isRecord(value.state) &&
+  Array.isArray(value.itemIds) &&
+  value.itemIds.every((itemId) => typeof itemId === "string") &&
+  isRecord(value.lastMutationIds) &&
+  Object.values(value.state).every(
+    (elements) =>
+      isRecord(elements) && Object.values(elements).every(isJsonValue),
+  ) &&
+  Object.values(value.lastMutationIds).every(isPositiveInteger);
+
+const isPresenceMessage = (input: unknown): boolean => {
+  if (typeof input !== "string") return false;
+  try {
+    const value = JSON.parse(input) as unknown;
+    return (
+      isRecord(value) &&
+      typeof value.type === "string" &&
+      value.type.startsWith("presence-")
+    );
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Reads a relayed application event. Events are not part of the ordered
+ * operation stream, so they are parsed and delivered apart from it.
+ */
+export const parsePlayEventMessage = (
+  input: unknown,
+): RelayedPlayEvent | undefined => {
+  if (typeof input !== "string") return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(input) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (
+    !isRecord(value) ||
+    value.type !== "play-event" ||
+    value.protocolVersion !== PROTOCOL_VERSION ||
+    !isRecord(value.event) ||
+    typeof value.event.type !== "string"
+  ) {
+    return undefined;
+  }
+  return value.event as unknown as RelayedPlayEvent;
+};
+
+export const parseServerMessage = (
+  input: unknown,
+): ReceivedServerMessage | undefined => {
+  let value: unknown = input;
+  if (typeof input === "string") {
+    try {
+      value = JSON.parse(input) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+  if (
+    !isRecord(value) ||
+    value.protocolVersion !== PROTOCOL_VERSION ||
+    typeof value.type !== "string"
+  ) {
+    return undefined;
+  }
+
+  if (value.type === "operation") {
+    const payload = value.payload;
+    if (
+      !isRecord(payload) ||
+      !isNonNegativeInteger(payload.sequence) ||
+      !isNonNegativeInteger(payload.generation) ||
+      typeof payload.clientId !== "string" ||
+      !isPositiveInteger(payload.mutationId) ||
+      !isOperation(payload.operation)
+    ) {
+      return undefined;
+    }
+    return value as ServerOperationMessage;
+  }
+
+  if (value.type === "snapshot") {
+    if (
+      !isNonNegativeInteger(value.sequence) ||
+      !isNonNegativeInteger(value.generation) ||
+      !isPackedSnapshot(value.snapshot)
+    ) {
+      return undefined;
+    }
+    let snapshot: RoomSnapshot;
+    try {
+      snapshot = unpackSnapshot(value.snapshot);
+    } catch {
+      return undefined;
+    }
+    return {
+      type: "snapshot",
+      protocolVersion: PROTOCOL_VERSION,
+      sequence: value.sequence,
+      generation: value.generation,
+      snapshot,
+    };
+  }
+
+  if (value.type === "operation-rejected") {
+    if (
+      !isNonNegativeInteger(value.sequence) ||
+      typeof value.code !== "string" ||
+      !rejectionCodes.has(value.code as OperationRejectionCode) ||
+      typeof value.message !== "string" ||
+      (value.clientId !== undefined && typeof value.clientId !== "string") ||
+      (value.mutationId !== undefined && !isPositiveInteger(value.mutationId))
+    ) {
+      return undefined;
+    }
+    return value as ServerOperationRejectedMessage;
+  }
+
+  return undefined;
+};
+
+export class V2Transport {
+  private socket: V2Socket | null = null;
+  private socketFactory: V2SocketFactory;
+  private clientId: string | null = null;
+  private generation = 0;
+  private hasConnected = false;
+  private isConnected = false;
+  private usesHandlerProperties = false;
+  private pending: ClientOperationMessage[] = [];
+  private readonly messageListeners = new Set<MessageListener>();
+  private readonly statusListeners = new Set<StatusListener>();
+  private readonly playEventListeners = new Set<PlayEventListener>();
+  private readonly pendingCreatedAt = new Map<number, number>();
+  private readonly now: () => number;
+
+  constructor(socketFactory?: V2SocketFactory, now: () => number = Date.now) {
+    this.socketFactory =
+      socketFactory ??
+      ((options: PartySocketOptions) => new PartySocket(options));
+    this.now = now;
+  }
+
+  connect(
+    host: string,
+    room: string,
+    options: V2TransportConnectOptions,
+  ): void {
+    const previousSocket = this.socket;
+    this.detachSocket();
+    previousSocket?.close();
+    this.clientId = options.clientId;
+    this.generation = options.generation;
+    this.hasConnected = false;
+    this.pending = [];
+    this.pendingCreatedAt.clear();
+    this.socket = this.socketFactory({
+      host,
+      room,
+      party: "v2",
+      maxEnqueuedMessages: 0,
+      // Spread reconnects after a room restart instead of every client
+      // retrying at PartySocket's fixed first delay.
+      minReconnectionDelay: pickReconnectionDelay(),
+      query: {
+        ...(options.sharedElements
+          ? { sharedElements: options.sharedElements }
+          : {}),
+        ...(options.sharedReferences
+          ? { sharedReferences: options.sharedReferences }
+          : {}),
+      },
+    });
+    this.attachSocket();
+  }
+
+  send(message: ClientToServerMessage): void {
+    if (message.type === "operation") this.rememberPending(message);
+    this.sendIfOpen(message);
+  }
+
+  /**
+   * Sends an event for the server to relay to everyone in the room. An event
+   * sent while disconnected is dropped: it describes a moment, and replaying
+   * it after a reconnect would fire it late.
+   */
+  sendPlayEvent(event: RelayedPlayEvent): void {
+    this.sendIfOpen({
+      type: "play-event",
+      protocolVersion: PROTOCOL_VERSION,
+      event,
+    });
+  }
+
+  subscribePlayEvent(listener: PlayEventListener): () => void {
+    this.playEventListeners.add(listener);
+    return () => this.playEventListeners.delete(listener);
+  }
+
+  requestSnapshot(): void {
+    this.sendIfOpen({
+      type: "snapshot-request",
+      protocolVersion: PROTOCOL_VERSION,
+    });
+  }
+
+  setGeneration(generation: number): void {
+    this.generation = generation;
+  }
+
+  subscribeMessage(listener: MessageListener): () => void {
+    this.messageListeners.add(listener);
+    return () => this.messageListeners.delete(listener);
+  }
+
+  subscribeStatus(listener: StatusListener): () => void {
+    this.statusListeners.add(listener);
+    return () => this.statusListeners.delete(listener);
+  }
+
+  close(): void {
+    const socket = this.socket;
+    const wasConnected = this.isConnected;
+    this.detachSocket();
+    socket?.close();
+    if (wasConnected) this.emitStatus({ type: "disconnected" });
+  }
+
+  private onMessage = (event: MessageEvent): void => {
+    const playEvent = parsePlayEventMessage(event.data);
+    if (playEvent) {
+      for (const listener of this.playEventListeners) listener(playEvent);
+      return;
+    }
+    const message = parseServerMessage(event.data);
+    if (!message) {
+      // Presence rides the same room socket and has its own consumer; it is
+      // not part of the v2 op protocol, so it is not an invalid message.
+      if (isPresenceMessage(event.data)) return;
+      console.warn("[playhtml] Ignored invalid version 2 server message");
+      return;
+    }
+
+    this.reconcilePending(message);
+    for (const listener of this.messageListeners) listener(message);
+  };
+
+  private onOpen = (): void => {
+    const reconnecting = this.hasConnected;
+    this.hasConnected = true;
+    this.isConnected = true;
+    if (reconnecting) this.requestSnapshot();
+    this.dropExpiredPending();
+    for (const pending of this.pending) this.sendIfOpen(pending);
+    this.emitStatus({ type: "connected" });
+  };
+
+  private onDisconnect = (): void => {
+    if (!this.isConnected) return;
+    this.isConnected = false;
+    this.emitStatus({ type: "disconnected" });
+  };
+
+  private rememberPending(message: ClientOperationMessage): void {
+    if (
+      message.clientId !== this.clientId ||
+      this.pending.some((pending) => pending.mutationId === message.mutationId)
+    ) {
+      return;
+    }
+    this.pending.push(message);
+    this.pending.sort((left, right) => left.mutationId - right.mutationId);
+    this.pendingCreatedAt.set(message.mutationId, this.now());
+  }
+
+  private reconcilePending(message: ReceivedServerMessage): void {
+    if (message.type === "operation") {
+      if (message.payload.clientId === this.clientId) {
+        this.dropPending(message.payload.mutationId);
+      }
+      return;
+    }
+
+    if (message.type === "snapshot") {
+      if (message.generation !== this.generation) this.pending = [];
+      this.generation = message.generation;
+      const confirmed = this.clientId
+        ? (message.snapshot.lastMutationIds[this.clientId] ?? 0)
+        : 0;
+      this.pending = this.pending.filter(
+        (pending) => pending.mutationId > confirmed,
+      );
+      this.dropExpiredPending();
+      return;
+    }
+
+    const pending = this.pending.find(
+      (candidate) => candidate.mutationId === message.mutationId,
+    );
+    console.warn(
+      `[playhtml] Write rejected for ${pending ? `${pending.operation.capability}/${pending.operation.elementId}` : "unknown element"} (${message.code}): ${message.message}`,
+    );
+    if (message.code === "stale-generation") {
+      this.pending = [];
+      this.pendingCreatedAt.clear();
+    } else if (
+      message.mutationId !== undefined &&
+      (message.clientId === undefined || message.clientId === this.clientId)
+    ) {
+      this.dropPending(message.mutationId);
+    }
+    this.emitStatus({ type: "write-rejected", rejection: message });
+  }
+
+  // An operation older than the limit is dropped rather than resent: the
+  // server may have applied it and since forgotten this client, and would
+  // then apply it a second time. This runs before every resend.
+  private dropExpiredPending(): void {
+    const oldestAllowed = this.now() - PENDING_OPERATION_MAX_AGE_MS;
+    this.pending = this.pending.filter(
+      (pending) =>
+        (this.pendingCreatedAt.get(pending.mutationId) ?? oldestAllowed) >=
+        oldestAllowed,
+    );
+    const kept = new Set(this.pending.map((pending) => pending.mutationId));
+    for (const mutationId of this.pendingCreatedAt.keys()) {
+      if (!kept.has(mutationId)) this.pendingCreatedAt.delete(mutationId);
+    }
+  }
+
+  private dropPending(mutationId: number): void {
+    this.pending = this.pending.filter(
+      (pending) => pending.mutationId !== mutationId,
+    );
+    this.pendingCreatedAt.delete(mutationId);
+  }
+
+  private sendIfOpen(message: ClientToServerMessage): void {
+    if (this.socket?.readyState !== SOCKET_OPEN_STATE) return;
+    this.socket.send(JSON.stringify(message));
+  }
+
+  private emitStatus(event: V2TransportStatusEvent): void {
+    for (const listener of this.statusListeners) listener(event);
+  }
+
+  private attachSocket(): void {
+    if (!this.socket) return;
+    if (supportsHandlerProperties(this.socket)) {
+      this.socket.onmessage = this.onMessage;
+      this.socket.onopen = this.onOpen;
+      this.socket.onclose = this.onDisconnect;
+      this.socket.onerror = this.onDisconnect;
+      this.usesHandlerProperties = true;
+      return;
+    }
+    this.socket.addEventListener("message", this.onMessage as EventListener);
+    this.socket.addEventListener("open", this.onOpen);
+    this.socket.addEventListener("close", this.onDisconnect);
+    this.socket.addEventListener("error", this.onDisconnect);
+  }
+
+  private detachSocket(): void {
+    if (!this.socket) return;
+    if (this.usesHandlerProperties && supportsHandlerProperties(this.socket)) {
+      this.socket.onmessage = null;
+      this.socket.onopen = null;
+      this.socket.onclose = null;
+      this.socket.onerror = null;
+    } else {
+      this.socket.removeEventListener(
+        "message",
+        this.onMessage as EventListener,
+      );
+      this.socket.removeEventListener("open", this.onOpen);
+      this.socket.removeEventListener("close", this.onDisconnect);
+      this.socket.removeEventListener("error", this.onDisconnect);
+    }
+    this.socket = null;
+    this.usesHandlerProperties = false;
+    this.isConnected = false;
+  }
+}
+
+const supportsHandlerProperties = (
+  socket: V2Socket,
+): socket is HandlerPropertySocket =>
+  "onmessage" in socket &&
+  "onopen" in socket &&
+  "onclose" in socket &&
+  "onerror" in socket;

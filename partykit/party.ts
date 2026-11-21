@@ -6,6 +6,10 @@ import { YServer } from "y-partyserver";
 import { syncedStore, getYjsValue } from "@syncedstore/core";
 import { deepReplaceIntoProxy } from "@playhtml/common";
 import { env } from "cloudflare:workers";
+import {
+  getDocumentsTableError,
+  parseDocumentsTable,
+} from "./documentsTable";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { supabase } from "./db";
@@ -167,6 +171,7 @@ type PersistLiveDocumentOptions = {
 type RoomState =
   | "quarantined"
   | "loading"
+  | "migrated-read-only"
   | "transient"
   | "save-paused"
   | "ready";
@@ -266,6 +271,7 @@ export class PartyServer extends YServer {
   // after the platform's one-time onStart hook has already returned.
   private realtimeSyncStarted = false;
   private documentLoadCompleted = false;
+  private migratedReadOnly = false;
 
   // Pending bridge flush timer — batches bridge fan-out across rapid updates
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -673,6 +679,7 @@ export class PartyServer extends YServer {
   private roomState(): RoomState {
     if (this.circuitBreaker.isQuarantined()) return "quarantined";
     if (!this.documentLoadCompleted) return "loading";
+    if (this.migratedReadOnly) return "migrated-read-only";
     if (!this.isPersistenceAvailable()) return "transient";
     if (this.documentMaintenanceInProgress) return "save-paused";
     return "ready";
@@ -707,6 +714,20 @@ export class PartyServer extends YServer {
   getSharedDataWriteUnavailableResponse(): Response | null {
     const state = this.roomState();
     if (state === "ready") return null;
+    if (state === "migrated-read-only") {
+      return new Response(
+        JSON.stringify({
+          error: "room_migrated_to_protocol_v2",
+          message:
+            "This room migrated to protocol v2; the v1 server is read-only and refuses admin writes.",
+          roomId: this.name,
+        }),
+        {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }
     if (this.persistenceMode.kind === "transient") {
       return createPersistenceUnavailableResponse({
         ...this.persistenceMode,
@@ -903,7 +924,7 @@ export class PartyServer extends YServer {
 
   private async getPersistedDocumentBase64(): Promise<string | null> {
     const { data, error } = await supabase
-      .from("documents")
+      .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
       .select("document")
       .eq("name", this.name)
       .maybeSingle();
@@ -925,7 +946,7 @@ export class PartyServer extends YServer {
   ): Promise<void> {
     this.assertDocumentSaveAllowed(options);
 
-    const { error } = await supabase.from("documents").upsert(
+    const { error } = await supabase.from(parseDocumentsTable(env.DOCUMENTS_TABLE)).upsert(
       {
         name: this.name,
         document: documentBase64,
@@ -948,9 +969,10 @@ export class PartyServer extends YServer {
       this.circuitBreaker.assertNotQuarantined("persist document");
     }
     const stateAllowsSave =
-      operation === "quarantine-repair" ||
-      state === "ready" ||
-      (operation === "reset" && state === "save-paused");
+      !this.migratedReadOnly &&
+      (operation === "quarantine-repair" ||
+        state === "ready" ||
+        (operation === "reset" && state === "save-paused"));
     if (!stateAllowsSave) {
       throw new Error(
         `Cannot persist document while room state is ${state} (operation=${operation})`
@@ -2146,6 +2168,7 @@ export class PartyServer extends YServer {
    */
   override async onLoad(): Promise<void> {
     this.documentLoadCompleted = false;
+    this.migratedReadOnly = false;
     await this.circuitBreaker.loadStoredQuarantine();
     if (this.circuitBreaker.isQuarantined()) {
       await this.circuitBreaker.enterQuarantineRuntimeState();
@@ -2174,8 +2197,8 @@ export class PartyServer extends YServer {
         const attemptStartedAt = Date.now();
         successfulAttempt = attempt;
         const queryResult = await supabase
-          .from("documents")
-          .select("document")
+          .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
+          .select("document, protocol_version")
           .eq("name", this.name)
           .abortSignal(signal)
           .maybeSingle();
@@ -2234,6 +2257,13 @@ export class PartyServer extends YServer {
     }
 
     if (result.data) {
+      if (result.data.protocol_version === 2) {
+        this.migratedReadOnly = true;
+        console.log(
+          `[PartyServer] Room migrated to protocol v2, v1 serving read-only: room=${this.name}.`
+        );
+      }
+
       // Size is reported, never enforced. Hydration is one copy of the document
       // and succeeds well past this threshold; it is compaction that multiplies
       // memory, so that is where the hard ceiling lives.
@@ -3097,7 +3127,7 @@ export class PartyServer extends YServer {
           `[Hard Reset] Live doc is empty, falling back to database...`
         );
         const { data: dbRow, error: dbError } = await supabase
-          .from("documents")
+          .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
           .select("document")
           .eq("name", roomId)
           .maybeSingle();
@@ -3556,6 +3586,18 @@ export default {
         quarantineControl: workerEnv.QUARANTINE_CONTROL,
       });
       if (quarantineResponse) return quarantineResponse;
+
+      // Staging and production share one Supabase project. Refuse to serve
+      // rooms if this deployment is pointed at the wrong table. Quarantine
+      // control above stays reachable: it never touches room documents.
+      const documentsTableError = getDocumentsTableError(
+        new URL(request.url).hostname,
+        workerEnv.DOCUMENTS_TABLE
+      );
+      if (documentsTableError) {
+        console.error(`[PartyServer] ${documentsTableError}`);
+        return new Response(documentsTableError, { status: 500 });
+      }
 
       const rateLimitResponse = await checkEdgeRateLimit(
         request,

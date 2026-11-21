@@ -2,6 +2,7 @@
 // ABOUTME: Coordinates database snapshots, client resets, and Supabase persistence safeguards.
 import { Buffer } from "node:buffer";
 import { env } from "cloudflare:workers";
+import { parseDocumentsTable } from "./documentsTable";
 import * as Y from "yjs";
 import { supabase } from "./db";
 import type { PartyServer } from "./party";
@@ -189,7 +190,7 @@ export class AdminHandler {
         // Create fresh Y.Doc and load data directly (same as debug reconstruction)
         const yDoc = new Y.Doc();
         const { data: docData, error: docError } = await supabase
-          .from("documents")
+          .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
           .select("name, document, created_at")
           .eq("name", this.context.name)
           .maybeSingle();
@@ -301,7 +302,7 @@ export class AdminHandler {
     try {
       // Get raw document from Supabase
       const { data, error } = await supabase
-        .from("documents")
+        .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
         .select("*")
         .eq("name", this.context.name)
         .maybeSingle();
@@ -368,7 +369,7 @@ export class AdminHandler {
       // Method 1: Direct Y.Doc approach (what admin console uses)
       const directYDoc = new Y.Doc();
       const { data: docData, error: docError } = await supabase
-        .from("documents")
+        .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
         .select("document")
         .eq("name", this.context.name)
         .maybeSingle();
@@ -516,7 +517,7 @@ export class AdminHandler {
     try {
       // Load snapshot from DB
       const { data, error } = await supabase
-        .from("documents")
+        .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
         .select("document")
         .eq("name", this.context.name)
         .maybeSingle();

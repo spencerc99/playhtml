@@ -1,0 +1,45 @@
+<!-- ABOUTME: Hosts the React version 2 protocol integration test page. -->
+<!-- ABOUTME: Run with `bun dev-server` and `bun dev`, then open `/test/v2-react.html`. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>playhtml React v2 protocol test</title>
+    <style>
+      body {
+        box-sizing: border-box;
+        display: grid;
+        gap: 1.5rem;
+        margin: 0 auto;
+        max-width: 40rem;
+        padding: 3rem 1.5rem;
+        font: 16px/1.5 system-ui, sans-serif;
+      }
+
+      button {
+        cursor: pointer;
+        font: inherit;
+        padding: 0.75rem 1rem;
+      }
+
+      #react-v2-toggle.toggled {
+        background: #f2c94c;
+        color: #222;
+      }
+
+      section {
+        display: grid;
+        gap: 0.75rem;
+        border: 1px solid #bbb;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>React version 2 protocol test</h1>
+    <div id="app"></div>
+    <script type="module" src="./v2-react.tsx"></script>
+  </body>
+</html>

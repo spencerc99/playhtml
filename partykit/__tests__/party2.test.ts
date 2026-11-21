@@ -1,0 +1,1147 @@
+// ABOUTME: Exercises the version 2 PartyServer operation and persistence lifecycle.
+// ABOUTME: Covers hydration, conversion, deduplication, presence, limits, and restart safety.
+
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ClientOperationMessage, PackedSnapshot } from "@playhtml/common";
+import { encodeDocToBase64, jsonToDoc } from "../docUtils";
+
+class FakeDurableObject {
+  constructor(
+    public ctx: unknown,
+    public env: unknown,
+  ) {}
+}
+
+const workerEnv: Record<string, string> = {
+  DOCUMENTS_TABLE: "documents",
+  SUPABASE_LOAD_ATTEMPTS: "1",
+  SUPABASE_LOAD_RETRY_DELAY_MS: "1",
+  SUPABASE_LOAD_TIMEOUT_MS: "100",
+};
+
+mock.module("cloudflare:workers", () => ({
+  env: workerEnv,
+  DurableObject: FakeDurableObject,
+  WorkerEntrypoint: class {},
+}));
+
+type PersistedRow = {
+  document: string | null;
+  document_json: unknown;
+  protocol_version: number;
+};
+
+let persistedRow: PersistedRow | null = null;
+let readError: Error | null = null;
+let upsertError: Error | null = null;
+let upsertCalls: Array<Record<string, unknown>> = [];
+let readSignals: AbortSignal[] = [];
+let hangReads = false;
+
+const supabaseStub = {
+  from() {
+    return {
+      select() {
+        return {
+          eq() {
+            return {
+              abortSignal(signal: AbortSignal) {
+                readSignals.push(signal);
+                return {
+                  async maybeSingle() {
+                    if (hangReads) {
+                      return new Promise((_, reject) => {
+                        signal.addEventListener("abort", () => {
+                          reject(signal.reason);
+                        });
+                      });
+                    }
+                    if (readError) {
+                      return {
+                        data: null,
+                        error: { message: readError.message },
+                      };
+                    }
+                    return { data: structuredClone(persistedRow), error: null };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+      async upsert(row: Record<string, unknown>) {
+        upsertCalls.push(structuredClone(row));
+        if (upsertError) return { error: { message: upsertError.message } };
+        // PostgREST upsert updates only the columns present in the payload.
+        persistedRow = {
+          document: null,
+          document_json: null,
+          protocol_version: 1,
+          ...persistedRow,
+          ...structuredClone(row),
+        } as PersistedRow;
+        return { error: null };
+      },
+    };
+  },
+};
+
+mock.module(`${import.meta.dir}/../db.ts`, () => ({ supabase: supabaseStub }));
+
+const { PartyServerV2 } = await import(`${import.meta.dir}/../party2.ts`);
+
+class FakeStorage {
+  values = new Map<string, unknown>();
+
+  async get(key: string): Promise<unknown> {
+    return this.values.get(key);
+  }
+
+  async put(key: string, value: unknown): Promise<void> {
+    this.values.set(key, value);
+  }
+}
+
+type FakeConnection = {
+  id: string;
+  readyState: number;
+  sent: string[];
+  state: Record<string, unknown> | null;
+  send(message: string): void;
+  close(): void;
+  setState(
+    next:
+      | Record<string, unknown>
+      | null
+      | ((previous: Record<string, unknown> | null) => Record<string, unknown>),
+  ): Record<string, unknown> | null;
+};
+
+function createConnection(id = "connection-1"): FakeConnection {
+  return {
+    id,
+    readyState: 1,
+    sent: [],
+    state: null,
+    send(message) {
+      this.sent.push(message);
+    },
+    close() {},
+    setState(next) {
+      this.state = typeof next === "function" ? next(this.state) : next;
+      return this.state;
+    },
+  };
+}
+
+function createRoom(name = "example-room") {
+  const storage = new FakeStorage();
+  let blockConcurrencyCalls = 0;
+  const ctx = {
+    storage,
+    id: { name },
+    async blockConcurrencyWhile(operation: () => Promise<void>) {
+      blockConcurrencyCalls += 1;
+      await operation();
+    },
+    waitUntil() {},
+    getWebSockets: () => [],
+    acceptWebSocket() {},
+    getTags: () => [],
+  };
+  const room = new PartyServerV2(ctx as never, workerEnv as never);
+  const connections: FakeConnection[] = [];
+  Object.defineProperty(room, "getConnections", {
+    value: () => connections,
+  });
+  Object.defineProperty(room, "broadcast", {
+    value: (message: string, without: string[] = []) => {
+      for (const connection of connections) {
+        if (!without.includes(connection.id)) connection.send(message);
+      }
+    },
+  });
+  return {
+    room,
+    connections,
+    getBlockConcurrencyCalls: () => blockConcurrencyCalls,
+  };
+}
+
+async function startRoom(
+  room: InstanceType<typeof PartyServerV2>,
+): Promise<void> {
+  await room.__unsafe_ensureInitialized();
+}
+
+async function connectRoom(
+  room: InstanceType<typeof PartyServerV2>,
+  connections: FakeConnection[],
+  connection = createConnection(),
+): Promise<FakeConnection> {
+  connections.push(connection);
+  await room.onConnect(connection as never, {
+    request: new Request("https://example.com/parties/v2/example-room"),
+  });
+  return connection;
+}
+
+function operationMessage(
+  overrides: Partial<ClientOperationMessage> = {},
+): ClientOperationMessage {
+  return {
+    type: "operation",
+    protocolVersion: 2,
+    generation: 0,
+    clientId: "client-1",
+    mutationId: 1,
+    operation: {
+      type: "set",
+      capability: "can-play",
+      elementId: "counter",
+      path: [],
+      value: { count: 1 },
+      arrays: [],
+    },
+    ...overrides,
+  };
+}
+
+function parsedMessages(
+  connection: FakeConnection,
+): Array<Record<string, unknown>> {
+  return connection.sent.map((message) => JSON.parse(message));
+}
+
+async function closeRoom(
+  room: InstanceType<typeof PartyServerV2>,
+  connections: FakeConnection[],
+  connection: FakeConnection,
+): Promise<void> {
+  connections.splice(connections.indexOf(connection), 1);
+  await room.onClose(connection as never, 1000, "", true);
+}
+
+function persistedSnapshot(): PackedSnapshot {
+  const documentJson = persistedRow?.document_json as {
+    snapshot: PackedSnapshot;
+  };
+  return documentJson.snapshot;
+}
+
+beforeEach(() => {
+  persistedRow = null;
+  readError = null;
+  upsertError = null;
+  upsertCalls = [];
+  readSignals = [];
+  hangReads = false;
+  workerEnv.SUPABASE_LOAD_ATTEMPTS = "1";
+  workerEnv.SUPABASE_LOAD_TIMEOUT_MS = "100";
+  // Recovery retries are exercised explicitly; elsewhere they must not fire
+  // into a later test that shares the stubbed database.
+  workerEnv.SUPABASE_RECOVERY_RETRY_DELAY_MS = "600000";
+  delete workerEnv.V2_MAX_OPERATION_BYTES;
+});
+
+describe("PartyServerV2 protocol", () => {
+  test("hydrates under the PartyServer concurrency gate and snapshots on connect", async () => {
+    const { room, connections, getBlockConcurrencyCalls } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+
+    expect(getBlockConcurrencyCalls()).toBe(1);
+    expect(readSignals).toHaveLength(1);
+    expect(readSignals[0].aborted).toBe(false);
+    expect(parsedMessages(connection)).toContainEqual({
+      type: "snapshot",
+      protocolVersion: 2,
+      sequence: 0,
+      generation: 0,
+      snapshot: { state: {}, itemIds: [], lastMutationIds: {} },
+    });
+  });
+
+  test("accepts an operation and broadcasts its ordered echo to every connection", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const sender = await connectRoom(
+      room,
+      connections,
+      createConnection("sender"),
+    );
+    const peer = await connectRoom(room, connections, createConnection("peer"));
+    sender.sent = [];
+    peer.sent = [];
+
+    await room.onMessage(sender as never, JSON.stringify(operationMessage()));
+
+    const expected = {
+      type: "operation",
+      protocolVersion: 2,
+      payload: {
+        sequence: 1,
+        generation: 0,
+        clientId: "client-1",
+        mutationId: 1,
+        operation: operationMessage().operation,
+      },
+    };
+    expect(parsedMessages(sender)).toEqual([expected]);
+    expect(parsedMessages(peer)).toEqual([expected]);
+    await closeRoom(room, connections, sender);
+    await closeRoom(room, connections, peer);
+  });
+
+  test("deduplicates a replay by client and mutation id", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    connection.sent = [];
+    const message = JSON.stringify(operationMessage());
+
+    await room.onMessage(connection as never, message);
+    await room.onMessage(connection as never, message);
+
+    expect(parsedMessages(connection)).toHaveLength(1);
+    await closeRoom(room, connections, connection);
+    expect(persistedSnapshot().lastMutationIds).toEqual({ "client-1": 1 });
+  });
+
+  test("rejects a stale room generation", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    connection.sent = [];
+
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(operationMessage({ generation: 1 })),
+    );
+
+    expect(parsedMessages(connection)).toEqual([
+      expect.objectContaining({
+        type: "operation-rejected",
+        code: "stale-generation",
+        sequence: 0,
+      }),
+    ]);
+  });
+
+  test("sends apply failures only to the operation sender", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const sender = await connectRoom(
+      room,
+      connections,
+      createConnection("sender"),
+    );
+    const peer = await connectRoom(room, connections, createConnection("peer"));
+    sender.sent = [];
+    peer.sent = [];
+    const invalid = operationMessage({
+      operation: {
+        type: "increment",
+        capability: "can-play",
+        elementId: "missing",
+        path: [],
+        delta: 1,
+      },
+    });
+
+    await room.onMessage(sender as never, JSON.stringify(invalid));
+
+    expect(parsedMessages(sender)).toEqual([
+      expect.objectContaining({ code: "invalid-operation", sequence: 0 }),
+    ]);
+    expect(peer.sent).toEqual([]);
+  });
+
+  test("rejects an operation over the configured size limit", async () => {
+    workerEnv.V2_MAX_OPERATION_BYTES = "128";
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    connection.sent = [];
+    const message = operationMessage({
+      operation: {
+        type: "set",
+        capability: "can-play",
+        elementId: "large",
+        path: [],
+        value: "x".repeat(512),
+        arrays: [],
+      },
+    });
+
+    await room.onMessage(connection as never, JSON.stringify(message));
+
+    expect(parsedMessages(connection)).toEqual([
+      expect.objectContaining({ code: "size-limit", sequence: 0 }),
+    ]);
+  });
+
+  test("rejects operations before hydration", async () => {
+    const { room } = createRoom();
+    const connection = createConnection();
+
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(operationMessage()),
+    );
+
+    expect(parsedMessages(connection)).toEqual([
+      expect.objectContaining({ code: "room-unavailable", sequence: 0 }),
+    ]);
+    expect(upsertCalls).toEqual([]);
+  });
+
+  test("aborts a timed-out load and enters transient mode without writing", async () => {
+    hangReads = true;
+    workerEnv.SUPABASE_LOAD_TIMEOUT_MS = "5";
+    const { room } = createRoom();
+    const errors: unknown[][] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => errors.push(args);
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(readSignals).toHaveLength(1);
+    expect(readSignals[0].aborted).toBe(true);
+    expect(errors).toHaveLength(1);
+    expect(upsertCalls).toEqual([]);
+  });
+
+  test("keeps presence active while transient and never saves operations", async () => {
+    readError = new Error("database offline");
+    const { room, connections } = createRoom();
+    const errors: unknown[][] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => errors.push(args);
+    try {
+      await startRoom(room);
+    } finally {
+      console.error = originalError;
+    }
+    const connection = await connectRoom(room, connections);
+    connection.sent = [];
+
+    await room.onMessage(
+      connection as never,
+      JSON.stringify({
+        type: "presence-update",
+        channel: "status",
+        value: "here",
+      }),
+    );
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(operationMessage()),
+    );
+    await closeRoom(room, connections, connection);
+
+    expect(parsedMessages(connection)).toContainEqual(
+      expect.objectContaining({ type: "presence-changes" }),
+    );
+    expect(parsedMessages(connection)).toContainEqual(
+      expect.objectContaining({ code: "room-unavailable" }),
+    );
+    expect(errors).toHaveLength(1);
+    expect(upsertCalls).toEqual([]);
+  });
+
+  test("recovers from a failed load while clients stay connected", async () => {
+    readError = new Error("database offline");
+    workerEnv.SUPABASE_RECOVERY_RETRY_DELAY_MS = "5";
+    const { room, connections } = createRoom();
+    const errors: unknown[][] = [];
+    const warnings: unknown[][] = [];
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    console.error = (...args: unknown[]) => errors.push(args);
+    console.warn = (...args: unknown[]) => warnings.push(args);
+    try {
+      await startRoom(room);
+      const connection = await connectRoom(room, connections);
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage()),
+      );
+      expect(parsedMessages(connection)).toContainEqual(
+        expect.objectContaining({ code: "room-unavailable" }),
+      );
+
+      readError = null;
+      persistedRow = {
+        document: null,
+        document_json: {
+          sequence: 4,
+          generation: 0,
+          snapshot: {
+            state: { "can-toggle": { light: { on: true } } },
+            itemIds: [],
+            lastMutationIds: {},
+          },
+        },
+        protocol_version: 2,
+      };
+      connection.sent = [];
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(parsedMessages(connection)).toContainEqual(
+        expect.objectContaining({
+          type: "snapshot",
+          sequence: 4,
+          snapshot: expect.objectContaining({
+            state: { "can-toggle": { light: { on: true } } },
+          }),
+        }),
+      );
+      connection.sent = [];
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage({ mutationId: 2 })),
+      );
+      expect(parsedMessages(connection)).toContainEqual(
+        expect.objectContaining({
+          type: "operation",
+          payload: expect.objectContaining({ sequence: 5, mutationId: 2 }),
+        }),
+      );
+      await closeRoom(room, connections, connection);
+    } finally {
+      console.error = originalError;
+      console.warn = originalWarn;
+    }
+
+    expect(errors).toHaveLength(1);
+    expect(String(warnings.at(-1)?.[0])).toContain("recovered");
+    expect(persistedSnapshot().state["can-play"]).toEqual({
+      counter: { count: 1 },
+    });
+  });
+
+  test("autosaves snapshot, sequence, and last mutation ids on last disconnect", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(operationMessage()),
+    );
+
+    await closeRoom(room, connections, connection);
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0]).toEqual({
+      name: "example-room",
+      protocol_version: 2,
+      document_json: {
+        sequence: 1,
+        generation: 0,
+        snapshot: {
+          state: { "can-play": { counter: { count: 1 } } },
+          itemIds: [],
+          lastMutationIds: { "client-1": 1 },
+        },
+        clientLastSeen: { "client-1": expect.any(Number) },
+      },
+    });
+  });
+
+  test("converts a v1 document once and stamps it without changing the original", async () => {
+    const document = jsonToDoc({ "can-toggle": { light: { on: true } } });
+    const base64 = encodeDocToBase64(document);
+    document.destroy();
+    persistedRow = {
+      document: base64,
+      document_json: null,
+      protocol_version: 1,
+    };
+
+    const first = createRoom();
+    await startRoom(first.room);
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0]).not.toHaveProperty("document");
+    expect(persistedRow?.protocol_version).toBe(2);
+    expect(persistedRow?.document).toBe(base64);
+    expect(persistedSnapshot().state).toEqual({
+      "can-toggle": { light: { on: true } },
+    });
+
+    upsertCalls = [];
+    const restarted = createRoom();
+    await startRoom(restarted.room);
+    expect(upsertCalls).toEqual([]);
+  });
+
+  test("autosaves of a converted room never resend the v1 document", async () => {
+    const document = jsonToDoc({ "can-toggle": { light: { on: true } } });
+    const base64 = encodeDocToBase64(document);
+    document.destroy();
+    persistedRow = {
+      document: base64,
+      document_json: null,
+      protocol_version: 1,
+    };
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    upsertCalls = [];
+    const connection = await connectRoom(room, connections);
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(operationMessage()),
+    );
+
+    await closeRoom(room, connections, connection);
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0]).not.toHaveProperty("document");
+    expect(persistedRow?.document).toBe(base64);
+    expect(persistedSnapshot().state["can-play"]).toEqual({
+      counter: { count: 1 },
+    });
+  });
+
+  test("restart hydration prevents a saved mutation replay from applying twice", async () => {
+    const first = createRoom();
+    await startRoom(first.room);
+    const firstConnection = await connectRoom(first.room, first.connections);
+    await first.room.onMessage(
+      firstConnection as never,
+      JSON.stringify(operationMessage()),
+    );
+    await closeRoom(first.room, first.connections, firstConnection);
+
+    upsertCalls = [];
+    const restarted = createRoom();
+    await startRoom(restarted.room);
+    const replayConnection = await connectRoom(
+      restarted.room,
+      restarted.connections,
+    );
+    replayConnection.sent = [];
+    await restarted.room.onMessage(
+      replayConnection as never,
+      JSON.stringify(operationMessage()),
+    );
+    await closeRoom(restarted.room, restarted.connections, replayConnection);
+
+    expect(replayConnection.sent).toEqual([]);
+    expect(upsertCalls).toEqual([]);
+    expect(persistedSnapshot().state).toEqual({
+      "can-play": { counter: { count: 1 } },
+    });
+  });
+});
+
+describe("PartyServerV2 play events", () => {
+  test("relays an event to every connection, the sender included, without saving", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const sender = await connectRoom(
+      room,
+      connections,
+      createConnection("sender"),
+    );
+    const peer = await connectRoom(room, connections, createConnection("peer"));
+    sender.sent = [];
+    peer.sent = [];
+
+    await room.onMessage(
+      sender as never,
+      JSON.stringify({
+        type: "play-event",
+        protocolVersion: 2,
+        event: { type: "confetti", eventPayload: { color: "red" } },
+      }),
+    );
+
+    const expected = {
+      type: "play-event",
+      protocolVersion: 2,
+      event: { type: "confetti", eventPayload: { color: "red" } },
+    };
+    expect(parsedMessages(sender)).toEqual([expected]);
+    expect(parsedMessages(peer)).toEqual([expected]);
+
+    await closeRoom(room, connections, sender);
+    await closeRoom(room, connections, peer);
+    expect(upsertCalls).toHaveLength(0);
+  });
+
+  test("relays an event named like a protocol message as an event", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    connection.sent = [];
+
+    await room.onMessage(
+      connection as never,
+      JSON.stringify({
+        type: "play-event",
+        protocolVersion: 2,
+        event: { type: "operation" },
+      }),
+    );
+
+    expect(parsedMessages(connection)).toEqual([
+      { type: "play-event", protocolVersion: 2, event: { type: "operation" } },
+    ]);
+    await closeRoom(room, connections, connection);
+  });
+
+  test("rejects a malformed event and relays nothing", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const sender = await connectRoom(
+      room,
+      connections,
+      createConnection("sender"),
+    );
+    const peer = await connectRoom(room, connections, createConnection("peer"));
+    sender.sent = [];
+    peer.sent = [];
+
+    await room.onMessage(
+      sender as never,
+      JSON.stringify({ type: "play-event", protocolVersion: 2, event: {} }),
+    );
+
+    expect(parsedMessages(sender)).toEqual([
+      expect.objectContaining({
+        type: "operation-rejected",
+        code: "invalid-message",
+      }),
+    ]);
+    expect(peer.sent).toEqual([]);
+    await closeRoom(room, connections, sender);
+    await closeRoom(room, connections, peer);
+  });
+
+  test("rejects an event over the size limit", async () => {
+    workerEnv.V2_MAX_PLAY_EVENT_CHARS = "200";
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const sender = await connectRoom(
+        room,
+        connections,
+        createConnection("sender"),
+      );
+      const peer = await connectRoom(
+        room,
+        connections,
+        createConnection("peer"),
+      );
+      sender.sent = [];
+      peer.sent = [];
+
+      await room.onMessage(
+        sender as never,
+        JSON.stringify({
+          type: "play-event",
+          protocolVersion: 2,
+          event: { type: "confetti", eventPayload: "x".repeat(500) },
+        }),
+      );
+
+      expect(parsedMessages(sender)).toEqual([
+        expect.objectContaining({
+          type: "operation-rejected",
+          code: "size-limit",
+        }),
+      ]);
+      expect(peer.sent).toEqual([]);
+      await closeRoom(room, connections, sender);
+      await closeRoom(room, connections, peer);
+    } finally {
+      delete workerEnv.V2_MAX_PLAY_EVENT_CHARS;
+    }
+  });
+});
+
+/** Rebuilds every object with its keys in reverse order, as a jsonb column may. */
+function withReversedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withReversedKeys);
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .reverse()
+        .map((key) => [key, withReversedKeys(record[key])]),
+    );
+  }
+  return value;
+}
+
+describe("PartyServerV2 saved array identities", () => {
+  test("saves item IDs without addresses and still targets the same items after a reload", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(
+        operationMessage({
+          operation: {
+            type: "set",
+            capability: "can-play",
+            elementId: "board",
+            path: [],
+            value: {
+              notes: [
+                { text: "first", tags: ["a", "b"] },
+                { text: "second", tags: [] },
+              ],
+              archive: [],
+            },
+            arrays: [
+              { path: ["notes"], itemIds: ["note-1", "note-2"] },
+              {
+                path: ["notes", { itemId: "note-1" }, "tags"],
+                itemIds: ["tag-1", "tag-2"],
+              },
+              { path: ["notes", { itemId: "note-2" }, "tags"], itemIds: [] },
+              { path: ["archive"], itemIds: [] },
+            ],
+          },
+        }),
+      ),
+    );
+    await closeRoom(room, connections, connection);
+
+    const saved = persistedSnapshot() as unknown as Record<string, unknown>;
+    expect(Object.keys(saved).sort()).toEqual([
+      "itemIds",
+      "lastMutationIds",
+      "state",
+    ]);
+    expect([...persistedSnapshot().itemIds].sort()).toEqual([
+      "note-1",
+      "note-2",
+      "tag-1",
+      "tag-2",
+    ]);
+    persistedRow = withReversedKeys(persistedRow) as PersistedRow;
+
+    const reloaded = createRoom();
+    await startRoom(reloaded.room);
+    const reloadedConnection = await connectRoom(
+      reloaded.room,
+      reloaded.connections,
+    );
+    reloadedConnection.sent = [];
+    await reloaded.room.onMessage(
+      reloadedConnection as never,
+      JSON.stringify(
+        operationMessage({
+          mutationId: 2,
+          operation: {
+            type: "set",
+            capability: "can-play",
+            elementId: "board",
+            path: ["notes", { itemId: "note-2" }, "text"],
+            value: "edited",
+            arrays: [],
+          },
+        }),
+      ),
+    );
+    await reloaded.room.onMessage(
+      reloadedConnection as never,
+      JSON.stringify(
+        operationMessage({
+          mutationId: 3,
+          operation: {
+            type: "remove",
+            capability: "can-play",
+            elementId: "board",
+            path: ["notes", { itemId: "note-1" }, "tags"],
+            target: { kind: "array", itemId: "tag-1" },
+          },
+        }),
+      ),
+    );
+
+    expect(
+      parsedMessages(reloadedConnection).map((message) => message.type),
+    ).toEqual(["operation", "operation"]);
+    await closeRoom(reloaded.room, reloaded.connections, reloadedConnection);
+    expect(persistedSnapshot().state).toEqual({
+      "can-play": {
+        board: {
+          notes: [
+            { text: "first", tags: ["b"] },
+            { text: "edited", tags: [] },
+          ],
+          archive: [],
+        },
+      },
+    });
+    expect([...persistedSnapshot().itemIds].sort()).toEqual([
+      "note-1",
+      "note-2",
+      "tag-2",
+    ]);
+  });
+});
+
+describe("PartyServerV2 element deletion", () => {
+  test("deletes an element with its array identities and reloads the saved room", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(
+        operationMessage({
+          operation: {
+            type: "set",
+            capability: "can-play",
+            elementId: "list",
+            path: [],
+            value: { items: ["a", "b"] },
+            arrays: [{ path: ["items"], itemIds: ["id-a", "id-b"] }],
+          },
+        }),
+      ),
+    );
+    connection.sent = [];
+
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(
+        operationMessage({
+          mutationId: 2,
+          operation: {
+            type: "delete-element",
+            capability: "can-play",
+            elementId: "list",
+            path: [],
+          },
+        }),
+      ),
+    );
+
+    expect(parsedMessages(connection)).toEqual([
+      expect.objectContaining({
+        type: "operation",
+        payload: expect.objectContaining({
+          sequence: 2,
+          operation: expect.objectContaining({ type: "delete-element" }),
+        }),
+      }),
+    ]);
+    await closeRoom(room, connections, connection);
+    expect(persistedSnapshot().state).toEqual({});
+    expect(persistedSnapshot().itemIds).toEqual([]);
+
+    const reloaded = createRoom();
+    await startRoom(reloaded.room);
+    const reloadedConnection = await connectRoom(
+      reloaded.room,
+      reloaded.connections,
+    );
+    expect(parsedMessages(reloadedConnection)).toContainEqual(
+      expect.objectContaining({
+        type: "snapshot",
+        sequence: 2,
+        snapshot: expect.objectContaining({ state: {}, itemIds: [] }),
+      }),
+    );
+    await closeRoom(reloaded.room, reloaded.connections, reloadedConnection);
+  });
+
+  test("accepts deleting an element that does not exist", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    connection.sent = [];
+
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(
+        operationMessage({
+          operation: {
+            type: "delete-element",
+            capability: "can-play",
+            elementId: "missing",
+            path: [],
+          },
+        }),
+      ),
+    );
+
+    expect(parsedMessages(connection)).toEqual([
+      expect.objectContaining({ type: "operation" }),
+    ]);
+    await closeRoom(room, connections, connection);
+  });
+});
+
+describe("PartyServerV2 forgotten clients", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const realNow = Date.now;
+
+  function persistV2Row(clientLastSeen?: Record<string, number>): void {
+    persistedRow = {
+      document: null,
+      protocol_version: 2,
+      document_json: {
+        sequence: 3,
+        generation: 0,
+        snapshot: {
+          state: { "can-play": { counter: { count: 1 } } },
+          itemIds: [],
+          lastMutationIds: { "old-client": 3 },
+        },
+        ...(clientLastSeen === undefined ? {} : { clientLastSeen }),
+      },
+    };
+  }
+
+  test("forgets a disconnected client once it is past the retention window", async () => {
+    const start = realNow();
+    persistV2Row({ "old-client": start });
+    Date.now = () => start + DAY_MS + 1;
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const connection = await connectRoom(room, connections);
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage({ clientId: "new-client" })),
+      );
+      await closeRoom(room, connections, connection);
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(persistedSnapshot().lastMutationIds).toEqual({ "new-client": 1 });
+  });
+
+  test("keeps a disconnected client that is inside the retention window", async () => {
+    const start = realNow();
+    persistV2Row({ "old-client": start });
+    Date.now = () => start + DAY_MS - 1000;
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const connection = await connectRoom(room, connections);
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage({ clientId: "new-client" })),
+      );
+      await closeRoom(room, connections, connection);
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(persistedSnapshot().lastMutationIds).toEqual({
+      "old-client": 3,
+      "new-client": 1,
+    });
+  });
+
+  test("never forgets a client that is still connected", async () => {
+    let now = realNow();
+    Date.now = () => now;
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const idle = await connectRoom(
+        room,
+        connections,
+        createConnection("idle"),
+      );
+      const active = await connectRoom(
+        room,
+        connections,
+        createConnection("active"),
+      );
+      await room.onMessage(
+        idle as never,
+        JSON.stringify(operationMessage({ clientId: "idle-client" })),
+      );
+      await closeRoom(room, connections, active);
+
+      now += 3 * DAY_MS;
+      const returning = await connectRoom(
+        room,
+        connections,
+        createConnection("returning"),
+      );
+      await room.onMessage(
+        returning as never,
+        JSON.stringify(
+          operationMessage({
+            clientId: "returning-client",
+            operation: {
+              type: "set",
+              capability: "can-play",
+              elementId: "other",
+              path: [],
+              value: { count: 2 },
+              arrays: [],
+            },
+          }),
+        ),
+      );
+      // The room only saves by itself on the last disconnect or a timer, and
+      // the idle connection is still open, so the save is run directly.
+      await (
+        room as unknown as { flushAutosave(): Promise<void> }
+      ).flushAutosave();
+      expect(persistedSnapshot().lastMutationIds).toEqual({
+        "idle-client": 1,
+        "returning-client": 1,
+      });
+      await closeRoom(room, connections, returning);
+      await closeRoom(room, connections, idle);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test("loads a room saved before last-seen times existed and starts its window then", async () => {
+    const start = realNow();
+    persistV2Row();
+    Date.now = () => start;
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const connection = await connectRoom(room, connections);
+      expect(parsedMessages(connection)).toContainEqual(
+        expect.objectContaining({
+          type: "snapshot",
+          sequence: 3,
+          snapshot: expect.objectContaining({
+            lastMutationIds: { "old-client": 3 },
+          }),
+        }),
+      );
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage({ clientId: "new-client" })),
+      );
+      await closeRoom(room, connections, connection);
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(persistedSnapshot().lastMutationIds).toEqual({
+      "old-client": 3,
+      "new-client": 1,
+    });
+    expect(
+      (persistedRow?.document_json as { clientLastSeen: unknown })
+        .clientLastSeen,
+    ).toEqual({ "old-client": start, "new-client": start });
+  });
+});

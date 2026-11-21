@@ -54,6 +54,8 @@
     "test:extension": "bun run --cwd extension test",
     "test:docs": "bun run --cwd apps/docs test",
     "test:extension-worker": "bun run --cwd extension/worker test",
+    "test:e2e:v2": "playwright test -c e2e/v2/playwright.config.ts",
+    "test:e2e:v2:prod-rooms": "playwright test -c e2e/v2/playwright.config.ts e2e/v2/prod-rooms.spec.ts",
     "check:partykit": "bunx tsc -p partykit",
     "check:website": "bunx tsc -p website",
     "check:common": "bunx tsc -p packages/common",
@@ -107,6 +109,7 @@
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
     "@cloudflare/workers-types": "^4.20260424.1",
+    "@playwright/test": "^1.59.1",
     "@types/canvas-confetti": "^1.6.4",
     "@types/node": "^20.3.3",
     "@types/randomcolor": "^0.5.9",

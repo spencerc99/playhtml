@@ -37,7 +37,11 @@ const TEST_ADMIN_TOKEN = "test-admin-token";
 const ADMIN_AUTH_HEADERS = { Authorization: `Bearer ${TEST_ADMIN_TOKEN}` };
 
 mock.module("cloudflare:workers", () => ({
-  env: { QUARANTINE_CONTROL: quarantineKvStub, ADMIN_TOKEN: TEST_ADMIN_TOKEN },
+  env: {
+    QUARANTINE_CONTROL: quarantineKvStub,
+    ADMIN_TOKEN: TEST_ADMIN_TOKEN,
+    DOCUMENTS_TABLE: "documents",
+  },
   DurableObject: class {
     constructor(
       public ctx: unknown,

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "playhtml",
-  "main": "party.ts",
+  "main": "worker.ts",
   "compatibility_flags": ["nodejs_compat"],
   "compatibility_date": "2024-09-23",
   "workers_dev": true,
@@ -25,6 +25,11 @@
       "ADMIN_TOKEN",
       "PARTYKIT_BRIDGE_SECRET"
     ]
+  },
+  // The Supabase table that holds room documents. Staging shares the project
+  // and sets its own table below; vars are not inherited by environments.
+  "vars": {
+    "DOCUMENTS_TABLE": "documents"
   },
   // Per-IP limit on requests to rooms, checked before a Durable Object wakes.
   // Set high enough that a venue or carrier NAT with thousands of people behind
@@ -56,6 +61,10 @@
       {
         "name": "Presence",
         "class_name": "PresenceServer"
+      },
+      {
+        "name": "V2",
+        "class_name": "PartyServerV2"
       }
     ]
   },
@@ -67,6 +76,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["PresenceServer"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["PartyServerV2"]
     }
   ],
   "env": {
@@ -94,6 +107,9 @@
           "PARTYKIT_BRIDGE_SECRET"
         ]
       },
+      "vars": {
+        "DOCUMENTS_TABLE": "documents_staging"
+      },
       "ratelimits": [
         {
           "name": "CONNECTION_RATE_LIMITER",
@@ -117,6 +133,10 @@
           {
             "name": "Presence",
             "class_name": "PresenceServer"
+          },
+          {
+            "name": "V2",
+            "class_name": "PartyServerV2"
           }
         ]
       },
@@ -128,6 +148,10 @@
         {
           "tag": "v2",
           "new_sqlite_classes": ["PresenceServer"]
+        },
+        {
+          "tag": "v3",
+          "new_sqlite_classes": ["PartyServerV2"]
         }
       ]
     }

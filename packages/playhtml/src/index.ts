@@ -17,6 +17,7 @@ import {
   PlayEvent,
   EventMessage,
   RegisteredPlayEvent,
+  randomId,
   toPublicPlayerIdentity,
   deepReplaceIntoProxy,
   clonePlain,
@@ -79,6 +80,13 @@ import { createElementPerson, createPeople, presenceFingerprint } from "./people
 import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 import { resolveRoomHost } from "./roomHost";
+import type { V2Store, V2StoreStatusEvent } from "./v2/store";
+import type { V2Transport, V2TransportStatusEvent } from "./v2/transport";
+import {
+  createV2PageDataChannel,
+  type V2PageDataChannel,
+} from "./v2/page-data";
+import type { JsonValue } from "@playhtml/common";
 import {
   INITIAL_LIFECYCLE,
   hasRoomSynced,
@@ -221,6 +229,22 @@ function getCurrentRoomHost(): string {
 }
 
 let yprovider: YProvider;
+let v2Transport: V2Transport | null = null;
+let v2Store: V2Store | null = null;
+// Loaded on the first version 2 connection, so version 1 pages skip the download.
+let v2Runtime: typeof import("./v2/runtime") | null = null;
+// Counts connection attempts and teardowns, so an attempt that was replaced
+// while its code was still downloading can tell and stop.
+let v2ConnectionAttempt = 0;
+let v2TransportMessageUnsubscribe: (() => void) | null = null;
+let v2TransportStatusUnsubscribe: (() => void) | null = null;
+let v2TransportPlayEventUnsubscribe: (() => void) | null = null;
+let v2StoreStatusUnsubscribe: (() => void) | null = null;
+const v2ElementUnsubscribeByKey = new Map<string, () => void>();
+const v2ElementApplyFrameByKey = new Map<string, number>();
+// Elements whose own-write render is queued for the end of the current tick.
+const v2ElementLocalApplyQueued = new Set<string>();
+const v2PageDataChannels = new Set<V2PageDataChannel<unknown>>();
 let mainUpdateCoalescer: UpdateCoalescer | null = null;
 let flushesUpdatesOnPageHide = false;
 let cursorClient: CursorClientAwareness | null = null;
@@ -426,8 +450,10 @@ function ensureElementProxy<TData = unknown>(
 // Registry of active handlers (tag -> element id -> handler).
 // Retained on the playhtml singleton for compatibility; external code should
 // use getHandle() so it does not depend on handler internals.
-export const elementHandlers: Map<string, Map<string, ElementHandler>> =
-  new Map<string, Map<string, ElementHandler>>();
+export const elementHandlers: Map<
+  string,
+  Map<string, ElementHandler>
+> = new Map<string, Map<string, ElementHandler>>();
 const mirrorDescendantElementsByRoot = new WeakMap<
   HTMLElement,
   Map<string, HTMLElement>
@@ -452,10 +478,7 @@ export interface CursorZoneOptions {
   getCursorStyle?: (presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>;
 }
 
-export type CursorContainer =
-  | HTMLElement
-  | string
-  | (() => HTMLElement | null);
+export type CursorContainer = HTMLElement | string | (() => HTMLElement | null);
 
 export interface CursorOptions {
   enabled?: boolean;
@@ -510,6 +533,17 @@ interface DefaultRoomOptions {
 }
 
 export interface InitOptions<T = unknown> {
+  /**
+   * Use the version 2 operation protocol for durable element data.
+   * Defaults to false.
+   */
+  v2?: boolean;
+
+  /**
+   * Receives version 2 connection and write-rejection status events.
+   */
+  onStatusChange?: (event: PlayHTMLStatusEvent) => void;
+
   /**
    * The room to connect users to (this should be a string that matches the other users
    * that you want a given user to connect with).
@@ -572,6 +606,10 @@ export interface InitOptions<T = unknown> {
   playerIdentity?: PlayerIdentity;
 }
 
+export type PlayHTMLStatusEvent =
+  | Extract<V2TransportStatusEvent, { type: "connected" | "disconnected" }>
+  | V2StoreStatusEvent;
+
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
   TagTypeToElement;
 const elementInitializersById = new Map<string, ElementInitializer>();
@@ -622,7 +660,27 @@ function getTagTypes(): (TagType | string)[] {
 }
 
 function sendPlayEvent(eventMessage: EventMessage) {
+  if (configuredOptions?.v2) {
+    if (!v2Transport) {
+      throw new Error("playhtml cannot send an event before it has connected");
+    }
+    v2Transport.sendPlayEvent({
+      type: eventMessage.type,
+      ...(eventMessage.eventPayload === undefined
+        ? {}
+        : { eventPayload: eventMessage.eventPayload }),
+    });
+    return;
+  }
   yprovider.sendMessage(JSON.stringify(eventMessage));
+}
+
+function deliverPlayEvent(type: string, eventPayload: unknown): void {
+  const handlers = eventHandlers.get(type);
+  if (!handlers) return;
+  for (const handler of handlers) {
+    safeInvoke(() => handler.onEvent(eventPayload), `"${type}" event listener`);
+  }
 }
 
 function onMessage(data: string) {
@@ -684,9 +742,7 @@ function onMessage(data: string) {
     return;
   }
 
-  for (const handler of maybeHandlers) {
-    safeInvoke(() => handler.onEvent(eventPayload), `"${type}" event listener`);
-  }
+  deliverPlayEvent(type, eventPayload);
 }
 
 // The one source of truth for where this instance is in its life (see
@@ -835,7 +891,10 @@ function acquirePresenceTransport(room: string): RealtimePresenceTransport {
         // join validates identity and can throw (e.g. an extension-injected
         // identity edge case). Surface it — the empty catch also let latestJoin
         // keep replaying a stale identity on reconnect silently.
-        console.warn("[playhtml] Failed to republish identity on change:", error);
+        console.warn(
+          "[playhtml] Failed to republish identity on change:",
+          error,
+        );
       }
     }) ?? null;
   presenceTransportsByRoom.set(room, {
@@ -908,7 +967,9 @@ function normalizeConfig(value: unknown): unknown {
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-      const normalized = normalizeConfig((value as Record<string, unknown>)[key]);
+      const normalized = normalizeConfig(
+        (value as Record<string, unknown>)[key],
+      );
       if (normalized !== undefined) out[key] = normalized;
     }
     return Object.keys(out).length === 0 ? undefined : out;
@@ -955,8 +1016,14 @@ function configsConflict(locked: InitOptions, incoming: InitOptions): boolean {
     if (lockedIsFn && incoming[key] !== undefined && !incomingIsFn) return true;
   }
 
-  const normalizedLocked = (normalizeConfig(locked) ?? {}) as Record<string, unknown>;
-  const normalizedIncoming = (normalizeConfig(incoming) ?? {}) as Record<string, unknown>;
+  const normalizedLocked = (normalizeConfig(locked) ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const normalizedIncoming = (normalizeConfig(incoming) ?? {}) as Record<
+    string,
+    unknown
+  >;
 
   for (const key of Object.keys(normalizedIncoming)) {
     // Can't conflict on a key the locked config never declared.
@@ -982,6 +1049,24 @@ function isEmptyConfig(options: InitOptions): boolean {
   );
 }
 
+function applyMigrationTestOptions(options: InitOptions): InitOptions {
+  if (options.v2 === true) return options;
+
+  const migrationTestHost = new URLSearchParams(window.location.search).get(
+    "__pv2",
+  );
+  if (migrationTestHost === null) return options;
+
+  // __pv2 is a migration-testing affordance for exercising v2 on any local
+  // page without changing that page's normal initialization code. It also
+  // replaces a page's default false value; an explicit v2:true remains fixed.
+  return {
+    ...options,
+    v2: true,
+    ...(migrationTestHost ? { host: migrationTestHost } : {}),
+  };
+}
+
 /**
  * Capture init config into module state. The first caller to supply real config
  * wins and locks it; a later call with conflicting values warns and is ignored.
@@ -989,6 +1074,8 @@ function isEmptyConfig(options: InitOptions): boolean {
  * configure() (until bootstrap connects, after which config can't change).
  */
 function applyConfig(options: InitOptions): void {
+  options = applyMigrationTestOptions(options);
+
   if (configuredOptions) {
     if (configsConflict(configuredOptions, options)) {
       console.warn(
@@ -1102,7 +1189,9 @@ function buildMainProvider(args: {
 /** Destroy the cursor client and release its presence transport. */
 function teardownCursors(): void {
   cursorPresenceHub.disconnect();
-  try { cursorClient?.destroy?.(); } catch {}
+  try {
+    cursorClient?.destroy?.();
+  } catch {}
   cursorClient = null;
   if (cursorPresenceTransportRoom !== null) {
     releasePresenceTransport(cursorPresenceTransportRoom);
@@ -1116,6 +1205,129 @@ function teardownMainProvider(): void {
   mainUpdateCoalescer = null;
   try { yprovider?.disconnect?.(); } catch {}
   try { yprovider?.destroy?.(); } catch {}
+}
+
+function reportV2Status(event: PlayHTMLStatusEvent): void {
+  if (event.type === "connected") {
+    console.warn("[playhtml] Version 2 transport connected");
+  } else if (event.type === "disconnected") {
+    console.warn("[playhtml] Version 2 transport disconnected");
+  } else {
+    console.warn(
+      `[playhtml] Version 2 write rejected (${event.rejection.code}): ${event.rejection.message}`,
+    );
+  }
+  configuredOptions?.onStatusChange?.(event);
+}
+
+function mutateV2Element(
+  capability: string,
+  elementId: string,
+  value: JsonValue | ((draft: JsonValue) => void),
+): void {
+  if (!v2Store) {
+    throw new Error("playhtml version 2 store is unavailable after sync");
+  }
+  const mutate = v2Store.mutate as (
+    capability: string,
+    elementId: string,
+    value: JsonValue | ((draft: JsonValue) => void),
+  ) => unknown;
+  mutate.call(v2Store, capability, elementId, value);
+}
+
+function teardownV2Connection(): void {
+  for (const unsubscribe of v2ElementUnsubscribeByKey.values()) unsubscribe();
+  v2ElementUnsubscribeByKey.clear();
+  for (const frame of v2ElementApplyFrameByKey.values()) {
+    cancelAnimationFrame(frame);
+  }
+  v2ElementApplyFrameByKey.clear();
+  v2ElementLocalApplyQueued.clear();
+  v2StoreStatusUnsubscribe?.();
+  v2StoreStatusUnsubscribe = null;
+  v2TransportMessageUnsubscribe?.();
+  v2TransportMessageUnsubscribe = null;
+  v2TransportStatusUnsubscribe?.();
+  v2TransportStatusUnsubscribe = null;
+  v2TransportPlayEventUnsubscribe?.();
+  v2TransportPlayEventUnsubscribe = null;
+  v2Transport?.close();
+  v2Transport = null;
+  v2Store = null;
+  v2ConnectionAttempt++;
+}
+
+async function buildV2Connection(args: {
+  room: string;
+  partykitHost: string;
+}): Promise<void> {
+  const { room, partykitHost } = args;
+  const attempt = ++v2ConnectionAttempt;
+  if (!v2Runtime) {
+    v2Runtime = await import("./v2/runtime");
+    if (attempt !== v2ConnectionAttempt) return;
+  }
+  const { V2Store, V2Transport } = v2Runtime;
+  const sharedElements = findSharedElementsOnPage();
+  const sharedReferences = findSharedReferencesOnPage();
+  const transport = new V2Transport();
+  const clientId = randomId();
+  v2Transport = transport;
+
+  return new Promise<void>((resolve, reject) => {
+    v2TransportStatusUnsubscribe = transport.subscribeStatus((event) => {
+      if (event.type === "connected" || event.type === "disconnected") {
+        reportV2Status(event);
+      }
+    });
+    v2TransportPlayEventUnsubscribe = transport.subscribePlayEvent((event) => {
+      deliverPlayEvent(event.type, event.eventPayload);
+    });
+    v2TransportMessageUnsubscribe = transport.subscribeMessage((message) => {
+      if (message.type === "snapshot") {
+        if (!v2Store) {
+          v2Store = new V2Store({
+            snapshot: message.snapshot,
+            generation: message.generation,
+            sequence: message.sequence,
+            transport,
+            clientId,
+            echoWaitElementIds: sharedReferences.map(
+              (reference) => reference.elementId,
+            ),
+          });
+          transport.setGeneration(message.generation);
+          v2StoreStatusUnsubscribe = v2Store.subscribeStatus(reportV2Status);
+          transition({ type: "providerSynced" });
+          resolve();
+        } else {
+          v2Store.applyServerSnapshot(message);
+          transport.setGeneration(message.generation);
+        }
+        return;
+      }
+      if (!v2Store) {
+        reject(
+          new Error(
+            "playhtml received a version 2 message before its initial snapshot",
+          ),
+        );
+        return;
+      }
+      if (message.type === "operation") {
+        v2Store.applyServerOperation(message.payload);
+      } else {
+        v2Store.handleRejection(message);
+      }
+    });
+    transport.connect(partykitHost, room, {
+      clientId,
+      generation: 0,
+      sharedElements: JSON.stringify(sharedElements),
+      sharedReferences: JSON.stringify(sharedReferences),
+    });
+  });
 }
 
 /**
@@ -1180,7 +1392,10 @@ function buildElementAwarenessClient(): void {
   } catch (error) {
     elementAwarenessRoom = null;
     releasePresenceTransport(room);
-    console.error("[playhtml] Failed to build element awareness client:", error);
+    console.error(
+      "[playhtml] Failed to build element awareness client:",
+      error,
+    );
     return;
   }
   // Identity re-joins are owned by the shared transport (see
@@ -1237,7 +1452,8 @@ function buildInnerPresenceAPI(): PresenceAPI {
     getIdentity: resolveMyIdentity,
     getPage: getPresencePage,
     getCursorPresences: () => cursorPresenceHub.getPresences(),
-    onCursorPresencesChange: (callback) => cursorPresenceHub.subscribe(callback),
+    onCursorPresencesChange: (callback) =>
+      cursorPresenceHub.subscribe(callback),
   });
   return presenceClient;
 }
@@ -1274,7 +1490,9 @@ function buildCursors(args: {
   }
 
   if (!usersAPI) {
-    throw new Error("[playhtml] buildCursors requires the users module to exist first.");
+    throw new Error(
+      "[playhtml] buildCursors requires the users module to exist first.",
+    );
   }
 
   const cursorOptions: CursorOptions = { ...cursors };
@@ -1576,7 +1794,11 @@ async function runHandleNavigation(): Promise<void> {
   }
 
   if (mainRoomChanged) {
-    teardownMainProvider();
+    if (configuredOptions?.v2) {
+      teardownV2Connection();
+    } else {
+      teardownMainProvider();
+    }
     teardownElementAwarenessClient();
     teardownPresenceClient();
     disconnectUsersPresenceTransport();
@@ -1587,13 +1809,20 @@ async function runHandleNavigation(): Promise<void> {
     // room (like a page reload) without syncing a delete tombstone back to the
     // old room. Must happen before buildMainProvider so the new provider binds
     // the fresh doc.
-    recreateStore();
-    buildMainProvider({
-      room: newMainRoom,
-      partykitHost: __currentHost,
-      onError: configuredOptions?.onError,
-      onMessage,
-    });
+    if (configuredOptions?.v2) {
+      await buildV2Connection({
+        room: newMainRoom,
+        partykitHost: __currentHost,
+      });
+    } else {
+      recreateStore();
+      buildMainProvider({
+        room: newMainRoom,
+        partykitHost: __currentHost,
+        onError: configuredOptions?.onError,
+        onMessage,
+      });
+    }
     __currentRoomId = newMainRoom;
     connectUsersPresenceTransport(newMainRoom);
     buildElementAwarenessClient();
@@ -1628,8 +1857,12 @@ async function runHandleNavigation(): Promise<void> {
   markAllElementsAsLoading();
 
   if (mainRoomChanged) {
-    await waitForMainProviderSync();
-    refreshPageDataChannels(getPageDataDeps());
+    if (configuredOptions?.v2) {
+      for (const channel of v2PageDataChannels) channel.rebind();
+    } else {
+      await waitForMainProviderSync();
+      refreshPageDataChannels(getPageDataDeps());
+    }
   }
 
   if (mainRoomChanged) {
@@ -1746,12 +1979,17 @@ async function initPlayHTMLOnce() {
 ࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂`,
   );
 
-  const { sharedReferences } = buildMainProvider({
-    room,
-    partykitHost,
-    onError,
-    onMessage,
-  });
+  const sharedReferences = configuredOptions?.v2
+    ? []
+    : buildMainProvider({
+        room,
+        partykitHost,
+        onError,
+        onMessage,
+      }).sharedReferences;
+  if (configuredOptions?.v2) {
+    await buildV2Connection({ room, partykitHost });
+  }
 
   if (cursorModuleLoading) {
     await cursorModuleLoading;
@@ -1820,7 +2058,9 @@ async function initPlayHTMLOnce() {
   // Mark all discovered playhtml elements as loading before sync
   markAllElementsAsLoading();
 
-  await waitForMainProviderSync();
+  if (!configuredOptions?.v2) {
+    await waitForMainProviderSync();
+  }
   console.log("[PLAYHTML]: Setting up elements... Time to have some fun");
 
   setupElements();
@@ -1830,18 +2070,18 @@ async function initPlayHTMLOnce() {
   transition({ type: "elementsReady" });
 
   // Fetch simple permissions for referenced shared elements so clients can block writes locally
-  if (sharedReferences.length > 0) {
+  if (!configuredOptions?.v2 && sharedReferences.length > 0) {
     try {
       const elementIds = sharedReferences.map((r) => r.elementId);
       yprovider.sendMessage(
-        JSON.stringify({ type: "export-permissions", elementIds })
+        JSON.stringify({ type: "export-permissions", elementIds }),
       );
     } catch (error) {
       console.error("[PLAYHTML] Error during post-sync setup:", error);
     }
   }
 
-  return yprovider;
+  return configuredOptions?.v2 ? undefined : yprovider;
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
@@ -1986,10 +2226,26 @@ function createPlayElementData<T extends TagType, TData = any>(
       ? tagInfo.defaultData(element)
       : tagInfo.defaultData;
 
-  const dataProxy =
-    tagInfo.defaultData === undefined
-      ? undefined
-      : ensureElementProxy<TData>(tag, elementId, initialData as TData);
+  let dataProxy: TData | undefined;
+  let v2Data: TData | undefined;
+  if (tagInfo.defaultData !== undefined) {
+    if (configuredOptions?.v2) {
+      if (!v2Store) {
+        throw new Error("playhtml version 2 store is unavailable after sync");
+      }
+      const existing = v2Store.getSnapshot().state[tag]?.[elementId];
+      if (existing === undefined) {
+        mutateV2Element(tag, elementId, clonePlain(initialData) as JsonValue);
+      }
+      v2Data = v2Store.getSnapshot().state[tag]?.[elementId] as TData;
+    } else {
+      dataProxy = ensureElementProxy<TData>(
+        tag,
+        elementId,
+        initialData as TData,
+      );
+    }
+  }
   const publishedLive = getElementAwareness(tag, elementId);
   const configuredLive =
     tagInfo.defaultPresence ?? tagInfo.live ?? tagInfo.myDefaultAwareness;
@@ -2006,11 +2262,11 @@ function createPlayElementData<T extends TagType, TData = any>(
     myDefaultAwareness: undefined,
     devMode: configuredOptions?.developmentMode ?? false,
     // Always provide a plain snapshot to render paths
-    data: cloneStoreValue(dataProxy),
+    data: cloneStoreValue(configuredOptions?.v2 ? v2Data : dataProxy),
     awareness: initialLive !== undefined ? [initialLive] : undefined,
     element,
     onChange: (newData: TData) => {
-      if (dataProxy === undefined) {
+      if (tagInfo.defaultData === undefined) {
         console.error(
           `[playhtml] setData() was called for "${elementId}", but its initializer does not define \`defaultData\`.`,
         );
@@ -2018,6 +2274,28 @@ function createPlayElementData<T extends TagType, TData = any>(
       }
       // Prevent writes for read-only shared consumer elements
       if (!canWriteElementData(element)) {
+        return;
+      }
+
+      if (configuredOptions?.v2) {
+        if (!v2Store) {
+          throw new Error("playhtml version 2 store is unavailable after sync");
+        }
+        if (
+          typeof newData === "function" &&
+          v2Store.getSnapshot().state[tag]?.[elementId] === undefined
+        ) {
+          // Someone else deleted this element's data from the room. A change
+          // needs something to change, so this page's copy is put back first.
+          const current = elementHandlers.get(tag)?.get(elementId)?.data;
+          if (current === undefined) return;
+          mutateV2Element(tag, elementId, clonePlain(current) as JsonValue);
+        }
+        mutateV2Element(
+          tag,
+          elementId,
+          newData as JsonValue | ((draft: JsonValue) => void),
+        );
         return;
       }
 
@@ -2370,6 +2648,21 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
   if (!hasRoomSynced(lifecycle)) {
     throw new Error("playhtml.createPageData is not available before init()");
   }
+  if (configuredOptions?.v2) {
+    const channel: V2PageDataChannel<T> = createV2PageDataChannel(
+      name,
+      defaultValue,
+      () => {
+        if (!v2Store) {
+          throw new Error("playhtml version 2 store is unavailable after sync");
+        }
+        return v2Store;
+      },
+      () => v2PageDataChannels.delete(channel as V2PageDataChannel<unknown>),
+    );
+    v2PageDataChannels.add(channel as V2PageDataChannel<unknown>);
+    return channel;
+  }
   watchPlayMapReplacement();
   return createPageDataChannel(name, defaultValue, getPageDataDeps());
 }
@@ -2423,6 +2716,8 @@ function createPresenceRoom(name: string): PresenceRoom {
 export interface PlayHTMLComponents {
   init: typeof initPlayHTML;
   configure: typeof configurePlayHTML;
+  /** Internal debugging handle for the v2 protocol store; not public API. */
+  readonly __v2Store?: unknown;
   readonly isLoading: boolean;
   readonly ready: Promise<void>;
   handleNavigation: () => Promise<void>;
@@ -2507,6 +2802,7 @@ export async function resetPlayHTML(): Promise<void> {
   eventHandlers.clear();
   pageDataRefCounts.clear();
   pageDataListeners.clear();
+  v2PageDataChannels.clear();
   mainProviderSyncWaiters.clear();
   disconnectRegisteredElementObserver();
 
@@ -2514,7 +2810,11 @@ export async function resetPlayHTML(): Promise<void> {
   teardownPresenceClient();
   teardownCursors();
   disconnectUsersPresenceTransport();
-  teardownMainProvider();
+  if (configuredOptions?.v2) {
+    teardownV2Connection();
+  } else {
+    teardownMainProvider();
+  }
   try { usersAPI?.destroy(); } catch {}
   usersAPI = null;
 
@@ -2587,6 +2887,10 @@ export const playhtml: PlayHTMLComponents = {
   get syncedStore() {
     return publicSyncedStore;
   },
+  // Internal debugging handle for the v2 protocol path; not public API.
+  get __v2Store() {
+    return v2Store;
+  },
   elementHandlers,
   dispatchPlayEvent,
   registerPlayEventListener,
@@ -2645,7 +2949,9 @@ function maybeSetupTag(tag: TagType | string): void {
     elementHandlers.set(tag, new Map<string, ElementHandler>());
   }
 
-  store.play[tag] ??= {};
+  if (!configuredOptions?.v2) {
+    store.play[tag] ??= {};
+  }
 }
 
 /**
@@ -2764,8 +3070,9 @@ async function setupPlayElementForTag<T extends TagType | string>(
     element,
   );
   if (!isCorrectElementInitializer(elementInitializerInfo)) {
-    const initializerIssues =
-      getElementInitializerValidationIssues(elementInitializerInfo);
+    const initializerIssues = getElementInitializerValidationIssues(
+      elementInitializerInfo,
+    );
     console.error(
       `Element ${elementId} does not have proper info to initialize a playhtml element. Missing or invalid initializer properties: ${initializerIssues.join(", ")}. Please refer to https://github.com/spencerc99/playhtml#can-play for troubleshooting help.`,
     );
@@ -2838,7 +3145,9 @@ function applySharedElementDataToHandler(
   elementId: string,
   handler: ElementHandler,
 ): boolean {
-  const proxy = store.play[tag]?.[elementId];
+  const proxy = configuredOptions?.v2
+    ? v2Store?.getSnapshot().state[tag]?.[elementId]
+    : store.play[tag]?.[elementId];
   if (proxy === undefined) return false;
 
   // Push a plain snapshot into the handler for stable rendering.
@@ -2947,6 +3256,52 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
   if (!tagHandlers) return;
   const handler = tagHandlers.get(elementId);
   if (!handler) return;
+
+  if (configuredOptions?.v2) {
+    v2ElementUnsubscribeByKey.get(key)?.();
+    const pendingFrame = v2ElementApplyFrameByKey.get(key);
+    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+    v2ElementApplyFrameByKey.delete(key);
+    v2ElementLocalApplyQueued.delete(key);
+    if (!v2Store) return;
+    const unsubscribe = v2Store.subscribe(tag, elementId, () => {
+      // A local write must be readable in the same tick: drag math reads
+      // `data` right after `setData`, and a frame-stale base means movement
+      // never accumulates. Update the handler's state silently now; the
+      // render (and React notification) still happens on the batched frame,
+      // which also avoids re-entrant write-backs during the mutation.
+      if (v2Store?.isNotifyingLocalMutation()) {
+        const value = v2Store.getSnapshot().state[tag]?.[elementId];
+        if (value !== undefined) {
+          // @ts-ignore private usage intended
+          handler.__dataSilent = clonePlain(value);
+        }
+        // The writer's own change renders as soon as the write finishes, so
+        // a click is not held back a frame. Running after the write, never
+        // during it, is what keeps this free of re-entrant write-backs.
+        if (v2ElementLocalApplyQueued.has(key)) return;
+        v2ElementLocalApplyQueued.add(key);
+        queueMicrotask(() => {
+          if (!v2ElementLocalApplyQueued.delete(key)) return;
+          const pendingRemoteFrame = v2ElementApplyFrameByKey.get(key);
+          if (pendingRemoteFrame !== undefined) {
+            cancelAnimationFrame(pendingRemoteFrame);
+            v2ElementApplyFrameByKey.delete(key);
+          }
+          applySharedElementDataToHandler(tag, elementId, handler);
+        });
+        return;
+      }
+      if (v2ElementApplyFrameByKey.has(key)) return;
+      const frame = requestAnimationFrame(() => {
+        v2ElementApplyFrameByKey.delete(key);
+        applySharedElementDataToHandler(tag, elementId, handler);
+      });
+      v2ElementApplyFrameByKey.set(key, frame);
+    });
+    v2ElementUnsubscribeByKey.set(key, unsubscribe);
+    return;
+  }
 
   watchElementRecordReplacement(tag);
 
@@ -3144,7 +3499,16 @@ function removePlayElement(element: Element | null) {
     }
 
     const key = `${tag}:${elementId}`;
-    detachElementObserver(key);
+    if (configuredOptions?.v2) {
+      v2ElementUnsubscribeByKey.get(key)?.();
+      v2ElementUnsubscribeByKey.delete(key);
+      const pendingFrame = v2ElementApplyFrameByKey.get(key);
+      if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+      v2ElementApplyFrameByKey.delete(key);
+      v2ElementLocalApplyQueued.delete(key);
+    } else {
+      detachElementObserver(key);
+    }
     sharedUpdateSeen.delete(key);
     const timerId = sharedHydrationTimers.get(key);
     if (timerId !== undefined) {
@@ -3585,7 +3949,6 @@ function setupViewDescendants(root: HTMLElement): void {
   viewDescendants.set(root, present);
 }
 
-
 /**
  * Completely deletes all shared collaborative data for an element.
  * This is a destructive operation that removes data across all clients.
@@ -3609,6 +3972,33 @@ function deleteElementData(tag: string, elementId: string): void {
   }
 
   const key = `${tag}:${elementId}`;
+
+  if (configuredOptions?.v2) {
+    if (!v2Store) {
+      throw new Error("playhtml version 2 store is not connected");
+    }
+    if (
+      findSharedReferencesOnPage().some(
+        (reference) => reference.elementId === elementId,
+      )
+    ) {
+      console.warn(
+        `[PLAYHTML] Cannot remove data for ${key}: a shared element can only be deleted from the page that owns it`,
+      );
+      return;
+    }
+    v2ElementUnsubscribeByKey.get(key)?.();
+    v2ElementUnsubscribeByKey.delete(key);
+    const pendingFrame = v2ElementApplyFrameByKey.get(key);
+    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+    v2ElementApplyFrameByKey.delete(key);
+    v2ElementLocalApplyQueued.delete(key);
+    const handler = elementHandlers.get(tag)?.get(elementId);
+    handler?.destroy();
+    elementHandlers.get(tag)?.delete(elementId);
+    v2Store.deleteElement(tag, elementId);
+    return;
+  }
 
   // 1. Remove observer
   try {
