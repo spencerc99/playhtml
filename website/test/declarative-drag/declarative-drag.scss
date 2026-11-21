@@ -1,0 +1,259 @@
+:root {
+  --ink: #2b2620;
+  --paper: #f6f1e7;
+  --line: #d9cfbd;
+  --accent: #d2603a;
+  --accent-2: #3a6fd2;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.dd-header,
+#dd-examples {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+.dd-header h1 {
+  margin: 32px 0 8px;
+  font-size: 28px;
+}
+.dd-header p {
+  max-width: 640px;
+  line-height: 1.5;
+  margin: 0 0 24px;
+}
+.dd-example {
+  border-top: 1px solid var(--line);
+  padding: 20px 0 28px;
+}
+.dd-example h2 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+.dd-example h2 span {
+  font-weight: 400;
+  font-size: 13px;
+  opacity: 0.6;
+  margin-left: 6px;
+  font-family: ui-monospace, monospace;
+}
+.dd-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 760px) {
+  .dd-row {
+    grid-template-columns: 1fr;
+  }
+}
+.dd-stage {
+  background: #fffdf8;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+}
+.dd-code {
+  margin: 0;
+  background: #2b2620;
+  color: #f6f1e7;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+.dd-toy {
+  user-select: none;
+  -webkit-user-select: none;
+}
+[data-drag] {
+  touch-action: none;
+  cursor: grab;
+}
+.is-dragging,
+.is-dragging [data-drag] {
+  cursor: grabbing;
+}
+.lifted {
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+/* sortable */
+.sortable {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 220px;
+  display: grid;
+  gap: 6px;
+}
+.sortable li {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+/* piles */
+.piles {
+  display: grid;
+  grid-template-columns: repeat(3, 110px);
+  gap: 10px;
+}
+.pile {
+  background: #f1eadb;
+  border-radius: 10px;
+  padding: 8px;
+  min-height: 170px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pile h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+.card {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  text-align: center;
+}
+
+/* board */
+.board {
+  display: grid;
+  grid-template-columns: repeat(5, 40px);
+  grid-template-rows: repeat(5, 40px);
+  border: 1px solid var(--line);
+}
+.square {
+  display: grid;
+  place-items: center;
+}
+.square:nth-child(odd) {
+  background: #efe6d4;
+}
+.piece {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+.piece.red {
+  background: var(--accent);
+}
+.piece.blue {
+  background: var(--accent-2);
+}
+
+/* switch */
+.switch {
+  width: 96px;
+  height: 48px;
+  border-radius: 24px;
+  background: #cfc6b4;
+  position: relative;
+  transition: background 150ms;
+}
+.switch.on {
+  background: var(--accent);
+}
+.thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.switch.on .thumb {
+  left: 52px;
+}
+
+/* slider */
+.slider {
+  position: relative;
+  width: 240px;
+  height: 40px;
+}
+.slider .track {
+  position: absolute;
+  top: 17px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: #e2d9c7;
+}
+.slider .fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.slider .knob {
+  position: absolute;
+  top: 8px;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid var(--accent);
+}
+.slider output {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+
+/* dial */
+.dial {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #fff, #e4dac6);
+  border: 1px solid var(--line);
+  position: relative;
+}
+.grip {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin-left: -11px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.dd-toy:has(.dial) {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+.dd-toy output {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
