@@ -606,7 +606,6 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     transform: translate(-50%, -50%);
   }
 
-  .collage-tray__thumb .scrap-collage__button,
   .collage-tray__thumb .scrap-collage__svg {
     position: absolute;
     inset: 0;
@@ -618,30 +617,38 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     overflow: hidden;
   }
 
-  /*
-   * A button's reconstruction carries the page's own width, padding and font
-   * size, which is usually wider than a drawer cell. In the drawer those give
-   * way to the cell, so the whole button is seen rather than a slice of it.
-   */
-  .collage-tray__thumb .scrap-collage__button {
-    box-sizing: border-box;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    height: 100% !important;
-    max-height: 100% !important;
-    min-height: 0 !important;
-    padding: 2px 4px !important;
-    font-size: 10px !important;
-    line-height: 1.2 !important;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .collage-tray__thumb .scrap-collage__svg svg,
-  .collage-tray__thumb .scrap-collage__button svg {
+  .collage-tray__thumb .scrap-collage__svg svg {
     max-width: 100%;
     max-height: 100%;
+  }
+
+  /*
+   * A button is set at its own size and type, then shrunk whole to the slot,
+   * so the drawer shows the shape it keeps once placed. It fills that box the
+   * way a placed piece does.
+   */
+  .collage-tray__thumb > .collage-tray__button {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    /* Laid out at full size, then scaled down to the cell as a whole. */
+    max-width: none;
+    max-height: none;
+    transform-origin: center;
+  }
+
+  .collage-tray__button .scrap-collage__backdrop {
+    width: 100%;
+    height: 100%;
+  }
+
+  .collage-tray__button .scrap-collage__button {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
   }
 
   /* Pieces dragged past the frame stay visible, quietly, so none are lost. */

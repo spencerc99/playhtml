@@ -49,6 +49,12 @@ interface WhenPanelProps {
   onDays: (days: DayRange | null) => void;
   timeOfDay: TimeOfDayFilter | null;
   onTimeOfDay: (timeOfDay: TimeOfDayFilter | null) => void;
+  /**
+   * Resets days and time of day in one update. Callers that store both in one
+   * object need this: calling onDays then onTimeOfDay in the same tick would
+   * spread a stale value and put the old days back.
+   */
+  onClear?: () => void;
   /** Overrides for the day grid's scrolling area, such as a height cap. */
   gridStyle?: React.CSSProperties;
 }
@@ -74,6 +80,7 @@ export const WhenPanel: React.FC<WhenPanelProps> = ({
   onDays,
   timeOfDay,
   onTimeOfDay,
+  onClear,
   gridStyle,
 }) => {
   const today = localDayKey(Date.now());
@@ -132,6 +139,10 @@ export const WhenPanel: React.FC<WhenPanelProps> = ({
           <button
             type="button"
             onClick={() => {
+              if (onClear) {
+                onClear();
+                return;
+              }
               onDays(null);
               onTimeOfDay(null);
             }}

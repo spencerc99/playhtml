@@ -392,6 +392,17 @@ describe("ScrapTray day and time-of-day filters", () => {
     expect(countLine()).toBe("4 to draw from");
   });
 
+  it("clears a day and a time of day together", () => {
+    act(() => chip("when").click());
+    act(() => dayCell("2026-09-02").click());
+    act(() => timeOfDay("morning").click());
+    expect(countLine()).toBe("1 of 4 · reset");
+
+    act(() => chip("clear").click());
+    expect(countLine()).toBe("4 to draw from");
+    expect(chip("when").textContent).toContain("any time");
+  });
+
   it("spans two clicked days, then takes a whole month from its header", () => {
     act(() => chip("when").click());
     act(() => dayCell("2026-09-01").click());
