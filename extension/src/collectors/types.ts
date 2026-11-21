@@ -119,7 +119,10 @@ export interface ButtonScrapData {
   kind: "button";
   text: string;
   styles: Record<string, string>;
+  /** The icon drawn before the text, or the whole face of an icon-only button. */
   innerSvg?: string;
+  /** The icon drawn after the text, such as a trailing arrow or chevron. */
+  trailingSvg?: string;
   /** Flat color the element was seen against, when its own does not cover it. */
   backdropColor?: string;
   pageTitle: string;

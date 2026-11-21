@@ -33,6 +33,7 @@ export type ScrapRecord = ScrapRecordBase &
         text: string;
         styles: Record<string, string>;
         innerSvg?: string;
+        trailingSvg?: string;
         backdropColor?: string;
       }
     | {
@@ -93,6 +94,9 @@ export function toScrapItem(record: ScrapRecord): ScrapItem {
         text: record.text,
         styles: record.styles,
         ...(record.innerSvg !== undefined ? { innerSvg: record.innerSvg } : {}),
+        ...(record.trailingSvg !== undefined
+          ? { trailingSvg: record.trailingSvg }
+          : {}),
         ...(record.backdropColor !== undefined
           ? { backdropColor: record.backdropColor }
           : {}),

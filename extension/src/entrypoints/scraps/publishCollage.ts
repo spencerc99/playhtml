@@ -117,6 +117,7 @@ export function publishedContent(
         styles: publishableStyles(scrap.styles),
       };
       if (scrap.innerSvg) content.innerSvg = scrap.innerSvg;
+      if (scrap.trailingSvg) content.trailingSvg = scrap.trailingSvg;
       if (scrap.backdropColor && isSafeStyleValue(scrap.backdropColor)) {
         content.backdropColor = scrap.backdropColor;
       }

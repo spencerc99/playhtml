@@ -29,6 +29,7 @@ import {
 import type { FilterChip } from "../utils/eventUtils";
 import { hasExactScrapSearch } from "../utils/scrapFilters";
 import { hashString, seededRandom } from "../utils/styleUtils";
+import { buttonIconStyle, iconSizedInEms } from "../utils/buttonIcon";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
 import {
   prioritizeScrapPreviews,
@@ -89,6 +90,7 @@ export type ScrapItem = ScrapItemBase &
         text: string;
         styles: Record<string, string>;
         innerSvg?: string;
+        trailingSvg?: string;
         backdropColor?: string;
       }
     | {
@@ -1644,15 +1646,10 @@ export const COLLAGE_STYLES = `
   }
 
   .scrap-collage__button-icon {
-    display: inline-flex;
-    width: 1em;
-    height: 1em;
-    flex: 0 0 auto;
-    margin-right: 0.45em;
     pointer-events: none;
   }
 
-  .scrap-collage__button-icon > svg {
+  .scrap-collage__button-icon--legacy > svg {
     width: 100%;
     height: 100%;
     display: block;
@@ -1826,7 +1823,9 @@ function isRenderableScrap(item: ScrapItem): boolean {
         item.naturalHeight > 0
       );
     case "button":
-      return Boolean(item.text.trim() || item.innerSvg?.trim());
+      return Boolean(
+        item.text.trim() || item.innerSvg?.trim() || item.trailingSvg?.trim(),
+      );
     case "svg-icon":
       return Boolean(item.markup.trim() && item.width > 0 && item.height > 0);
     case "heading":
@@ -1913,7 +1912,34 @@ export function ScrapBackdrop({
   );
 }
 
+/** One of a button's icons, laid out beside its text as the page had it. */
+function ButtonIcon({
+  markup,
+  side,
+  hasText,
+  styles,
+}: {
+  markup: string;
+  side: "leading" | "trailing";
+  hasText: boolean;
+  styles: Record<string, string>;
+}) {
+  return (
+    <span
+      className={`scrap-collage__button-icon${
+        iconSizedInEms(markup) ? "" : " scrap-collage__button-icon--legacy"
+      }`}
+      aria-hidden="true"
+      style={
+        buttonIconStyle(markup, side, hasText, styles) as React.CSSProperties
+      }
+      dangerouslySetInnerHTML={{ __html: markup }}
+    />
+  );
+}
+
 const BUTTON_LENGTH_PROPERTIES = [
+  "columnGap",
   "fontSize",
   "paddingTop",
   "paddingRight",
@@ -1950,6 +1976,8 @@ function buttonStylesAtWidth(
  */
 function inkBackingFor(styles: Record<string, string>): string | undefined {
   if (hasOwnFill(styles.backgroundColor)) return undefined;
+  // A gradient is a fill of its own, painted under the lettering.
+  if (/gradient\(/i.test(styles.backgroundImage ?? "")) return undefined;
   return inkNeedsBacking(styles.color) ? backingFor(styles.color!) : undefined;
 }
 
@@ -2008,13 +2036,22 @@ export function ScrapContent({
             }}
           >
             {item.innerSvg && (
-              <span
-                className="scrap-collage__button-icon"
-                aria-hidden="true"
-                dangerouslySetInnerHTML={{ __html: item.innerSvg }}
+              <ButtonIcon
+                markup={item.innerSvg}
+                side="leading"
+                hasText={item.text.length > 0}
+                styles={item.styles}
               />
             )}
             {item.text}
+            {item.trailingSvg && (
+              <ButtonIcon
+                markup={item.trailingSvg}
+                side="trailing"
+                hasText={item.text.length > 0}
+                styles={item.styles}
+              />
+            )}
           </span>
         </ScrapBackdrop>
       );

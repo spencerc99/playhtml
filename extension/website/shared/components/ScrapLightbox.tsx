@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { headingDisplayFontSize, type ScrapItem } from "./ScrapCollage";
 import { useScrapImageSrc } from "../utils/scrapImageSource";
+import { buttonIconStyle } from "../utils/buttonIcon";
 
 /** Fraction of the viewport's smaller dimension the lifted scrap fills. */
 const LIFTED_VIEWPORT_FRACTION = 0.55;
@@ -592,16 +593,32 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
             {item.innerSvg && (
               <span
                 aria-hidden="true"
-                style={{
-                  display: "inline-flex",
-                  width: "1em",
-                  height: "1em",
-                  marginRight: "0.45em",
-                }}
+                style={
+                  buttonIconStyle(
+                    item.innerSvg,
+                    "leading",
+                    item.text.length > 0,
+                    item.styles,
+                  ) as React.CSSProperties
+                }
                 dangerouslySetInnerHTML={{ __html: item.innerSvg }}
               />
             )}
             {item.text}
+            {item.trailingSvg && (
+              <span
+                aria-hidden="true"
+                style={
+                  buttonIconStyle(
+                    item.trailingSvg,
+                    "trailing",
+                    item.text.length > 0,
+                    item.styles,
+                  ) as React.CSSProperties
+                }
+                dangerouslySetInnerHTML={{ __html: item.trailingSvg }}
+              />
+            )}
           </span>
         </div>
       );

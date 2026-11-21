@@ -161,7 +161,13 @@ describe("ScrapCollector", () => {
     document.head.innerHTML = "";
     document.body.innerHTML = "";
     document.title = "A page worth keeping";
-    vi.stubGlobal("getComputedStyle", (element: Element) => {
+    vi.stubGlobal("getComputedStyle", (element: Element, pseudo?: string) => {
+      if (pseudo) {
+        return JSON.parse(
+          element.getAttribute(`data-${pseudo.replace(/:/g, "")}`) ??
+            '{"content":"none","backgroundImage":"none"}',
+        ) as CSSStyleDeclaration;
+      }
       const overrides = JSON.parse(
         element.getAttribute("data-styles") ?? "{}",
       ) as Record<string, string>;
@@ -740,13 +746,8 @@ describe("ScrapCollector", () => {
         border: "1px solid rgb(1, 2, 3)",
       },
     });
-    expect(buttons[1]).toMatchObject({
-      kind: "button",
-      text: "Remote background",
-    });
-    expect(
-      buttons[1].kind === "button" && buttons[1].styles.backgroundImage,
-    ).toBeUndefined();
+    // Its picture cannot come along, so the button is not saved without it.
+    expect(buttons).toHaveLength(1);
   });
 
   it("deduplicates reconstructed buttons and caps them at twenty", () => {
@@ -810,7 +811,7 @@ describe("ScrapCollector", () => {
       ).toEqual(["Learn more"]);
     });
 
-    it("keeps an icon-only control that paints nothing else", () => {
+    it("skips an icon-only control that paints nothing else", () => {
       const iconOnly = createButton({ text: "" });
       iconOnly.setAttribute("data-styles", BARE);
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -826,11 +827,128 @@ describe("ScrapCollector", () => {
       collector.enable();
       showForCapture([iconOnly]);
 
+      expect(emitted("button")).toHaveLength(0);
+    });
+
+    it("captures the face a reset button's single child paints", () => {
+      const button = createButton({ text: "" });
+      button.setAttribute("data-styles", BARE);
+      const face = document.createElement("span");
+      face.textContent = "Subscribe";
+      face.setAttribute(
+        "data-styles",
+        JSON.stringify({
+          backgroundColor: "rgb(255, 207, 63)",
+          textTransform: "uppercase",
+        }),
+      );
+      setRenderedSize(face, { width: 150, height: 38 });
+      button.appendChild(face);
+
+      collector.enable();
+      showForCapture([button]);
+
       const scraps = emitted("button");
       expect(scraps).toHaveLength(1);
-      expect(scraps[0].kind === "button" && scraps[0].innerSvg).toContain(
-        "<svg",
+      expect(scraps[0]).toMatchObject({
+        text: "Subscribe",
+        styles: {
+          backgroundColor: "rgb(255, 207, 63)",
+          textTransform: "uppercase",
+        },
+      });
+    });
+
+    it("skips a button whose icon is an icon-font ligature", () => {
+      const button = createButton({ text: "" });
+      const glyph = document.createElement("span");
+      glyph.textContent = "search";
+      glyph.setAttribute(
+        "data-styles",
+        JSON.stringify({ fontFamily: '"Material Icons"' }),
       );
+      setRenderedSize(glyph, { width: 18, height: 18 });
+      button.append(glyph, "Search");
+
+      collector.enable();
+      showForCapture([button]);
+
+      expect(emitted("button")).toHaveLength(0);
+    });
+
+    it("skips a button whose icon is drawn by a pseudo-element glyph", () => {
+      const button = createButton({ text: "" });
+      const glyph = document.createElement("i");
+      glyph.setAttribute(
+        "data-before",
+        JSON.stringify({
+          content: '"\\f004"',
+          fontFamily: '"Font Awesome 6 Free"',
+          backgroundImage: "none",
+        }),
+      );
+      setRenderedSize(glyph, { width: 16, height: 16 });
+      button.append(glyph, "Like");
+
+      collector.enable();
+      showForCapture([button]);
+
+      expect(emitted("button")).toHaveLength(0);
+    });
+
+    it("skips a button whose icon is an image", () => {
+      const button = createButton({ text: "" });
+      const icon = document.createElement("img");
+      setRenderedSize(icon, { width: 16, height: 16 });
+      button.append(icon, "Share");
+
+      collector.enable();
+      showForCapture([button]);
+
+      expect(emitted("button")).toHaveLength(0);
+    });
+
+    it("keeps words a button's own pseudo-element adds", () => {
+      const button = createButton({ text: "Learn more" });
+      button.setAttribute(
+        "data-after",
+        JSON.stringify({ content: '"→"', backgroundImage: "none" }),
+      );
+
+      collector.enable();
+      showForCapture([button]);
+
+      expect(
+        emitted("button").map((data) => data.kind === "button" && data.text),
+      ).toEqual(["Learn more →"]);
+    });
+
+    it("keeps a trailing icon on its side, with the gap the page left", () => {
+      const button = createButton({ text: "" });
+      const label = document.createElement("span");
+      label.textContent = "Continue";
+      setRenderedSize(label, { width: 70, height: 18, left: 10, top: 10 });
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const path = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path",
+      );
+      path.setAttribute("d", "M5 12h14");
+      svg.appendChild(path);
+      setRenderedSize(svg, { width: 14, height: 14, left: 86, top: 12 });
+      button.append(label, svg);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scraps = emitted("button");
+      expect(scraps).toHaveLength(1);
+      const scrap = scraps[0]!;
+      if (scrap.kind !== "button") throw new Error("Expected a button scrap");
+      expect(scrap.text).toBe("Continue");
+      expect(scrap.innerSvg).toBeUndefined();
+      expect(scrap.trailingSvg).toContain("<svg");
+      expect(scrap.styles.columnGap).toBe("6px");
     });
 
     it("does not let skipped prose consume the per-page button cap", () => {
@@ -898,8 +1016,8 @@ describe("ScrapCollector", () => {
     );
   });
 
-  it("omits oversized inline SVG markup from text buttons", () => {
-    const button = createButton({ text: "Text survives" });
+  it("skips a button whose icon is too large to carry with it", () => {
+    const button = createButton({ text: "Text without its icon" });
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", `M0 0${"h1".repeat(5 * 1024)}`);
@@ -910,17 +1028,7 @@ describe("ScrapCollector", () => {
     collector.enable();
     showForCapture([button]);
 
-    const buttons = emitted("button");
-    expect(buttons).toEqual([expect.objectContaining({
-      kind: "button",
-      text: "Text survives",
-    })]);
-    const buttonScrap = buttons[0];
-    expect(buttonScrap.kind).toBe("button");
-    if (buttonScrap.kind !== "button") {
-      throw new Error("Expected a button scrap");
-    }
-    expect(buttonScrap.innerSvg).toBeUndefined();
+    expect(emitted("button")).toEqual([]);
   });
 
   it("captures a standalone SVG icon", () => {
@@ -1086,8 +1194,9 @@ describe("ScrapCollector", () => {
     const scraps = emitted("button");
     expect(scraps).toHaveLength(1);
     const markup = scraps[0].kind === "button" ? scraps[0].innerSvg ?? "" : "";
-    expect(markup).toContain('width="32"');
-    expect(markup).toContain('height="36"');
+    // Sized in ems of the button's 14px text, so it scales with the words.
+    expect(markup).toContain('width="2.286em"');
+    expect(markup).toContain('height="2.571em"');
     expect(markup).toContain('viewBox="0 0 32 36"');
     expect(markup).toContain('fill="rgb(12, 34, 56)"');
     expect(markup).toContain('stroke="rgb(12, 34, 56)"');
