@@ -106,6 +106,20 @@ const TRAIL_VISUAL_STYLES = ["color", "monochrome"] as const;
  *   - significantly change what the canvas shows, or
  *   - are the "headline" of a shared link (filters, viz, presentation tier).
  */
+/**
+ * Slider range for `scrollSpeed`. Live scrolling uses 0.1–2; installation
+ * mode replays recorded timing and allows up to 10x. A shared link can carry
+ * any number, so callers clamp the parsed value to the route's range.
+ */
+export function scrollSpeedRange(recordedTiming: boolean): { min: number; max: number } {
+  return { min: 0.1, max: recordedTiming ? 10 : 2 };
+}
+
+export function clampScrollSpeed(value: number, recordedTiming: boolean): number {
+  const { min, max } = scrollSpeedRange(recordedTiming);
+  return Math.min(max, Math.max(min, value));
+}
+
 export const HEADLINE_SPECS: SettingSpec[] = [
   // Filters — always shareable, always readable. The chip list serializes
   // as `?filter=google.com,reddit.com/r/foo,/maps` — one canonical-form
@@ -152,6 +166,8 @@ export const HEADLINE_SPECS: SettingSpec[] = [
   num("strokeWidth", "strokeWidth", "trails"),
   num("trailOpacity", "trailOpacity", "trails"),
   bool("randomizeColors", "randomizeColors"),
+
+  num("scrollSpeed", "scrollSpeed", "scrolling"),
 
   // Navigation — view mode is structurally different (timeline vs radial),
   // so it makes sense to call it out in the URL.
@@ -211,6 +227,16 @@ export function parseSpec(params: URLSearchParams): Record<string, unknown> {
     if (domain || path) {
       overrides.filters = [{ domain, path }] satisfies FilterChip[];
     }
+  }
+
+  if (
+    overrides.scrollSpeed !== undefined &&
+    (typeof overrides.scrollSpeed !== "number" ||
+      !Number.isFinite(overrides.scrollSpeed) ||
+      overrides.scrollSpeed < 0.1 ||
+      overrides.scrollSpeed > 10)
+  ) {
+    delete overrides.scrollSpeed;
   }
 
   return overrides;

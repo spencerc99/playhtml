@@ -257,7 +257,8 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     const animationFrameRef = useRef<number | null>(null);
     const lastFillCheckRef = useRef(0);
     const lastFrameUpdateRef = useRef(0);
-    const startTimeRef = useRef<number | null>(null);
+    const lastTimestampRef = useRef<number | null>(null);
+    const playbackTimeRef = useRef(0);
     const completionSignaledRef = useRef(false);
     const continuous = installationLiveEventIds !== undefined;
     const continuousQueue = useRef(new InstallationPlaybackQueue<ScrollAnimation>()).current;
@@ -526,8 +527,9 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
             }
           } else if (viewport.phase === "animating") {
             const animElapsed = currentTime - viewport.animationStartTime;
+            // Installation playback already runs its clock at Timeline Speed.
             if (animElapsed >= (continuous
-              ? viewport.durationMs / settingsRef.current.scrollSpeed + INSTALLATION_SCROLL_HOLD_MS
+              ? viewport.durationMs + INSTALLATION_SCROLL_HOLD_MS
               : viewport.durationMs + FADE_OUT_DELAY)) {
               changed = true;
               return {
@@ -564,11 +566,12 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       if ((!continuous && animations.length === 0) || canvasSize.width === 0) return;
 
       const animate = (timestamp: number) => {
-        if (startTimeRef.current === null) {
-          startTimeRef.current = timestamp;
-        }
-
-        const currentTime = timestamp - startTimeRef.current;
+        const elapsed = timestamp - (lastTimestampRef.current ?? timestamp);
+        lastTimestampRef.current = timestamp;
+        // Installation recordings scale the whole timeline: arrivals, fades,
+        // motion, and holds. Other playback scales only scroll motion.
+        playbackTimeRef.current += elapsed * (continuous ? settingsRef.current.scrollSpeed : 1);
+        const currentTime = playbackTimeRef.current;
 
         // Update viewport phases
         updateViewports(currentTime);
@@ -589,8 +592,9 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           }
         }
 
-        if (currentTime - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
-          lastFrameUpdateRef.current = currentTime;
+        // Throttle on wall time so slow and fast timelines repaint evenly.
+        if (timestamp - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
+          lastFrameUpdateRef.current = timestamp;
           clock.currentTime = currentTime;
           for (const update of clock.listeners) update(currentTime);
         }
@@ -1036,12 +1040,14 @@ const DynamicViewportRect = memo(
       [animation],
     );
 
+    // Installation playback applies Timeline Speed to the clock itself.
+    const motionSpeed = settings.installationPlayback ? 1 : settings.scrollSpeed;
     const [frameTime, setFrameTime] = useState(clock.currentTime);
     const frame = getViewportFrame(
       viewport,
       timeline,
       clock.currentTime,
-      settings.scrollSpeed,
+      motionSpeed,
       settings.installationPlayback,
     );
     const {
@@ -1073,7 +1079,7 @@ const DynamicViewportRect = memo(
           viewport,
           timeline,
           currentTime,
-          settings.scrollSpeed,
+          motionSpeed,
           settings.installationPlayback,
         );
         // Geometry and iframe previews need React; scroll and fade only change SVG attributes.
@@ -1123,6 +1129,7 @@ const DynamicViewportRect = memo(
       viewport,
       timeline,
       settings,
+      motionSpeed,
       visualWidth,
       visualHeight,
       frameTime,
