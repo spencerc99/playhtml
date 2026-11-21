@@ -29,13 +29,14 @@ export function warnHashedElementId(tag: string, element: Element): void {
   );
 }
 
-export async function hashElement(
-  tag: string,
-  element: Element
-): Promise<string> {
+export function hashElement(tag: string, element: Element): Promise<string> {
+  return hashHtml(tag, element.outerHTML);
+}
+
+export async function hashHtml(tag: string, html: string): Promise<string> {
   // The input string (stray "}" included) is frozen: changing it would re-key
   // the saved data of every element that uses a hashed id.
-  const msgUint8 = new TextEncoder().encode(`${tag}-${element.outerHTML}}`);
+  const msgUint8 = new TextEncoder().encode(`${tag}-${html}}`);
   const hashBuffer = await crypto.subtle.digest("SHA-1", msgUint8);
 
   const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
