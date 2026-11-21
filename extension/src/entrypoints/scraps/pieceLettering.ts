@@ -1,6 +1,7 @@
 // ABOUTME: The size a scrap arrives at, and how a lettered piece scales its words.
 // ABOUTME: Shared by the studio, the crop session and the bake so all three agree.
 
+import { buttonIconStyle, iconSizedInEms } from "@movement/utils/buttonIcon";
 import {
   headingDisplayFontSize,
   type ScrapItem,
@@ -63,7 +64,12 @@ export function buttonNaturalSize(item: ButtonScrap): {
   width: number;
   height: number;
 } {
-  const key = JSON.stringify([item.text, item.styles, item.innerSvg ?? ""]);
+  const key = JSON.stringify([
+    item.text,
+    item.styles,
+    item.innerSvg ?? "",
+    item.trailingSvg ?? "",
+  ]);
   const known = buttonSizes.get(key);
   if (known) return known;
   const measured = measureButton(item);
@@ -106,21 +112,23 @@ function measureButton(
     height: "auto",
     margin: "0",
   });
-  if (item.innerSvg) {
+  const appendIcon = (markup: string, side: "leading" | "trailing") => {
     const icon = document.createElement("span");
-    Object.assign(icon.style, {
-      display: "inline-flex",
-      width: "1em",
-      height: "1em",
-      flex: "0 0 auto",
-      marginRight: "0.45em",
-    });
-    icon.innerHTML = item.innerSvg;
+    Object.assign(
+      icon.style,
+      buttonIconStyle(markup, side, item.text.length > 0, item.styles),
+    );
+    icon.innerHTML = markup;
     const svg = icon.querySelector("svg");
-    if (svg) Object.assign(svg.style, { width: "100%", height: "100%" });
+    // An older capture's pixel-sized icon fills its 1em box, as drawn.
+    if (svg && !iconSizedInEms(markup)) {
+      Object.assign(svg.style, { width: "100%", height: "100%" });
+    }
     probe.appendChild(icon);
-  }
+  };
+  if (item.innerSvg) appendIcon(item.innerSvg, "leading");
   probe.appendChild(document.createTextNode(item.text));
+  if (item.trailingSvg) appendIcon(item.trailingSvg, "trailing");
   document.body.appendChild(probe);
   const { width, height } = probe.getBoundingClientRect();
   probe.remove();
