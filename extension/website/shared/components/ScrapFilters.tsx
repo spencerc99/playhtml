@@ -922,6 +922,7 @@ export function ScrapFilters({
               onDays={(days) => onWhen({ ...when, days })}
               timeOfDay={when.timeOfDay}
               onTimeOfDay={(timeOfDay) => onWhen({ ...when, timeOfDay })}
+              onClear={() => onWhen(ANY_TIME)}
               gridStyle={{ flex: "none", maxHeight: "min(220px, 30vh)" }}
             />
           </section>

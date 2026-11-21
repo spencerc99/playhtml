@@ -28,7 +28,7 @@ export function naturalScrapSize(item: ScrapItem): {
     case "svg-icon":
       return { width: item.width, height: item.height };
     case "button":
-      return { width: Math.max(80, item.text.length * 11 + 40), height: 40 };
+      return buttonNaturalSize(item);
     case "heading": {
       // Sized from the same font size the shared renderer draws the heading
       // at, so a placed heading arrives at the proportions it will keep.
@@ -42,6 +42,89 @@ export function naturalScrapSize(item: ScrapItem): {
     case "cursor":
       return { width: 32, height: 32 };
   }
+}
+
+type ButtonScrap = Extract<ScrapItem, { kind: "button" }>;
+
+/** The smallest and largest a button can measure, matching what capture keeps. */
+const BUTTON_MIN = { width: 24, height: 16 };
+const BUTTON_MAX = { width: 600, height: 200 };
+
+const buttonSizes = new Map<string, { width: number; height: number }>();
+
+/**
+ * The size a button scrap draws at from its own captured styles: its type,
+ * padding, border and icon. The tray's preview and the placed piece both start
+ * from this, so a button keeps one shape from the drawer to the collage.
+ * Measured once per look in the live document; an estimate stands in where
+ * nothing can be laid out.
+ */
+export function buttonNaturalSize(item: ButtonScrap): {
+  width: number;
+  height: number;
+} {
+  const key = JSON.stringify([item.text, item.styles, item.innerSvg ?? ""]);
+  const known = buttonSizes.get(key);
+  if (known) return known;
+  const measured = measureButton(item);
+  if (!measured) {
+    return { width: Math.max(80, item.text.length * 11 + 40), height: 40 };
+  }
+  const size = {
+    width: Math.round(
+      Math.min(BUTTON_MAX.width, Math.max(BUTTON_MIN.width, measured.width)),
+    ),
+    height: Math.round(
+      Math.min(BUTTON_MAX.height, Math.max(BUTTON_MIN.height, measured.height)),
+    ),
+  };
+  buttonSizes.set(key, size);
+  return size;
+}
+
+/**
+ * Lays the button out the way `ScrapContent` draws it, but at its own size
+ * rather than stretched to a tile, and reads back the box it takes.
+ */
+function measureButton(
+  item: ButtonScrap,
+): { width: number; height: number } | null {
+  if (typeof document === "undefined" || !document.body) return null;
+  const probe = document.createElement("span");
+  Object.assign(probe.style, item.styles);
+  Object.assign(probe.style, {
+    position: "absolute",
+    left: "-100000px",
+    top: "0",
+    visibility: "hidden",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    whiteSpace: "nowrap",
+    boxSizing: "border-box",
+    width: "auto",
+    height: "auto",
+    margin: "0",
+  });
+  if (item.innerSvg) {
+    const icon = document.createElement("span");
+    Object.assign(icon.style, {
+      display: "inline-flex",
+      width: "1em",
+      height: "1em",
+      flex: "0 0 auto",
+      marginRight: "0.45em",
+    });
+    icon.innerHTML = item.innerSvg;
+    const svg = icon.querySelector("svg");
+    if (svg) Object.assign(svg.style, { width: "100%", height: "100%" });
+    probe.appendChild(icon);
+  }
+  probe.appendChild(document.createTextNode(item.text));
+  document.body.appendChild(probe);
+  const { width, height } = probe.getBoundingClientRect();
+  probe.remove();
+  return width > 0 && height > 0 ? { width, height } : null;
 }
 
 /**
